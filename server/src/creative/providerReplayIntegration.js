@@ -71,6 +71,8 @@ export const applyProviderReplayThroughLedger = async ({
   now = new Date(),
   sideEffectLeaseSeconds = 60,
   fetchOutput = null,
+  source = process.env,
+  outputSafetyClassifier = null,
 } = {}) => {
   const replayLedger = repositories.creativeProviderReplays
   if (!replayLedger?.record) {
@@ -176,6 +178,8 @@ export const applyProviderReplayThroughLedger = async ({
     actor,
     sideEffectResult: claimedSideEffectResult,
     fetchOutput,
+    source,
+    outputSafetyClassifier,
   })
   const replayRecord = await persistSideEffectResult({
     replayLedger,

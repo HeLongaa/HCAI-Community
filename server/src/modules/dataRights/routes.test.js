@@ -72,3 +72,45 @@ test('data rights request rejects stale account versions and non-matching identi
     await server.close()
   }
 })
+
+test('legal hold routes are admin-only, scoped, versioned, and auditable', async () => {
+  const server = await createRouteTestServer(registerAuthRoutes, registerUserRoutes, registerDataRightsRoutes)
+  try {
+    const ownerLogin = await requestJson(server.url, '/api/auth/login', { body: { handle: 'promptlin' } })
+    const ownerToken = ownerLogin.payload.data.accessToken
+    const ownerId = ownerLogin.payload.data.user.id
+    const adminToken = await login(server, 'opsplus')
+    const now = Date.now()
+    const payload = {
+      subjectId: ownerId,
+      scopeDomain: 'creative',
+      reasonCode: 'litigation_preservation',
+      authorityRole: 'legal_hold_admin',
+      authorityReferenceHash: 'c'.repeat(64),
+      reviewAt: new Date(now + 30 * 86400_000).toISOString(),
+      expiresAt: new Date(now + 180 * 86400_000).toISOString(),
+    }
+    const denied = await requestJson(server.url, '/api/admin/data-rights/legal-holds', { token: ownerToken, body: payload })
+    assert.equal(denied.status, 403)
+
+    const created = await requestJson(server.url, '/api/admin/data-rights/legal-holds', { token: adminToken, body: payload })
+    assert.equal(created.status, 201)
+    assert.equal(created.payload.data.status, 'active')
+    assert.equal(created.payload.data.events[0].eventType, 'legal_hold_created')
+    assert.equal(JSON.stringify(created.payload).includes(ownerId), false)
+
+    const listed = await requestJson(server.url, '/api/admin/data-rights/legal-holds?status=active', { method: 'GET', token: adminToken })
+    assert.equal(listed.status, 200)
+    assert.ok(listed.payload.data.some((item) => item.id === created.payload.data.id))
+
+    const released = await requestJson(server.url, `/api/admin/data-rights/legal-holds/${created.payload.data.id}/release`, {
+      token: adminToken,
+      body: { expectedVersion: created.payload.data.version, reasonCode: 'matter_closed' },
+    })
+    assert.equal(released.status, 200)
+    assert.equal(released.payload.data.status, 'released')
+    assert.equal(released.payload.data.version, 2)
+  } finally {
+    await server.close()
+  }
+})

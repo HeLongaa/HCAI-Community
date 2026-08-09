@@ -2,20 +2,22 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
   Check,
+  Circle,
   Clapperboard,
   Download,
   Eye,
+  FileDown,
   Image,
   LoaderCircle,
   Music2,
   RefreshCcw,
   RotateCcw,
+  ShieldCheck,
   Square,
   Upload,
   Video,
 } from 'lucide-react'
 
-import { visualWorks } from '../../data/mockData'
 import { isZhCopy, textFor } from '../../domain/utils'
 import type { VideoGenerationWorkflow } from '../../hooks/useVideoGenerationWorkflow'
 import type {
@@ -24,9 +26,13 @@ import type {
   ApiCreativeProviderCatalog,
   ApiCreativeProviderCatalogEntry,
   ApiMediaAsset,
+  ApiUserCreativeGeneration,
 } from '../../services/contracts'
 import { CreativeCostPreview } from './CreativeCostPreview'
+import { GenerationRetryConfirmation } from './GenerationRetryConfirmation'
 import { UseCreativeAsset } from '../assets/UseCreativeAsset'
+import { ActionFeedback, type ActionFeedbackMessage } from '../../components/ui/ActionFeedback'
+import { isOperationalCreativeProvider, selectOperationalCreativeProvider } from '../../services/creativeProviderSelection'
 
 const imageTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
 const audioTypes = new Set(['audio/mpeg', 'audio/wav', 'audio/mp4'])
@@ -46,18 +52,27 @@ const labelForMotion = (value: string, isZh: boolean) => ({
   fast_cuts: isZh ? '快切' : 'Fast cuts',
 })[value] ?? value
 
-const labelForStatus = (status: string | null, isZh: boolean) => ({
-  queued: isZh ? '排队中' : 'Queued',
-  running: isZh ? '生成中' : 'Running',
-  review_required: isZh ? '等待审核' : 'Review required',
-  completed: isZh ? '已完成' : 'Completed',
-  failed: isZh ? '失败' : 'Failed',
-  cancelled: isZh ? '已取消' : 'Cancelled',
-})[status ?? ''] ?? (isZh ? '就绪' : 'Ready')
+const labelForStatus = (status: string | null, isZh: boolean, scanStatus: string | null = null) => {
+  if (status === 'completed' && scanStatus !== 'clean') {
+    return scanStatus === 'rejected' || scanStatus === 'failed'
+      ? (isZh ? '输出不可用' : 'Output unavailable')
+      : (isZh ? '正在处理输出' : 'Processing output')
+  }
+  return ({
+    queued: isZh ? '排队中' : 'Queued',
+    running: isZh ? '生成中' : 'Running',
+    review_required: isZh ? '等待审核' : 'Review required',
+    completed: isZh ? '已完成' : 'Completed',
+    failed: isZh ? '失败' : 'Failed',
+    cancelled: isZh ? '已取消' : 'Cancelled',
+  })[status ?? ''] ?? (isZh ? '就绪' : 'Ready')
+}
 
-const statusTone = (status: string | null) => {
+const statusTone = (status: string | null, scanStatus: string | null = null) => {
   if (status === 'queued' || status === 'running') return 'loading'
-  if (status === 'completed') return 'done'
+  if (status === 'completed' && scanStatus === 'clean') return 'done'
+  if (status === 'completed' && (scanStatus === 'rejected' || scanStatus === 'failed')) return 'error'
+  if (status === 'completed') return 'loading'
   if (status === 'failed' || status === 'cancelled') return 'error'
   return ''
 }
@@ -74,6 +89,28 @@ const formatTime = (value: string | null, isZh: boolean) => {
   }).format(date)
 }
 
+const formatDuration = (milliseconds: number, isZh: boolean) => {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (minutes === 0) return isZh ? `${seconds} 秒` : `${seconds}s`
+  return isZh ? `${minutes} 分 ${seconds} 秒` : `${minutes}m ${seconds}s`
+}
+
+const phaseForGeneration = (
+  generation: ApiUserCreativeGeneration | null,
+  output: ApiUserCreativeGeneration['outputs'][number] | null,
+) => {
+  if (!generation) return { active: -1, terminal: false, failed: false }
+  const failed = generation.status === 'failed' || generation.status === 'cancelled'
+  if (failed) return { active: generation.startedAt ? 1 : 0, terminal: true, failed: true }
+  if (output?.scanStatus === 'clean' && generation.status === 'completed') return { active: 4, terminal: true, failed: false }
+  if (output || generation.status === 'review_required') return { active: 3, terminal: false, failed: false }
+  if (generation.status === 'completed') return { active: 2, terminal: false, failed: false }
+  if (generation.status === 'running') return { active: 1, terminal: false, failed: false }
+  return { active: 0, terminal: false, failed: false }
+}
+
 const parameterOptions = (capability: ApiCreativeCapability | null, key: string, fallback: Array<string | number>) =>
   capability?.parameterDefinitions?.[key]?.options ?? fallback
 
@@ -82,12 +119,15 @@ const capabilityFor = (provider: ApiCreativeProviderCatalogEntry | null) =>
 
 const providerClassification = (provider: ApiCreativeProviderCatalogEntry | null, isZh: boolean) => {
   if (!provider) return { label: isZh ? '不可用' : 'Unavailable', tone: 'unavailable' }
-  if (provider.id === 'mock' && provider.enabled && provider.configured) {
-    return { label: 'Mock', tone: 'mock' }
+  if (provider.id === 'mock' || provider.mode === 'mock') return { label: 'Mock', tone: 'mock' }
+  if (provider.enabled && provider.configured && !provider.fixtureInjectable && provider.safeMetadata.fixtureAdapterOnly !== true) {
+    return { label: isZh ? '已配置' : 'Configured', tone: 'available' }
   }
-  if (provider.fixtureInjectable || provider.safeMetadata.fixtureAdapterOnly === true) {
-    return { label: isZh ? '仅 Fixture' : 'Fixture only', tone: 'fixture' }
-  }
+  const capabilityValidated = provider.capabilities.some((capability) =>
+    capability.workspace === 'video' && capability.availability?.capabilityAvailable,
+  )
+  if (capabilityValidated) return { label: isZh ? '能力可用' : 'Capability available', tone: 'available' }
+  if (provider.fixtureInjectable || Boolean(provider.safeMetadata.fixtureAdapterOnly)) return { label: 'Fixture only', tone: 'unavailable' }
   return { label: isZh ? '不可用' : 'Unavailable', tone: 'unavailable' }
 }
 
@@ -101,11 +141,13 @@ export function VideoStudioPage({
   t,
   providerCatalog,
   providerCatalogState,
+  onRetryCatalog,
   workflow,
 }: {
   t: Record<string, string>
   providerCatalog: ApiCreativeProviderCatalog | null
   providerCatalogState: 'loading' | 'ready' | 'error'
+  onRetryCatalog: () => Promise<void>
   workflow: VideoGenerationWorkflow
 }) {
   const isZh = isZhCopy(t)
@@ -121,6 +163,10 @@ export function VideoStudioPage({
   const [audioTrackId, setAudioTrackId] = useState('')
   const [referenceImageId, setReferenceImageId] = useState('')
   const [rightsConfirmed, setRightsConfirmed] = useState(false)
+  const [activePanel, setActivePanel] = useState<'setup' | 'result' | 'history'>('setup')
+  const [clock, setClock] = useState(() => Date.now())
+  const [pendingRetryId, setPendingRetryId] = useState<string | null>(null)
+  const [retryFeedback, setRetryFeedback] = useState<ActionFeedbackMessage | null>(null)
   useEffect(() => {
     try {
       const raw = window.sessionStorage.getItem('hcaiAssetReuse')
@@ -134,26 +180,42 @@ export function VideoStudioPage({
       })
     } catch { window.sessionStorage.removeItem('hcaiAssetReuse') }
   }, [workflow.inputAssets])
-  const mockVisual = visualWorks.find((work) => work.type === 'Video')?.image ?? ''
-
-  const providerId = providers.some((provider) => provider.id === providerChoice)
-    ? providerChoice
-    : providers.find((provider) => provider.id === providerCatalog?.defaultProviderId)?.id ?? providers[0]?.id ?? ''
-  const selectedProvider = providers.find((provider) => provider.id === providerId) ?? null
+  const preferredProvider = providerChoice ? providers.find((provider) => provider.id === providerChoice) ?? null : null
+  const operationalProvider = selectOperationalCreativeProvider(providerCatalog, 'video')
+  const selectedProvider = preferredProvider ?? operationalProvider
+  const providerId = selectedProvider?.id ?? ''
   const capability = capabilityFor(selectedProvider)
+  const aspectRatioOptions = parameterOptions(capability, 'aspectRatio', ['16:9', '9:16']).map(String)
+  const durationOptions = parameterOptions(capability, 'durationSeconds', [4, 6, 8]).map(Number)
+  const motionOptions = parameterOptions(capability, 'motionPreset', ['subtle', 'cinematic', 'dynamic', 'fast_cuts']).map(String)
+  const selectedAspectRatio = aspectRatioOptions.includes(aspectRatio) ? aspectRatio : aspectRatioOptions[0] ?? '16:9'
+  const selectedDurationSeconds = durationOptions.includes(durationSeconds) ? durationSeconds : durationOptions[0] ?? 8
+  const selectedMotionPreset = motionOptions.includes(motionPreset) ? motionPreset : motionOptions[0] ?? 'cinematic'
   const modeContracts = capability?.modeContracts ?? []
   const availableModes = modeContracts.filter((contract) => contract.available)
   const mode = availableModes.some((contract) => contract.id === modeChoice) ? modeChoice : availableModes[0]?.id ?? ''
   const activeMode = modeContracts.find((contract) => contract.id === mode) ?? null
-  const providerAvailable = Boolean(selectedProvider?.enabled && selectedProvider.configured && activeMode?.available)
+  const providerAvailable = Boolean(
+    selectedProvider &&
+    isOperationalCreativeProvider(selectedProvider, 'video') &&
+    activeMode?.available,
+  )
   const classification = providerClassification(selectedProvider, isZh)
+  const capabilityValidated = Boolean(capability?.availability?.capabilityAvailable)
   const selectableAssets = workflow.inputAssets.filter((asset) => assetAllowedFor(asset, activeMode))
   const selectableImages = selectableAssets.filter((asset) => imageTypes.has(asset.contentType))
   const selectableAudio = selectableAssets.filter((asset) => audioTypes.has(asset.contentType))
   const selectedGeneration = workflow.history.selected
+  const visibleRetryId = pendingRetryId === selectedGeneration?.id ? pendingRetryId : null
   const selectedOutput = selectedGeneration?.outputs[0] ?? null
   const actionBusy = workflow.action.type != null
   const lifecycleActive = ['queued', 'running'].includes(selectedGeneration?.status ?? '')
+  const outputProcessing = selectedGeneration?.status === 'completed' && selectedOutput?.scanStatus !== 'clean'
+  useEffect(() => {
+    if (!lifecycleActive && !outputProcessing) return
+    const interval = window.setInterval(() => setClock(Date.now()), 1_000)
+    return () => window.clearInterval(interval)
+  }, [lifecycleActive, outputProcessing, selectedGeneration?.id])
   const inputAssetIds = mode === 'image_to_video'
     ? [sourceImageId].filter(Boolean)
     : mode === 'music_video'
@@ -172,6 +234,17 @@ export function VideoStudioPage({
   )
   const canGenerate = providerCatalogState === 'ready' && providerAvailable && Boolean(prompt.trim()) && inputsReady && rightsConfirmed && !lifecycleActive && workflow.generation.status !== 'loading'
   const exactRetryAvailable = selectedGeneration ? workflow.hasOriginalRequest(selectedGeneration.id) : false
+  const confirmRetry = async () => {
+    if (!pendingRetryId) return
+    setRetryFeedback(null)
+    const succeeded = await workflow.retryGeneration(pendingRetryId)
+    if (!succeeded) return
+    setPendingRetryId(null)
+    setRetryFeedback({
+      kind: 'success',
+      text: textFor(t, 'A new video attempt was created with the same inputs.', '已使用相同输入创建新的视频尝试。'),
+    })
+  }
   const canPreview = Boolean(
     selectedOutput &&
     selectedOutput.contentType === 'video/mp4' &&
@@ -179,25 +252,41 @@ export function VideoStudioPage({
     selectedGeneration?.actions.download.available,
   )
 
-  const runGeneration = () => workflow.runGeneration({
-    prompt,
-    mode,
-    providerId,
-    inputAssetIds,
-    parameters: {
-      aspectRatio,
-      durationSeconds,
-      motionPreset,
-      outputFormat: 'mp4',
-    },
-  })
+  const runGeneration = () => {
+    setActivePanel('result')
+    return workflow.runGeneration({
+      prompt,
+      mode,
+      providerId,
+      inputAssetIds,
+      parameters: {
+        aspectRatio: selectedAspectRatio,
+        durationSeconds: selectedDurationSeconds,
+        motionPreset: selectedMotionPreset,
+        outputFormat: 'mp4',
+      },
+    })
+  }
 
   const uploadFile = (file: File | undefined) => {
     if (file) void workflow.uploadInput(file, 'submission_asset')
   }
 
+  const rebuildFromSafePreview = () => {
+    if (!selectedGeneration) return
+    if (selectedGeneration.promptPreview) setPrompt(selectedGeneration.promptPreview)
+    if (modeContracts.some((contract) => contract.id === selectedGeneration.mode && contract.available)) {
+      setModeChoice(selectedGeneration.mode)
+    }
+    if (providers.some((provider) => provider.id === selectedGeneration.provider.id)) {
+      setProviderChoice(selectedGeneration.provider.id)
+    }
+    setRightsConfirmed(false)
+    setActivePanel('setup')
+  }
+
   return (
-    <div className="stack video-studio" data-testid="video-studio">
+    <div className="stack video-studio" data-testid="video-studio" data-panel={activePanel}>
       <header className="video-studio-header">
         <div className="video-studio-title">
           <span className="video-studio-mark"><Clapperboard size={22} /></span>
@@ -209,14 +298,21 @@ export function VideoStudioPage({
         </div>
         <div className="video-provider-control">
           <label>
-            <span>{textFor(t, 'Runtime', '运行来源')}</span>
+            <span>{textFor(t, 'Model', '模型')}</span>
             <select aria-label={textFor(t, 'Video runtime', '视频运行来源')} value={providerId} onChange={(event) => setProviderChoice(event.target.value)}>
+              {!providerId && <option value="">{textFor(t, 'No available model', '暂无可用模型')}</option>}
               {providers.map((provider) => <option value={provider.id} key={provider.id}>{provider.label}</option>)}
             </select>
           </label>
-          <span className={`runtime-badge ${classification.tone}`}>{classification.label}</span>
+          <span className={`runtime-badge ${classification.tone}`} aria-hidden="true">{classification.label}</span>
         </div>
       </header>
+
+      <nav className="workspace-panel-switcher" aria-label={textFor(t, 'Video workspace panels', '视频工作台面板')}>
+        <button className={activePanel === 'setup' ? 'active' : ''} type="button" onClick={() => setActivePanel('setup')}>{textFor(t, 'Generation setup', '生成设置')}</button>
+        <button className={activePanel === 'result' ? 'active' : ''} type="button" onClick={() => setActivePanel('result')}>{textFor(t, 'Result', '生成结果')}</button>
+        <button className={activePanel === 'history' ? 'active' : ''} type="button" onClick={() => setActivePanel('history')}>{textFor(t, 'History', '生成记录')}</button>
+      </nav>
 
       <div className="video-workbench">
         <section className="video-controls" aria-label={textFor(t, 'Video controls', '视频控制')}>
@@ -302,20 +398,20 @@ export function VideoStudioPage({
           <div className="video-parameter-grid">
             <label>
               <span>{textFor(t, 'Aspect ratio', '画幅')}</span>
-              <select value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value)}>
-                {parameterOptions(capability, 'aspectRatio', ['16:9', '9:16']).map((value) => <option key={value} value={value}>{value}</option>)}
+              <select value={selectedAspectRatio} onChange={(event) => setAspectRatio(event.target.value)}>
+                {aspectRatioOptions.map((value) => <option key={value} value={value}>{value}</option>)}
               </select>
             </label>
             <label>
               <span>{textFor(t, 'Duration', '时长')}</span>
-              <select value={durationSeconds} onChange={(event) => setDurationSeconds(Number(event.target.value))}>
-                {parameterOptions(capability, 'durationSeconds', [4, 6, 8]).map((value) => <option key={value} value={value}>{value} {isZh ? '秒' : 'sec'}</option>)}
+              <select value={selectedDurationSeconds} onChange={(event) => setDurationSeconds(Number(event.target.value))}>
+                {durationOptions.map((value) => <option key={value} value={value}>{value} {isZh ? '秒' : 'sec'}</option>)}
               </select>
             </label>
             <label>
               <span>{textFor(t, 'Motion', '运动预设')}</span>
-              <select value={motionPreset} onChange={(event) => setMotionPreset(event.target.value)}>
-                {parameterOptions(capability, 'motionPreset', ['subtle', 'cinematic', 'dynamic', 'fast_cuts']).map((value) => <option key={value} value={value}>{labelForMotion(String(value), isZh)}</option>)}
+              <select value={selectedMotionPreset} onChange={(event) => setMotionPreset(event.target.value)}>
+                {motionOptions.map((value) => <option key={value} value={value}>{labelForMotion(value, isZh)}</option>)}
               </select>
             </label>
             <label>
@@ -336,9 +432,11 @@ export function VideoStudioPage({
           </button>
 
           {providerCatalogState === 'loading' && <p className="video-runtime-message">{textFor(t, 'Loading runtime capabilities', '正在读取运行能力')}</p>}
-          {providerCatalogState === 'error' && <p className="video-inline-error">{textFor(t, 'Runtime capabilities could not be loaded. Generation is disabled.', '无法读取运行能力，生成已禁用。')}</p>}
+          {providerCatalogState === 'error' && <p className="video-inline-error">{textFor(t, 'Runtime capabilities could not be loaded. Generation is disabled.', '无法读取运行能力，生成已禁用。')} <button className="ghost-button" type="button" onClick={() => void onRetryCatalog()}>{textFor(t, 'Retry', '重试')}</button></p>}
           {providerCatalogState === 'ready' && !providerAvailable && (
-            <p className="video-runtime-message"><AlertTriangle size={15} />{textFor(t, 'This runtime is visible for capability review but is not available for product generation.', '此运行来源仅用于能力查看，不能用于产品生成。')}</p>
+            <p className="video-runtime-message"><AlertTriangle size={15} />{capabilityValidated
+              ? textFor(t, 'Capability validated; runtime configuration is not ready.', '能力已验证，当前运行配置尚未就绪。')
+              : textFor(t, 'This model is not enabled. Ask an administrator to configure it.', '该模型尚未启用，需要管理员先完成配置。')}</p>
           )}
           {workflow.generation.error && <p className="video-inline-error">{workflow.generation.error}</p>}
         </section>
@@ -346,18 +444,31 @@ export function VideoStudioPage({
         <section className="video-preview-panel" aria-label={textFor(t, 'Video preview', '视频预览')}>
           <div className="video-preview-toolbar" role="status" aria-live="polite" aria-label={textFor(t, 'Video generation status', '视频生成状态')}>
             <div>
-              <span className={`status-dot ${statusTone(selectedGeneration?.status ?? null)}`} />
-              <strong>{labelForStatus(selectedGeneration?.status ?? null, isZh)}</strong>
+              <span className={`status-dot ${statusTone(selectedGeneration?.status ?? null, selectedOutput?.scanStatus ?? null)}`} />
+              <strong>{selectedGeneration
+                ? labelForStatus(selectedGeneration.status, isZh, selectedOutput?.scanStatus ?? null)
+                : providerAvailable
+                  ? textFor(t, 'Ready', '就绪')
+                  : capabilityValidated
+                    ? textFor(t, 'Capability available', '能力可用')
+                    : textFor(t, 'Model unavailable', '模型暂不可用')}</strong>
             </div>
             <span>{selectedGeneration?.provider.id ?? classification.label}</span>
           </div>
 
-          <div className={`video-preview-stage ratio-${aspectRatio.replace(':', '-')}`}>
+          <VideoLifecycleProgress
+            generation={selectedGeneration}
+            output={selectedOutput}
+            isZh={isZh}
+            polling={workflow.history.polling}
+            clock={clock}
+          />
+
+          <div className={`video-preview-stage ratio-${selectedAspectRatio.replace(':', '-')}`}>
             {workflow.preview.status === 'ready' && workflow.preview.url ? (
               <video controls src={workflow.preview.url} data-testid="private-video-preview" aria-label={textFor(t, 'Private video preview', '私有视频预览')} />
             ) : (
               <>
-                <img src={mockVisual} alt="" />
                 <div className="video-preview-overlay">
                   {workflow.preview.status === 'loading' ? <LoaderCircle className="spin" size={30} /> : selectedGeneration ? <Video size={30} /> : <Square size={30} />}
                   <strong>{selectedGeneration?.promptPreview ?? textFor(t, 'No video job selected', '尚未选择视频任务')}</strong>
@@ -398,7 +509,10 @@ export function VideoStudioPage({
               </button>
             )}
             {selectedGeneration?.actions.retry.available && (
-              <button className="ghost-button" type="button" disabled={actionBusy || !exactRetryAvailable} onClick={() => void workflow.retryGeneration(selectedGeneration.id)}>
+              <button className="ghost-button" type="button" disabled={actionBusy || !exactRetryAvailable} onClick={() => {
+                setRetryFeedback(null)
+                setPendingRetryId(selectedGeneration.id)
+              }}>
                 <RotateCcw size={15} />{textFor(t, 'Retry', '重试')}
               </button>
             )}
@@ -414,12 +528,28 @@ export function VideoStudioPage({
             )}
           </div>
 
+          {visibleRetryId && (
+            <GenerationRetryConfirmation
+              t={t}
+              busy={workflow.action.type === 'retry' && workflow.action.targetId === visibleRetryId}
+              onCancel={() => setPendingRetryId(null)}
+              onConfirm={() => void confirmRetry()}
+            />
+          )}
+          <ActionFeedback message={retryFeedback} className="generation-retry-feedback" />
+          <ActionFeedback message={workflow.feedback} className="generation-operation-feedback" />
+
           {selectedOutput && (
             <UseCreativeAsset t={t} assetId={selectedOutput.assetId} fileName={selectedOutput.fileName} available={selectedOutput.scanStatus === 'clean' && selectedGeneration?.status === 'completed'}/>
           )}
 
           {selectedGeneration?.actions.retry.available && !exactRetryAvailable && (
-            <p className="video-runtime-message">{textFor(t, 'Exact retry is unavailable after refresh. Recreate the request from its safe preview.', '刷新后无法精确重试，请根据安全预览重新填写请求。')}</p>
+            <div className="video-recovery-message">
+              <p>{textFor(t, 'Exact retry is unavailable after refresh. Rebuild from the safe preview before submitting again.', '刷新后无法精确重试，可先用安全预览重建并确认后再次提交。')}</p>
+              <button className="ghost-button" type="button" onClick={rebuildFromSafePreview}>
+                <RotateCcw size={15} />{textFor(t, 'Use safe preview', '用安全预览重建')}
+              </button>
+            </div>
           )}
           {selectedGeneration?.safety.reviewRequired && <p className="video-review-message"><AlertTriangle size={15} />{textFor(t, 'This output is waiting for policy review.', '此输出正在等待策略审核。')}</p>}
           {selectedOutput?.scanStatus === 'clean' && <p className="video-clean-message"><Check size={15} />{textFor(t, 'Private preview and download are available.', '私有预览和下载已可用。')}</p>}
@@ -454,7 +584,7 @@ export function VideoStudioPage({
             </div>
             {workflow.history.items.map((item) => (
               <button className={`video-history-row ${selectedGeneration?.id === item.id ? 'active' : ''}`} type="button" key={item.id} onClick={() => workflow.selectGeneration(item.id)}>
-                <span className="video-history-status"><span className={`status-dot ${statusTone(item.status)}`} />{labelForStatus(item.status, isZh)}</span>
+                <span className="video-history-status"><span className={`status-dot ${statusTone(item.status, item.outputs[0]?.scanStatus ?? null)}`} />{labelForStatus(item.status, isZh, item.outputs[0]?.scanStatus ?? null)}</span>
                 <span className="video-history-prompt">{item.promptPreview ?? item.id}</span>
                 <span>{labelForMode(item.mode, isZh)}</span>
                 <span>{item.provider.id}</span>
@@ -470,6 +600,69 @@ export function VideoStudioPage({
           </button>
         )}
       </section>
+    </div>
+  )
+}
+
+function VideoLifecycleProgress({
+  generation,
+  output,
+  isZh,
+  polling,
+  clock,
+}: {
+  generation: ApiUserCreativeGeneration | null
+  output: ApiUserCreativeGeneration['outputs'][number] | null
+  isZh: boolean
+  polling: boolean
+  clock: number
+}) {
+  const phase = phaseForGeneration(generation, output)
+  const stages = [
+    { label: isZh ? '排队' : 'Queued', icon: Circle },
+    { label: isZh ? '生成' : 'Generate', icon: Video },
+    { label: isZh ? '取回' : 'Retrieve', icon: FileDown },
+    { label: isZh ? '检查' : 'Inspect', icon: ShieldCheck },
+    { label: isZh ? '完成' : 'Ready', icon: Check },
+  ]
+  const started = generation?.startedAt ?? generation?.createdAt
+  const finished = generation?.completedAt ?? generation?.failedAt
+  const startedAt = started ? new Date(started).getTime() : Number.NaN
+  const finishedAt = finished ? new Date(finished).getTime() : Number.NaN
+  const elapsed = Number.isFinite(startedAt)
+    ? formatDuration((Number.isFinite(finishedAt) ? finishedAt : clock) - startedAt, isZh)
+    : null
+  const detail = !generation
+    ? (isZh ? '创建任务后将在这里显示实时进度' : 'Live progress appears here after a job is created')
+    : phase.failed
+      ? (isZh ? `任务已停止${elapsed ? ` · 已用时 ${elapsed}` : ''}` : `Job stopped${elapsed ? ` · ${elapsed} elapsed` : ''}`)
+      : phase.active === 4
+        ? (isZh ? `处理完成${elapsed ? ` · 总用时 ${elapsed}` : ''}` : `Processing complete${elapsed ? ` · ${elapsed} total` : ''}`)
+        : phase.active === 3
+          ? (isZh ? `输出已取回，正在检查${elapsed ? ` · 已用时 ${elapsed}` : ''}` : `Output received, inspection in progress${elapsed ? ` · ${elapsed} elapsed` : ''}`)
+          : (isZh
+              ? `${polling ? '正在同步' : '等待更新'}${elapsed ? ` · 已用时 ${elapsed}` : ''} · 通常需要 1-3 分钟`
+              : `${polling ? 'Syncing' : 'Awaiting update'}${elapsed ? ` · ${elapsed} elapsed` : ''} · usually 1-3 minutes`)
+
+  return (
+    <div className="video-lifecycle" data-testid="video-lifecycle" aria-label={isZh ? '视频处理阶段' : 'Video processing stages'}>
+      <ol>
+        {stages.map((stage, index) => {
+          const state = index < phase.active || (phase.terminal && !phase.failed && index === phase.active)
+            ? 'complete'
+            : index === phase.active
+              ? (phase.failed ? 'error' : 'current')
+              : 'pending'
+          const Icon = state === 'complete' ? Check : stage.icon
+          return (
+            <li className={state} key={stage.label} aria-current={state === 'current' || state === 'error' ? 'step' : undefined}>
+              <span><Icon className={state === 'current' ? 'pulse-icon' : ''} size={15} /></span>
+              <strong>{stage.label}</strong>
+            </li>
+          )
+        })}
+      </ol>
+      <p>{detail}</p>
     </div>
   )
 }

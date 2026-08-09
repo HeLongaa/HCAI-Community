@@ -92,3 +92,60 @@ test('friendly AI settings map provider, model, endpoint, gates, and SecretRef',
   assert.equal(runtime.source.CREATIVE_OPENAI_IMAGE_MODEL, 'gpt-image-2')
   assert.equal(runtime.source.CREATIVE_OPENAI_IMAGE_API_TOKEN, 'resolved-key')
 })
+
+test('database ai.video setting resolves Router configuration and SecretRef without retaining the reference', () => {
+  const runtime = applyDatabaseRuntimeOverrides({
+    baseSource: { CREATIVE_ROUTER_VIDEO_API_KEY: 'resolved-router-key' },
+    settings: [{
+      key: 'ai.video',
+      value: {
+        enabled: true,
+        provider: 'hcai-router',
+        baseUrl: 'https://router.hctopup.com',
+        model: 'seedance-2.0-fast',
+        apiKeyRef: 'secretref://env/creative-router-video-api-key',
+        providerAccountRef: 'museflow-video-staging',
+        dailyBudgetUsd: 20,
+        budgetThresholdPercent: 80,
+      },
+    }],
+  })
+  assert.equal(runtime.source.CREATIVE_ROUTER_VIDEO_HTTP_CLIENT_ENABLED, 'true')
+  assert.equal(runtime.source.CREATIVE_ROUTER_VIDEO_NETWORK_CALLS_ENABLED, 'true')
+  assert.equal(runtime.source.CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED, 'true')
+  assert.equal(runtime.source.CREATIVE_ROUTER_VIDEO_BASE_URL, 'https://router.hctopup.com')
+  assert.equal(runtime.source.CREATIVE_ROUTER_VIDEO_MODEL, 'seedance-2.0-fast')
+  assert.equal(runtime.source.CREATIVE_ROUTER_VIDEO_API_KEY, 'resolved-router-key')
+  assert.equal(runtime.source.CREATIVE_ROUTER_VIDEO_PROVIDER_ACCOUNT_REF, 'museflow-video-staging')
+  assert.equal(runtime.source.CREATIVE_ROUTER_VIDEO_DAILY_BUDGET_USD, '20')
+  assert.equal(runtime.source.CREATIVE_ROUTER_VIDEO_BUDGET_THRESHOLD_PERCENT, '80')
+  assert.equal(JSON.stringify(runtime).includes('secretref://'), false)
+})
+
+test('database ai.music setting resolves Router model, endpoint, SecretRef, and staging gates', () => {
+  const runtime = applyDatabaseRuntimeOverrides({
+    baseSource: { CREATIVE_ROUTER_MUSIC_API_KEY: 'resolved-music-key' },
+    settings: [{
+      key: 'ai.music',
+      value: {
+        enabled: true,
+        provider: 'hcai-router',
+        baseUrl: 'https://router.hctopup.com',
+        model: 'music-3.0',
+        apiKeyRef: 'secretref://env/creative-router-music-api-key',
+        providerAccountRef: 'museflow-music-staging',
+        stagingRightsAcknowledged: true,
+        trainingOptOutConfirmed: true,
+        licenseId: 'router-minimax-staging',
+        termsVersion: 'music-terms-2026-07',
+      },
+    }],
+  })
+  assert.equal(runtime.source.CREATIVE_ROUTER_MUSIC_HTTP_CLIENT_ENABLED, 'true')
+  assert.equal(runtime.source.CREATIVE_ROUTER_MUSIC_NETWORK_CALLS_ENABLED, 'true')
+  assert.equal(runtime.source.CREATIVE_ROUTER_MUSIC_BASE_URL, 'https://router.hctopup.com')
+  assert.equal(runtime.source.CREATIVE_ROUTER_MUSIC_MODEL, 'music-3.0')
+  assert.equal(runtime.source.CREATIVE_ROUTER_MUSIC_API_KEY, 'resolved-music-key')
+  assert.equal(runtime.source.CREATIVE_ROUTER_MUSIC_STAGING_RIGHTS_ACKNOWLEDGED, 'true')
+  assert.equal(JSON.stringify(runtime).includes('secretref://'), false)
+})

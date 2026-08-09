@@ -4,7 +4,7 @@ import { safeProviderJobIdEvidence } from '../creative/generationRecords.js'
 import { providerLifecycleEventForPayload } from '../creative/providerLifecycleEventCatalog.js'
 
 const safeEvidencePattern = /^[a-z0-9][a-z0-9:._-]{0,240}$/i
-const safeLifecycleActionPattern = /^creative\.provider_(?:callback|lifecycle|polling|replay)\.[a-z0-9._-]+$/i
+const safeLifecycleActionPattern = /^creative\.provider_(?:balance|callback|lifecycle|polling|quota|replay|status)\.[a-z0-9._-]+$/i
 
 const compactObject = (value) =>
   Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== ''))
@@ -45,6 +45,7 @@ const safeLifecycleMetadata = ({ sourceKey, generationId, metadata = {}, ...payl
     nextStatus: safeProviderLifecycleEvidenceIdentifier(metadata.nextStatus),
     errorCode: safeProviderLifecycleEvidenceIdentifier(metadata.errorCode),
     reasonCode: safeProviderLifecycleEvidenceIdentifier(metadata.reasonCode),
+    providerCategory: safeProviderLifecycleEvidenceIdentifier(metadata.providerCategory),
     payloadHash: safeProviderLifecycleEvidenceIdentifier(metadata.payloadHash),
     bodyBytes: Number.isFinite(metadata.bodyBytes) ? metadata.bodyBytes : undefined,
     statusCode: Number.isInteger(metadata.statusCode) ? metadata.statusCode : undefined,

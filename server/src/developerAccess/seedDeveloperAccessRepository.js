@@ -187,6 +187,20 @@ export const createSeedDeveloperAccessRepository = ({ findOwnerById, recordAudit
       key.updatedAt = nowDate()
       return { id: `service-account:${account.id}`, handle: `service-account:${account.id}`, displayName: account.name, role: 'service_account', permissions: [], principalType: 'service_account', apiScopes: [...key.scopes], serviceAccountId: account.id, apiKeyId: key.id, ownerUserId: account.ownerUserId }
     },
+    sweepCredentialRetention: async ({ now = new Date(), cutoff, limit = 250 } = {}) => {
+      const cutoffTime = cutoff ? new Date(cutoff).getTime() : now.getTime() - 30 * 86_400_000
+      const candidates = keys
+        .map((row, index) => ({
+          row,
+          index,
+          terminalAt: Math.min(row.expiresAt.getTime(), row.revokedAt?.getTime?.() ?? Number.POSITIVE_INFINITY),
+        }))
+        .filter(({ terminalAt }) => terminalAt <= cutoffTime)
+        .sort((left, right) => left.terminalAt - right.terminalAt || left.row.id.localeCompare(right.row.id))
+        .slice(0, limit)
+      for (const candidate of [...candidates].sort((left, right) => right.index - left.index)) keys.splice(candidate.index, 1)
+      return { inspected: candidates.length, deleted: candidates.length }
+    },
     metrics: async () => {
       const byStatus = (rows, statusOf = (row) => row.status) => rows.reduce((result, row) => ({ ...result, [statusOf(row)]: (result[statusOf(row)] ?? 0) + 1 }), {})
       return {

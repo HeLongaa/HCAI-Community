@@ -17,7 +17,8 @@ The V1 policy is **frozen for implementation**, but enforcement is not complete.
 - Unclassified content, unknown Provider safety results, and unsupported regions fail closed with `block`.
 - Generated outputs stay private until post-output safety, media security, rights, and review gates pass.
 - Silent mock fallback and weakening Provider safety settings are forbidden.
-- Human review and appeals are required for V1, but their complete API and UI are owned by V1-63.
+- Generation review cases retain original decisions, expose an owner appeal endpoint, and enforce a different appeal reviewer. Direct pre-dispatch blocks persist an automated original decision without cost or Provider dispatch and never resume. Approved `review` dispositions can resume once from an owner-resubmitted request whose hash and immutable shape match; all dispatch and accounting gates run again.
+- Generated image, video, and music bytes pass an independent output classifier before persistence. Production classifier absence, failure, malformed responses, and unknown decisions fail closed to quarantine and review.
 
 ## Four Dispositions
 
@@ -112,7 +113,7 @@ not be copied into ordinary generation, audit, notification, or Admin records.
 | Replicate FLUX 1.1 Pro | Image backup | Replicate Terms and model terms | Prompt/input rights gate, model-license allowlist, output classifier, media scan, human review |
 | OpenAI GPT-5.6 Terra | Chat primary | OpenAI Usage Policies | Input/output gates, tool allowlist, stable safety identifier, stream stop, human escalation |
 | Anthropic Claude Sonnet 5 | Chat backup | Anthropic Usage Policy | Input/output gates, tool allowlist, model-specific safety regression, stream stop, human escalation |
-| Google Veo 3.1 Fast | Video primary | Google Generative AI Prohibited Use Policy and Cloud AUP | Rights gate, lifecycle mapping, frame/audio/media checks, C2PA preservation, review |
+| HCAI Router Seedance 2.0 Fast | Video primary | Router/upstream native policy controls are not confirmed | Rights gate, lifecycle mapping, frame/audio/media checks, preserve provenance when present, review; production blocked pending terms |
 | Runway Gen-4.5 | Video backup | Runway Safety and Terms | Rights gate, lifecycle mapping, frame/audio/media checks, review |
 | ElevenLabs Music v2 Enterprise | Music primary | ElevenLabs Prohibited Use and Music Terms | Lyrics/artist/voice/sample gate, output review, license metadata, report/takedown path |
 | Google Lyria 3 Pro Preview | Music backup | Google Generative AI Prohibited Use Policy and Cloud AUP | Rights gate, lyrics/audio review, license metadata, report/takedown path |
@@ -120,6 +121,13 @@ not be copied into ordinary generation, audit, notification, or Admin records.
 All eight mappings retain the legal, data, rights, region, model-stage, and SLA conditions in
 `config/v1-provider-matrix.json`. If the application policy and Provider policy differ, the stricter rule wins. No
 Provider geography control may be bypassed.
+
+Implemented creative adapters now emit only the closed Provider-native outcomes `provider_pending`,
+`provider_refused`, `provider_flagged`, `provider_allowed`, or `provider_unknown`. The adapter contract rejects missing,
+wrong-Provider, or lifecycle-inconsistent evidence; asynchronous terminal evidence replaces earlier pending evidence.
+OpenAI Chat refusal events are mapped to a safe refusal error without retaining refusal text. These mappings are defense
+in depth and do not replace application input/output classification. Target-environment evidence that each real Provider
+actually supplies or enforces the expected native signal remains required before production approval.
 
 ## Review And Appeal
 
@@ -180,13 +188,17 @@ moderation evidence.
 ## Current Runtime Baseline
 
 `server/src/creative/policy.js` currently runs six deterministic keyword rules under `creative-policy-v1`: three block
-rules and three review rules. It runs before quota reservation and Provider execution. The generation path already has
-`review_required`, prompt hash/bounded preview persistence, media scan-gated downloads, and secret-key rejection in the
-Provider adapter contract.
+rules and three review rules. Image and Video reference bytes now pass an independent fail-closed input classifier before
+quota, credit, Provider budget, or Provider dispatch. Chat classifies message and attachment context before dispatch and
+buffers streamed output until semantic classification permits release. Generated Image, Video, and Music bytes also pass
+an independent output classifier before media persistence and scanning. Review cases, automated decisions, owner appeals,
+and independently reviewed one-time resume are wired without storing raw classifier payloads. Creative Provider adapters
+also preserve closed, low-cardinality native safety evidence through generation policy attachment and asynchronous
+lifecycle replay; real Provider policy-version and outcome evidence is still pending.
 
-This is useful scaffolding, not complete enforcement. Missing pieces include modality classifiers, real Provider-native
-safety mapping, semantic output classifiers, streaming interruption, full review/appeal operations, and the V1-45 data
-retention schedule.
+This remains incomplete for production. The keyword prompt gate is not the frozen policy implementation, production
+classifier deployments have no approved staging evidence, real Provider policy-version and native outcome evidence has
+not been accepted in the target environment, and the full V1-45 retention schedule is not automated.
 
 ## Implementation Handoff
 

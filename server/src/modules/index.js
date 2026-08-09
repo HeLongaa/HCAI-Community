@@ -10,6 +10,7 @@ import { registerUserAdminRoutes } from './userAdmin/routes.js'
 import { registerProfileRoutes } from './profiles/routes.js'
 import { registerPostRoutes } from './posts/routes.js'
 import { registerLibraryRoutes } from './library/routes.js'
+import { registerInspirationRoutes } from './inspiration/routes.js'
 import { registerAdminRoutes } from './admin/routes.js'
 import { registerPointsRoutes } from './points/routes.js'
 import { registerMediaRoutes } from './media/routes.js'
@@ -35,7 +36,7 @@ import { registerDataRightsRoutes } from './dataRights/routes.js'
 
 export const registerModules = (router, options = {}) => {
   const source = options.source ?? process.env
-  registerHealthRoutes(router)
+  registerHealthRoutes(router, { readinessChecks: options.readinessChecks })
   registerMetricsRoutes(router)
   registerDocsRoutes(router)
   registerComplianceRoutes(router)
@@ -56,6 +57,7 @@ export const registerModules = (router, options = {}) => {
   registerTaskRoutes(router)
   registerPostRoutes(router)
   registerLibraryRoutes(router)
+  registerInspirationRoutes(router, { repositories: options.repositories })
   registerMediaRoutes(router)
   registerCreativeRoutes(router, { executionSource: source, repositories: options.repositories })
   registerChatRoutes(router, { source, repositories: options.repositories })

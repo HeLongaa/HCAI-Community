@@ -106,6 +106,19 @@ test('OpenAI Chat runtime gates require explicit staging-only configuration', ()
   )
 })
 
+test('OpenAI Chat runtime treats empty optional values as unset defaults', () => {
+  assert.deepEqual(buildOpenAIChatRuntimeConfig({
+    CHAT_PROVIDER_TYPE: '',
+    CHAT_PROVIDER_MODE: '',
+    CREATIVE_PROVIDER_RUNTIME_ENV: '',
+    DEPLOYMENT_ENV: '',
+    CHAT_OPENAI_BASE_URL: '',
+    CHAT_OPENAI_MODEL: '',
+    CHAT_OPENAI_API_DIALECT: '',
+    CHAT_OPENAI_SAFETY_RESPONSE_FORMAT: '',
+  }), buildOpenAIChatRuntimeConfig({}))
+})
+
 test('OpenAI Chat production runtime requires non-enumerable database routing approval', () => {
   const productionSource = {
     ...source,

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { accountingAvailableAccountRef, accountingSubjectRef } from '../accounting/internalAccounting.js'
 
 const databaseUrl = process.env.ACCOUNTING_DATABASE_URL
 
@@ -98,6 +99,10 @@ test('Prisma quota accounting is concurrent, idempotent, and reconcilable', {
     assert.equal(operations.filter((operation) => ['quota_commit', 'quota_release'].includes(operation.kind)).length, 1)
     assert.equal(operations.every((operation) => operation.movements.length === 2), true)
     assert.equal(operations.every((operation) => operation.movements.reduce((sum, movement) => sum + movement.amount, 0) === 0), true)
+    assert.equal(operations.every((operation) => operation.actorRef === accountingSubjectRef(actor.id)), true)
+    assert.equal(operations.flatMap((operation) => operation.movements).some((movement) => (
+      movement.accountRef.startsWith(`user:${actor.id}:`) || movement.accountRef.startsWith(`user:${actor.handle}:`)
+    )), false)
 
     const clean = await repository.accountingReconciliation.scan(actor)
     assert.equal(clean.summary.open, 0)
@@ -143,8 +148,9 @@ test('Prisma quota accounting is concurrent, idempotent, and reconcilable', {
       },
     })
     const pointDrift = await repository.accountingReconciliation.scan(actor)
-    const pointIssue = pointDrift.issues.items.find((item) => item.issueKey === `point_balance_drift:${actor.id}:account`)
+    const pointIssue = pointDrift.issues.items.find((item) => item.issueKey === `point_balance_drift:${accountingSubjectRef(actor.id)}:account`)
     assert.ok(pointIssue)
+    assert.deepEqual(pointIssue.evidence, { subjectRef: accountingSubjectRef(actor.id), accountVersion: 0 })
     const requested = await repository.accountingReconciliation.requestRepair(pointIssue.id, {
       repairKind: 'compensation',
       reasonCode: 'repair_balance_drift',
@@ -169,6 +175,7 @@ test('Prisma quota accounting is concurrent, idempotent, and reconcilable', {
       include: { movements: true },
     })
     assert.equal(compensation.movements.reduce((sum, movement) => sum + movement.amount, 0), 0)
+    assert.equal(compensation.movements.some((movement) => movement.accountRef === accountingAvailableAccountRef(actor.id, 'points')), true)
     assert.equal(compensation.reconciliationIssueId, pointIssue.id)
     const afterCompensation = await repository.accountingReconciliation.scan(reviewer)
     assert.equal(afterCompensation.summary.open, 0)

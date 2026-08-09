@@ -1,13 +1,13 @@
 import { expect, test } from '@playwright/test'
 
-import { apiBaseUrl, authHeaders, login, signInPage } from './helpers'
+import { apiBaseUrl, authHeaders, login, selectAdminSection, signInPage } from './helpers'
 
 test('User Admin suspends and restores an account without reviving old sessions', async ({ page, request }) => {
   const targetSession = await login(request, 'promptlin')
   await signInPage(page, request, 'opsplus')
   await page.goto('/')
   await page.getByTestId('nav-admin').click()
-  await page.getByRole('button', { name: 'Users', exact: true }).click()
+  await selectAdminSection(page, 'Users')
 
   const panel = page.getByTestId('user-admin-panel')
   await expect(panel).toBeVisible()
@@ -22,9 +22,10 @@ test('User Admin suspends and restores an account without reviving old sessions'
   await expect(panel.locator('.user-admin-facts dd').filter({ hasText: /^creator$/ })).toBeVisible()
   await panel.getByLabel('User lifecycle reason code').fill('e2e_policy_violation')
 
-  page.on('dialog', (dialog) => dialog.accept())
   const suspendResponse = page.waitForResponse((response) => /\/api\/admin\/users\/[^/]+\/suspend$/.test(response.url()) && response.request().method() === 'POST')
   await panel.getByRole('button', { name: 'Suspend', exact: true }).click()
+  await expect(panel.getByRole('alertdialog', { name: 'Confirm user lifecycle action' })).toBeVisible()
+  await panel.getByRole('button', { name: 'Confirm suspend' }).click()
   expect((await suspendResponse).status()).toBe(200)
   await expect(panel.getByRole('button', { name: 'Restore', exact: true })).toBeVisible()
   await expect(panel.getByText('e2e_policy_violation')).toBeVisible()
@@ -33,6 +34,7 @@ test('User Admin suspends and restores an account without reviving old sessions'
   await panel.getByLabel('User lifecycle reason code').fill('e2e_appeal_accepted')
   const restoreResponse = page.waitForResponse((response) => /\/api\/admin\/users\/[^/]+\/restore$/.test(response.url()) && response.request().method() === 'POST')
   await panel.getByRole('button', { name: 'Restore', exact: true }).click()
+  await panel.getByRole('button', { name: 'Confirm restore' }).click()
   expect((await restoreResponse).status()).toBe(200)
   await expect(panel.getByRole('button', { name: 'Suspend', exact: true })).toBeVisible()
   expect((await request.get(`${apiBaseUrl}/api/me`, { headers: authHeaders(targetSession.accessToken) })).status()).toBe(401)
@@ -45,7 +47,7 @@ test('User Admin panel remains bounded at 390px', async ({ page, request }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Toggle navigation' }).click()
   await page.getByTestId('nav-admin').click()
-  await page.getByRole('button', { name: 'Users', exact: true }).click()
+  await selectAdminSection(page, 'Users')
 
   const panel = page.getByTestId('user-admin-panel')
   await expect(panel).toBeVisible()

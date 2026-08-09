@@ -10,6 +10,7 @@ const routeDecisionSources = Object.freeze(['preview', 'dispatch'])
 const routeDecisionStatuses = Object.freeze(['selected', 'unavailable'])
 const secretRefPattern = /^secret:\/\/[a-zA-Z0-9][a-zA-Z0-9/_.:-]{2,180}$/
 const sha256Pattern = /^[a-f0-9]{64}$/
+const gitCommitPattern = /^[a-f0-9]{40}$/
 
 const objectValue = (value, name = 'payload') => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw validationFailed(`${name} must be an object`)
@@ -139,8 +140,21 @@ export const parseProviderSecretRefListQuery = (query = {}) => {
 
 export const parseModelPromotionRequest = (raw = {}, actor) => {
   const payload = objectValue(raw)
-  exactFields(payload, ['modelDeploymentId', 'routePolicyId', 'routePolicyRevisionId', 'providerSecretRefId', 'evaluationRunId', 'legalReviewId', 'artifactVersion', 'rollbackVersion', 'summary', 'reasonCode'])
+  exactFields(payload, [
+    'modelDeploymentId', 'routePolicyId', 'routePolicyRevisionId', 'providerSecretRefId', 'evaluationRunId', 'legalReviewId',
+    'artifactVersion', 'rollbackVersion', 'sourceCommit', 'releaseArtifactSha256', 'rollbackArtifactSha256',
+    'productionEvidenceReceiptSha256', 'summary', 'reasonCode',
+  ])
   const modelDeploymentId = text(payload.modelDeploymentId, 'modelDeploymentId', { required: true, maximum: 180 })
+  const sourceCommit = text(payload.sourceCommit, 'sourceCommit', { required: true, maximum: 40 }).toLowerCase()
+  if (!gitCommitPattern.test(sourceCommit)) throw validationFailed('sourceCommit must be a lowercase Git commit SHA')
+  const releaseArtifactSha256 = text(payload.releaseArtifactSha256, 'releaseArtifactSha256', { required: true, maximum: 64 }).toLowerCase()
+  const rollbackArtifactSha256 = text(payload.rollbackArtifactSha256, 'rollbackArtifactSha256', { required: true, maximum: 64 }).toLowerCase()
+  const productionEvidenceReceiptSha256 = text(payload.productionEvidenceReceiptSha256, 'productionEvidenceReceiptSha256', { required: true, maximum: 64 }).toLowerCase()
+  for (const [name, value] of Object.entries({ releaseArtifactSha256, rollbackArtifactSha256, productionEvidenceReceiptSha256 })) {
+    if (!sha256Pattern.test(value)) throw validationFailed(`${name} must be a lowercase SHA-256 digest`)
+  }
+  if (releaseArtifactSha256 === rollbackArtifactSha256) throw validationFailed('releaseArtifactSha256 and rollbackArtifactSha256 must differ')
   return {
     promotion: {
       id: `model-promotion-${randomUUID()}`,
@@ -157,6 +171,10 @@ export const parseModelPromotionRequest = (raw = {}, actor) => {
       artifactVersion: text(payload.artifactVersion, 'artifactVersion', { required: true, maximum: 180 }),
       rollbackVersion: text(payload.rollbackVersion, 'rollbackVersion', { required: true, maximum: 180 }),
       secretRef: null, secretVersion: null,
+      sourceCommit,
+      releaseArtifactSha256,
+      rollbackArtifactSha256,
+      productionEvidenceReceiptSha256,
       summary: text(payload.summary, 'summary', { required: true, maximum: 500 }),
       reasonCode: key(payload.reasonCode, 'reasonCode'),
     },

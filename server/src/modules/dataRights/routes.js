@@ -7,6 +7,9 @@ import { repositories } from '../../repositories/index.js'
 import {
   parseBackupExpiryReceipt,
   parseDataRightsAdminQuery,
+  parseDataRightsLegalHold,
+  parseDataRightsLegalHoldQuery,
+  parseDataRightsLegalHoldRelease,
   parseDataRightsOperation,
   parseDataRightsRequest,
 } from '../../dataRights/dataRightsLifecycle.js'
@@ -55,6 +58,23 @@ export const registerDataRightsRoutes = (router, options = {}) => {
   router.add('GET', '/api/admin/data-rights/metrics', async (_request, response, context) => {
     const actor = requirePermission(context, 'admin:data-rights:read')
     ok(response, await routeRepositories.dataRights.metrics(actor))
+  })
+
+  router.add('GET', '/api/admin/data-rights/legal-holds', async (_request, response, context) => {
+    const actor = requirePermission(context, 'admin:data-rights:legal-hold')
+    ok(response, await routeRepositories.dataRights.listLegalHolds(parseDataRightsLegalHoldQuery(context.query), actor))
+  })
+
+  router.add('POST', '/api/admin/data-rights/legal-holds', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:data-rights:legal-hold')
+    created(response, await routeRepositories.dataRights.createLegalHold(actor, parseDataRightsLegalHold((await readJsonBody(request)) ?? {})))
+  })
+
+  router.add('POST', '/api/admin/data-rights/legal-holds/:id/release', async (request, response, context) => {
+    const actor = requirePermission(context, 'admin:data-rights:legal-hold')
+    const result = await routeRepositories.dataRights.releaseLegalHold(actor, context.params.id, parseDataRightsLegalHoldRelease((await readJsonBody(request)) ?? {}))
+    if (!result) throw notFound(`/api/admin/data-rights/legal-holds/${context.params.id}`)
+    ok(response, result)
   })
 
   router.add('GET', '/api/admin/data-rights/requests/:id', async (_request, response, context) => {

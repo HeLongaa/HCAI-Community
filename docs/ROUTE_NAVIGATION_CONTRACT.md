@@ -11,4 +11,5 @@ Rules:
 - Admin routes remain under the `admin` group and require `admin:access` for shell navigation; data routes still enforce their dedicated permissions.
 - Deep-link keys are stable product locations, not authorization grants. The destination route must re-check owner, participant, or permission scope.
 - Permission-aware discovery uses the `search` group at `/api/search`; Admin index operations remain under the protected `admin` group.
+- Inspiration discovery uses the `inspiration` group; sanitized client telemetry uses the `observability` group without treating ingestion as an Admin authorization grant.
 - `/health`, `/metrics`, and `/api/openapi.json` are operational/docs routes and are excluded from product navigation.

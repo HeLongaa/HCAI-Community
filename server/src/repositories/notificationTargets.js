@@ -75,10 +75,14 @@ export const normalizeNotificationTarget = (value, { resourceType, resourceId } 
 export const sanitizeNotificationMetadata = (metadata, resource = {}) => {
   const source = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}
   const safe = {}
-  for (const key of ['sourceKey', 'audience', 'status', 'reasonCode', 'workspace', 'operationType', 'errorCode', 'providerId', 'providerMode', 'providerJobId', 'sourceType', 'nextStatus', 'auditEventId', 'rollbackEventId', 'alertType', 'alertId', 'severity', 'previousSubmissionStatus', 'outcome', 'moderationAction']) {
+  for (const key of ['sourceKey', 'audience', 'status', 'reasonCode', 'workspace', 'operationType', 'errorCode', 'providerId', 'providerMode', 'providerJobId', 'providerStatus', 'providerCategory', 'sourceType', 'nextStatus', 'auditEventId', 'rollbackEventId', 'alertType', 'alertId', 'severity', 'previousSubmissionStatus', 'outcome', 'moderationAction']) {
     const normalized = safeString(source[key])
     if (normalized) safe[key] = normalized
   }
+  if (Number.isInteger(source.statusCode) && source.statusCode >= 100 && source.statusCode <= 599) {
+    safe.statusCode = source.statusCode
+  }
+  if (typeof source.retryable === 'boolean') safe.retryable = source.retryable
   if (Number.isSafeInteger(source.escalationLevel) && source.escalationLevel >= 0 && source.escalationLevel <= 100) {
     safe.escalationLevel = source.escalationLevel
   }

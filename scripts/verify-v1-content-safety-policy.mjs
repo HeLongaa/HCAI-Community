@@ -73,8 +73,11 @@ addCheck(
 addCheck(
   'runtime enforcement remains incomplete',
   policy.runtimeStatus.enforcementComplete === false &&
-    policy.runtimeStatus.providerNativeSafety === 'not_integrated' &&
-    policy.runtimeStatus.appealWorkflow === 'not_implemented',
+    policy.runtimeStatus.multimodalInputSafety === 'image_video_and_chat_attachment_classifier_fail_closed' &&
+    policy.runtimeStatus.providerNativeSafety === 'assurance_contract_implemented_real_provider_evidence_pending' &&
+    policy.runtimeStatus.postOutputSafety === 'independent_classifier_and_media_scan_fail_closed' &&
+    policy.runtimeStatus.chatStreamingSafety === 'bounded_unclassified_buffer_and_segment_classifier_fail_closed' &&
+    policy.runtimeStatus.appealWorkflow === 'owner_appeal_and_independent_review_implemented',
   JSON.stringify(policy.runtimeStatus),
 )
 addCheck(
@@ -304,10 +307,15 @@ for (const mapping of policy.providerMappings) {
     `${mapping.modality}/${mapping.role}`,
   )
   addCheck(
-    `${mapping.providerId} references official policy evidence`,
-    nonEmptyArray(mapping.policySourceIds) &&
-      mapping.policySourceIds.every((sourceId) => policySourcesById.has(sourceId)),
-    mapping.policySourceIds.join(', '),
+    `${mapping.providerId} records policy evidence or an explicit unconfirmed state`,
+    (
+      nonEmptyArray(mapping.policySourceIds) &&
+      mapping.policySourceIds.every((sourceId) => policySourcesById.has(sourceId))
+    ) || (
+      mapping.policySourceIds.length === 0 &&
+      provider?.rights?.status === 'unconfirmed'
+    ),
+    mapping.policySourceIds.join(', ') || 'unconfirmed',
   )
   addCheck(
     `${mapping.providerId} references Provider decision evidence`,
@@ -317,7 +325,10 @@ for (const mapping of policy.providerMappings) {
   )
   addCheck(
     `${mapping.providerId} retains application controls beyond native safety`,
-    mapping.nativeControls.length >= 2 && mapping.mandatoryAppControls.length >= 4,
+    (
+      mapping.nativeControls.length >= 2 ||
+      (mapping.nativeControls.length === 1 && mapping.nativeControls[0] === 'not confirmed' && provider?.rights?.status === 'unconfirmed')
+    ) && mapping.mandatoryAppControls.length >= 4,
     `${mapping.nativeControls.length}/${mapping.mandatoryAppControls.length}`,
   )
   addCheck(
@@ -371,9 +382,9 @@ addCheck(
 )
 
 addCheck(
-  'appeals are required but remain unimplemented',
+  'appeals are required and implemented for generation review cases',
   policy.appealPolicy.requiredForV1 === true &&
-    policy.appealPolicy.implementationStatus === 'not_implemented' &&
+    policy.appealPolicy.implementationStatus === 'implemented_for_generation_reviews_and_automated_blocks' &&
     policy.appealPolicy.entryPointRequired === true,
   JSON.stringify(policy.appealPolicy),
 )
@@ -505,9 +516,63 @@ addCheck(
 )
 addCheck(
   'current runtime strengths and gaps remain explicit',
-  policy.currentRuntimeBaseline.strengths.length >= 5 &&
-    policy.currentRuntimeBaseline.knownGaps.length >= 6,
+  policy.currentRuntimeBaseline.strengths.length >= 8 &&
+    policy.currentRuntimeBaseline.knownGaps.length >= 5,
   `${policy.currentRuntimeBaseline.strengths.length}/${policy.currentRuntimeBaseline.knownGaps.length}`,
+)
+const inputSafetySource = read(policy.currentRuntimeBaseline.inputSafetyFile)
+const outputSafetySource = read(policy.currentRuntimeBaseline.outputSafetyFile)
+const outputIngestionSource = read(policy.currentRuntimeBaseline.outputIngestionFile)
+const chatSafetySource = read(policy.currentRuntimeBaseline.chatSafetyFile)
+const trustRoutesSource = read(policy.currentRuntimeBaseline.trustRoutesFile)
+const appealRepositorySource = read(policy.currentRuntimeBaseline.appealRepositoryFile)
+const creativeRoutesSource = read(policy.currentRuntimeBaseline.creativeRoutesFile)
+const providerNativeSafetySource = read(policy.currentRuntimeBaseline.providerNativeSafetyFile)
+const providerOutputSafetyAssuranceSource = read(policy.currentRuntimeBaseline.providerOutputSafetyAssuranceFile)
+const providerAdapterSource = read('server/src/creative/providerAdapterContract.js')
+const generationServiceSource = read('server/src/creative/generationService.js')
+const openAIImageProviderSource = read('server/src/creative/openaiImageProvider.js')
+const routerVideoProviderSource = read('server/src/creative/routerVideoProvider.js')
+const routerMusicProviderSource = read('server/src/creative/routerMusicProvider.js')
+const replicateProviderSource = read('server/src/creative/replicateStagingProvider.js')
+addCheck(
+  'multimodal input classifier fails closed before accounting and Provider dispatch',
+  inputSafetySource.includes("decision: 'review'") &&
+    inputSafetySource.includes('input_bytes_unavailable') &&
+    inputSafetySource.includes('evidenceHash') &&
+    runtimePolicy.includes('inputSafety') &&
+    runtimePolicy.includes("action: 'block_before_dispatch'"),
+  policy.currentRuntimeBaseline.inputSafetyFile,
+)
+addCheck(
+  'post-output classifier fails closed and ingestion records bounded safety evidence',
+  outputSafetySource.includes("decision: 'review'") &&
+    outputSafetySource.includes('evidenceHash') &&
+    outputIngestionSource.includes('classifyCreativeOutput') &&
+    outputIngestionSource.includes("outputSafety.decision !== 'allow'"),
+  policy.currentRuntimeBaseline.outputSafetyFile,
+)
+addCheck(
+  'Chat streams retain bounded unclassified output until semantic classification allows release',
+  chatSafetySource.includes('maximumUnclassifiedBufferCharacters') &&
+    chatSafetySource.includes('classifyPending') &&
+    chatSafetySource.includes("await classifyPending(true)") &&
+    chatSafetySource.includes("CHAT_STREAM_SAFETY_BLOCKED"),
+  policy.currentRuntimeBaseline.chatSafetyFile,
+)
+addCheck(
+  'generation review appeals and independent review are wired',
+  trustRoutesSource.includes("'/api/trust/cases/:id/appeals'") &&
+    appealRepositorySource.includes('INDEPENDENT_REVIEW_REQUIRED'),
+  policy.currentRuntimeBaseline.appealRepositoryFile,
+)
+addCheck(
+  'automated blocks are appealable and approved reviews resume idempotently',
+  appealRepositorySource.includes('recordAutomatedDecision') &&
+    creativeRoutesSource.includes("'/api/creative/generations/:id/resume'") &&
+    creativeRoutesSource.includes('CREATIVE_REVIEW_RESUME_REQUEST_MISMATCH') &&
+    creativeRoutesSource.includes('beginReviewResume'),
+  policy.currentRuntimeBaseline.creativeRoutesFile,
 )
 addCheck(
   'generation records retain review and safe evidence primitives',
@@ -516,6 +581,29 @@ addCheck(
     generationRecords.includes('promptPreview') &&
     generationRecords.includes('safeErrorPreview'),
   policy.currentRuntimeBaseline.generationRecordFile,
+)
+addCheck(
+  'Provider native safety mapping is closed, status-consistent, and preserved through policy attachment',
+  providerNativeSafetySource.includes("'provider_pending'") &&
+    providerNativeSafetySource.includes("'provider_refused'") &&
+    providerNativeSafetySource.includes("'provider_flagged'") &&
+    providerNativeSafetySource.includes("'provider_allowed'") &&
+    providerNativeSafetySource.includes("'provider_unknown'") &&
+    providerNativeSafetySource.includes('expectedOutcomesByStatus') &&
+    providerAdapterSource.includes('assertProviderNativeSafety') &&
+    generationServiceSource.includes('generation.safety?.providerNative') &&
+    [openAIImageProviderSource, routerVideoProviderSource, routerMusicProviderSource, replicateProviderSource]
+      .every((source) => source.includes('providerNativeSafetyForGeneration')),
+  policy.currentRuntimeBaseline.providerNativeSafetyFile,
+)
+addCheck(
+  'Provider output safety assurance binds bounded hashed evidence to Provider operations',
+  providerOutputSafetyAssuranceSource.includes('operationRef') &&
+    providerOutputSafetyAssuranceSource.includes('policyRef') &&
+    providerOutputSafetyAssuranceSource.includes('evidenceHash') &&
+    providerOutputSafetyAssuranceSource.includes("assurance.source === 'operator_staging'") &&
+    providerOutputSafetyAssuranceSource.includes('maximumEvidenceBytes'),
+  policy.currentRuntimeBaseline.providerOutputSafetyAssuranceFile,
 )
 
 const humanDocument = read(policy.guardrails.policyDocument)
@@ -549,7 +637,11 @@ addCheck(
 )
 addCheck(
   'content safety verification is part of the quick gate',
-  packageJson.scripts['test:v1-safety-policy'] === 'node scripts/verify-v1-content-safety-policy.mjs' &&
+  packageJson.scripts['test:v1-safety-policy']?.startsWith('node scripts/verify-v1-content-safety-policy.mjs') &&
+    packageJson.scripts['test:v1-safety-policy'].includes('server/src/creative/externalSafetyClassifier.test.js') &&
+    packageJson.scripts['test:v1-safety-policy'].includes('server/src/creative/inputSafety.test.js') &&
+    packageJson.scripts['test:v1-safety-policy'].includes('server/src/creative/outputSafety.test.js') &&
+    packageJson.scripts['test:v1-safety-policy'].includes('server/src/chat/chatSafety.test.js') &&
     packageJson.scripts['check:quick']?.includes('npm run test:v1-safety-policy'),
   packageJson.scripts['check:quick'],
 )

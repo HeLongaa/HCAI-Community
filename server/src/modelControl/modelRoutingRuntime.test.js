@@ -61,3 +61,15 @@ test('runtime eligibility and audience rollout fail closed before Provider evalu
   assert.equal(audienceMiss.reasonCode, 'no_audience_match')
   assert.equal(audienceMiss.consideredPolicies[0].reasonCode, 'audience_role_miss')
 })
+
+test('global deployments serve requests from a specific region', async () => {
+  const globalTarget = candidate({ id: 'global', role: 'primary', priority: 1 })
+  globalTarget.deployment.region = 'global'
+  const result = await resolveModelRoute({
+    policies: [policy({ targets: [globalTarget] })],
+    context,
+  })
+
+  assert.equal(result.status, 'selected')
+  assert.equal(result.reasonCode, 'primary_selected')
+})

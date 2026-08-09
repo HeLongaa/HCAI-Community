@@ -30,8 +30,10 @@ Official references reviewed on 2026-07-20:
   ingestion, media scan, private download, lineage, and cost ledger paths.
 - Provider moderation branches on `error.code=moderation_blocked` and retains only the public stage and allowlisted
   coarse categories.
-- Complete Provider usage settles actual token cost. Missing edit modality detail produces
-  `reconciliation_required`; estimated cost is never copied into actual cost.
+- Complete Provider usage settles actual token cost. The approved MiniMax Image 01 Live pricing contract is a fixed
+  per-output charge, so a successful one-image response settles from that exact versioned database price even when the
+  Router omits token usage. Other missing or incomplete component-pricing evidence remains
+  `reconciliation_required`; an estimated variable cost is never copied into actual cost.
 - Provider credentials, raw prompts, base64 output, raw error bodies, private URLs, classifier scores, and internal
   labels are excluded from acceptance summaries.
 - Production remains denied even when staging gates are enabled.

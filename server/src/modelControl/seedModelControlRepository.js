@@ -82,6 +82,15 @@ export const createSeedModelControlRepository = ({ recordAudit } = {}) => {
       .filter((item) => item.modelVersionId === modelVersionId && item.status === 'active' && (!item.modelDeploymentId || item.modelDeploymentId === modelDeploymentId))
       .filter((item) => Date.parse(item.effectiveFrom) <= now.getTime() && (!item.effectiveTo || Date.parse(item.effectiveTo) > now.getTime()))
       .sort((left, right) => Number(Boolean(right.modelDeploymentId)) - Number(Boolean(left.modelDeploymentId)) || Date.parse(right.effectiveFrom) - Date.parse(left.effectiveFrom))[0] ?? null),
+    findRuntimePricings: async ({ modelVersionId, modelDeploymentId, now = new Date() }) => {
+      const rows = [...collections.prices.values()]
+        .filter((item) => item.modelVersionId === modelVersionId && item.status === 'active' && (!item.modelDeploymentId || item.modelDeploymentId === modelDeploymentId))
+        .filter((item) => Date.parse(item.effectiveFrom) <= now.getTime() && (!item.effectiveTo || Date.parse(item.effectiveTo) > now.getTime()))
+        .sort((left, right) => Number(Boolean(right.modelDeploymentId)) - Number(Boolean(left.modelDeploymentId)) || Date.parse(right.effectiveFrom) - Date.parse(left.effectiveFrom))
+      const byUnit = new Map()
+      for (const item of rows) if (!byUnit.has(item.unit)) byUnit.set(item.unit, item)
+      return clone([...byUnit.values()])
+    },
     setPromotionTrafficEligibility: async (id, eligible, actor) => {
       const deployment = collections.deployments.get(String(id))
       if (!deployment || deployment.environment !== 'production' || (eligible && deployment.status !== 'active')) throw new HttpError(409, 'PROMOTION_DEPLOYMENT_INELIGIBLE', 'production deployment is not eligible for promotion')

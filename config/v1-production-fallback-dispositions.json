@@ -2,7 +2,8 @@
   "schemaVersion": 1,
   "task": "V1-39",
   "policy": {
-    "productionReadyRequiresZeroReleaseBlockers": true,
+    "scope": "runtime_surface_fallback_disposition_only",
+    "fallbackDispositionCompleteRequiresZeroReleaseBlockers": true,
     "allowedTargets": ["production_capable", "development_only", "fixture_only", "explicit_unavailable"],
     "realProviderApprovalRequired": true
   },
@@ -18,7 +19,6 @@
     { "id": "frontend-admin-demo-queue", "targetClassification": "production_capable", "strategy": "permission_scoped_api_only", "evidence": ["src/features/admin/AdminPage.tsx", "src/services/adminService.ts"] },
     { "id": "frontend-static-plan-api-catalog", "targetClassification": "explicit_unavailable", "strategy": "approved_versioned_content_only", "evidence": ["src/features/static-pages/StaticPages.tsx"] },
     { "id": "frontend-points-demo-ledger", "targetClassification": "production_capable", "strategy": "points_api_only", "evidence": ["src/hooks/useAppFeedback.ts", "src/services/pointsService.ts"] },
-    { "id": "frontend-mockdata-root", "targetClassification": "development_only", "strategy": "zero_production_imports", "evidence": ["src/data/mockData.ts", "scripts/verify-v1-production-fallbacks.mjs"] },
     { "id": "server-seed-repository-fallback", "targetClassification": "development_only", "strategy": "production_requires_postgresql", "evidence": ["server/src/repositories/index.js", "server/src/repositories/index.test.js"] },
     { "id": "server-prisma-demo-autoseed", "targetClassification": "development_only", "strategy": "explicit_development_seed_only", "evidence": ["server/src/repositories/prismaRepository.js", "server/prisma/seed.js"] }
   ]

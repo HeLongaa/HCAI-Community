@@ -92,6 +92,26 @@ test('user generation history exposes active and retry action eligibility withou
   assert.equal(failed.error.message.includes('sk-private'), false)
 })
 
+test('user generation history exposes only safe Provider estimate, actual, and reconciliation state', async () => {
+  const mediaRepository = { findAccessibleCreativeInput: async () => null }
+  const settled = await serializeUserCreativeGeneration(generation({
+    outputAssetIds: [],
+    usage: { estimatedCredits: 1, metered: true, providerCost: { ledger: { status: 'settled', estimateMicros: '53000', actualMicros: '41000', currency: 'USD', reasonCode: 'provider_usage_settled', sourceKey: 'must-not-leak' } } },
+  }), { actor, mediaRepository })
+  assert.deepEqual(settled.accounting.providerCost, {
+    availability: 'available', ledgerStatus: 'settled', estimateAmount: 0.053, actualAmount: 0.041, currency: 'USD', reasonCode: 'provider_usage_settled',
+  })
+  assert.equal(JSON.stringify(settled).includes('must-not-leak'), false)
+
+  const pending = await serializeUserCreativeGeneration(generation({
+    outputAssetIds: [],
+    usage: { estimatedCredits: 1, metered: true, providerCost: { ledger: { status: 'reconciliation_required', estimateMicros: '53000', actualMicros: null, currency: 'USD', reasonCode: 'actual_cost_missing' } } },
+  }), { actor, mediaRepository })
+  assert.equal(pending.accounting.providerCost.availability, 'reconciliation_required')
+  assert.equal(pending.accounting.providerCost.actualAmount, null)
+  assert.equal(pending.accounting.providerCost.reasonCode, 'actual_cost_missing')
+})
+
 test('generation outputs expose only application lineage and server-derived reuse eligibility', async () => {
   const value = await serializeUserCreativeGeneration(generation(), {
     actor,

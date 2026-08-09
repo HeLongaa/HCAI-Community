@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "production-container-contract-v1",
+  "composeFile": "infra/production.compose.yml",
+  "dockerfile": "Dockerfile",
+  "gatewayConfig": "infra/Caddyfile",
+  "nodeImage": "public.ecr.aws/docker/library/node:24.18.0-trixie-slim@sha256:ae91dcc111a68c9d2d81ff2a17bda61be126426176fde6fe7d08ab13b7f50573",
+  "images": {
+    "gateway": "caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d",
+    "postgres": "postgres:16.10-bookworm@sha256:38471f330eb885e04de130b768d6db4e10469e2311879c7e5c699f6d2d8a1c74",
+    "redis": "redis:7.4.5-bookworm@sha256:90e7a336d044f1abc9e9dbc05d65566850896d11453bbd1dd0fb7e5059f0e8fb",
+    "minio": "minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e",
+    "minio-init": "minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727"
+  },
+  "buildTargets": {
+    "frontend": "frontend",
+    "api": "api",
+    "worker": "worker",
+    "migration": "migrate"
+  },
+  "requiredServices": [
+    "gateway",
+    "frontend",
+    "api",
+    "worker",
+    "migration",
+    "postgres",
+    "redis",
+    "minio",
+    "minio-init"
+  ],
+  "hardenedServices": ["gateway", "frontend", "api", "worker", "migration", "minio-init"],
+  "resourceBoundServices": ["gateway", "frontend", "api", "worker", "migration", "postgres", "redis", "minio", "minio-init"],
+  "onlyPublishedService": "gateway",
+  "internalNetwork": "backend",
+  "providerEgressNetwork": "provider-egress",
+  "shutdownTimeoutSeconds": 30
+}

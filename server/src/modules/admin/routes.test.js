@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { createRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
-import { recordSecurityEvent, resetSecurityEvents } from '../../security/securityEvents.js'
+import { flushSecurityEvents, recordSecurityEvent, resetSecurityEvents } from '../../security/securityEvents.js'
 import { quotaWindowFor, resetCreativePolicyState } from '../../creative/policy.js'
 import { createReplicateStagingPrediction } from '../../creative/replicateStagingProvider.js'
 import { sha256 } from '../../creative/generationRecords.js'
@@ -19,9 +19,16 @@ import { registerCreativeRoutes } from '../creative/routes.js'
 import { registerAdminRoutes } from './routes.js'
 import { getProtectedRolePermissions } from '../../auth/permissions.js'
 import { defaultPointAdjustmentPolicy } from '../../points/adjustmentPolicy.js'
+import { createProductionReleaseEvidenceFixture } from '../../releases/productionReleaseEvidence.fixtures.js'
 
 const createTestServer = () => createRouteTestServer(registerAdminRoutes)
 const createCreativeAdminServer = () => createRouteTestServer(registerCreativeRoutes, registerAdminRoutes)
+const createOutputReviewAdminServer = () => createRouteTestServer(
+  (router) => registerCreativeRoutes(router, {
+    outputSafetyClassifier: async () => ({ decision: 'review', classifierId: 'fixture-output-safety', classifierVersion: '1', categories: ['manual_review'] }),
+  }),
+  registerAdminRoutes,
+)
 
 const createInjectedAdminServer = (repository, options = {}) => createRouteTestServer(
   (router) => registerAdminRoutes(router, { repositories: repository, ...options }),
@@ -92,7 +99,8 @@ test('Admin overview and global search are bounded permission-aware read models'
 
 test('release control routes enforce approval, SecretRef validation, evidence, and rollback', async () => {
   const repository = createSeedRepository()
-  const server = await createInjectedAdminServer(repository)
+  const productionEvidence = createProductionReleaseEvidenceFixture()
+  const server = await createInjectedAdminServer(repository, { releaseEvidenceSource: productionEvidence.environment })
   try {
     const denied = await requestJson(server.url, '/api/admin/releases', { method: 'GET', token: 'demo-access.promptlin' })
     assert.equal(denied.status, 403)
@@ -111,6 +119,7 @@ test('release control routes enforce approval, SecretRef validation, evidence, a
       body: {
         changeType: 'promotion', sourceEnvironment: 'staging', targetEnvironment: 'production', artifactVersion: 'sha-2', rollbackVersion: 'sha-1',
         summary: 'Production promotion', reasonCode: 'scheduled_release',
+        ...productionEvidence.binding,
       },
     })
     assert.equal(requested.status, 200)
@@ -127,12 +136,21 @@ test('release control routes enforce approval, SecretRef validation, evidence, a
     assert.equal(approved.status, 200)
     assert.equal(approved.payload.data.status, 'approved')
 
-    const deployed = await requestJson(server.url, `/api/admin/releases/${requested.payload.data.id}/apply`, {
+    const missingBundle = await requestJson(server.url, `/api/admin/releases/${requested.payload.data.id}/apply`, {
       token: 'demo-access.opsplus',
       body: { outcome: 'deployed', deploymentId: 'deploy-route-1', evidenceUrl: 'https://ci.example/deploy-route-1', reasonCode: 'applied' },
     })
+    assert.equal(missingBundle.status, 409)
+    assert.equal(missingBundle.payload.error.code, 'PRODUCTION_RELEASE_EVIDENCE_REQUIRED')
+
+    const deployed = await requestJson(server.url, `/api/admin/releases/${requested.payload.data.id}/apply`, {
+      token: 'demo-access.opsplus',
+      body: { outcome: 'deployed', deploymentId: 'deploy-route-1', evidenceUrl: 'https://ci.example/deploy-route-1', evidenceBundle: productionEvidence.bundle, reasonCode: 'applied', note: 'private deployment note' },
+    })
     assert.equal(deployed.status, 200)
     assert.equal(deployed.payload.data.status, 'deployed')
+    assert.equal(JSON.stringify(deployed.payload.data).includes('https://ci.example'), false)
+    assert.equal(JSON.stringify(deployed.payload.data).includes('private deployment note'), false)
 
     const rolledBack = await requestJson(server.url, `/api/admin/releases/${requested.payload.data.id}/rollback`, {
       token: 'demo-access.finops',
@@ -733,13 +751,13 @@ test('GET /api/admin/creative/generations lists and filters provider generation 
   resetCreativePolicyState()
   const previousProvider = process.env.MEDIA_SCAN_PROVIDER
   process.env.MEDIA_SCAN_PROVIDER = 'mock'
-  const server = await createCreativeAdminServer()
+  const server = await createOutputReviewAdminServer()
   try {
     const generated = await requestJson(server.url, '/api/creative/generations', {
       body: {
         workspace: 'image',
         mode: 'text_to_image',
-        prompt: 'A celebrity campaign poster for Admin history review filter',
+        prompt: 'A geometric campaign poster for Admin history review filter',
       },
       token: 'demo-access.promptlin',
     })
@@ -853,7 +871,7 @@ test('GET /api/admin/creative/generations lists and filters provider generation 
     })
     assert.equal(detail.status, 200)
     assert.equal(detail.payload.data.id, generationId)
-    assert.equal(detail.payload.data.promptPreview, 'A celebrity campaign poster for Admin history review filter')
+    assert.equal(detail.payload.data.promptPreview, 'A geometric campaign poster for Admin history review filter')
     assert.equal(detail.payload.data.credit.status, 'settled')
     assert.equal(detail.payload.data.providerReplayEvidence.count, 2)
     assert.equal(detail.payload.data.providerReplayEvidence.latest.payloadHashPreview, 'payload-hash')
@@ -1134,6 +1152,89 @@ test('GET Admin generation history exposes safe durable Provider cost ledger evi
   }
 })
 
+test('Admin manually settles reconciliation-required Provider cost with protected permission and hashed evidence', async () => {
+  const repository = createSeedRepository()
+  const generationId = `gen-admin-provider-cost-settlement-${Date.now()}`
+  const actor = { id: 'demo-user-creator', handle: 'promptlin' }
+  await repository.creativeGenerations.create({
+    id: generationId,
+    actorId: actor.id,
+    actorHandle: actor.handle,
+    workspace: 'video',
+    mode: 'text_to_video',
+    providerId: 'hcai-router-seedance-2-fast',
+    providerMode: 'router_video',
+    providerJobId: 'task-admin-cost-settlement',
+    status: 'completed',
+    promptHash: 'a'.repeat(64),
+    promptPreview: 'Admin Provider cost settlement fixture',
+    inputAssetIds: [],
+    parameterKeys: ['durationSeconds'],
+    outputAssetIds: [],
+  }, actor)
+  const reservation = buildProviderCostReservation({
+    generationId,
+    workspace: 'video',
+    mode: 'text_to_video',
+    now: new Date('2026-07-21T08:00:00.000Z'),
+    providerCost: {
+      providerId: 'hcai-router-seedance-2-fast',
+      providerAccountRef: 'staging',
+      model: { providerModelId: 'seedance-2.0-fast', pricingSource: 'model_control_pricing_version', pricingSourceRef: 'price-admin-video-v1', pricingEffectiveAt: '2026-07-01T00:00:00.000Z', pricingSnapshotAt: '2026-07-21T08:00:00.000Z' },
+      estimate: { currency: 'USD', amount: 0.484, billingUnit: 'generated_seconds', quantity: 4, unitPrice: 0.121 },
+      budget: { budgetScope: `staging:router:video:admin-${Date.now()}`, dailyCapCurrency: 'USD', dailyCapAmount: 20, spentAmount: 0 },
+    },
+  })
+  await repository.creativeProviderCosts.reserve(reservation, actor)
+  await repository.creativeProviderCosts.reconcile(reservation.sourceKey, { reasonCode: 'actual_cost_missing' }, actor)
+  const server = await createInjectedAdminServer(repository)
+  try {
+    const denied = await requestJson(server.url, `/api/admin/creative/generations/${generationId}/provider-cost-settlement`, {
+      token: 'demo-access.legalpixel',
+      body: { actualAmount: '0.484', currency: 'USD', evidenceRef: 'router-usage-log-private', reasonCode: 'manual_cost_confirmed' },
+    })
+    assert.equal(denied.status, 403)
+
+    const settled = await requestJson(server.url, `/api/admin/creative/generations/${generationId}/provider-cost-settlement`, {
+      token: 'demo-access.opsplus',
+      body: { actualAmount: '0.484', currency: 'USD', evidenceRef: 'router-usage-log-private', reasonCode: 'manual_cost_confirmed' },
+    })
+    assert.equal(settled.status, 200)
+    assert.equal(settled.payload.data.status, 'settled')
+    assert.equal(settled.payload.data.actualMicros, '484000')
+    assert.equal(settled.payload.data.risk.reconciliationRequired, false)
+    assert.match(settled.payload.data.risk.evidenceRefHash, /^[a-f0-9]{64}$/)
+    assert.equal(JSON.stringify(settled.payload).includes('router-usage-log-private'), false)
+
+    const duplicate = await requestJson(server.url, `/api/admin/creative/generations/${generationId}/provider-cost-settlement`, {
+      token: 'demo-access.opsplus',
+      body: { actualAmount: '0.484', currency: 'USD', evidenceRef: 'router-usage-log-private', reasonCode: 'manual_cost_confirmed' },
+    })
+    assert.equal(duplicate.status, 409)
+    const audit = await repository.audit.list({ action: 'admin.creative.provider_cost.manually_settled', limit: 100 })
+    assert.equal(audit.items.some((item) => item.resourceId === settled.payload.data.id), true)
+    assert.equal(JSON.stringify(audit.items).includes('router-usage-log-private'), false)
+  } finally {
+    await server.close()
+  }
+})
+
+test('Admin Provider cost settlement fails explicitly when its repository is unavailable', async () => {
+  const repository = createSeedRepository()
+  repository.creativeProviderCosts = undefined
+  const server = await createInjectedAdminServer(repository)
+  try {
+    const response = await requestJson(server.url, '/api/admin/creative/generations/missing/provider-cost-settlement', {
+      token: 'demo-access.opsplus',
+      body: { actualAmount: '0.484', currency: 'USD', evidenceRef: 'router-usage-log-private', reasonCode: 'manual_cost_confirmed' },
+    })
+    assert.equal(response.status, 503)
+    assert.equal(response.payload.error.code, 'CREATIVE_PROVIDER_COST_REPOSITORY_UNAVAILABLE')
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/admin/creative/generations reads Replicate fixture evidence without raw provider data', async () => {
   resetCreativePolicyState()
   const restoreEnv = applyReplicateStagingAdminFixtureEnv()
@@ -1347,6 +1448,8 @@ test('GET /api/admin/creative/generations surfaces sanitized provider cost and b
           costExceededEstimate: false,
           providerUsageMissing: false,
           billingReconciliationRequired: false,
+          providerStatus: 502,
+          providerCategory: 'provider_5xx',
           rawRiskTrace: 'risk-trace-should-not-leak',
         },
       },
@@ -1392,6 +1495,8 @@ test('GET /api/admin/creative/generations surfaces sanitized provider cost and b
     assert.equal(item.usage.providerCost.budget.projectedSpendAmount, 1.25)
     assert.equal(item.usage.providerCost.risk.costKnown, true)
     assert.equal(item.usage.providerCost.risk.costExceededEstimate, false)
+    assert.equal(item.usage.providerCost.risk.providerStatus, 502)
+    assert.equal(item.usage.providerCost.risk.providerCategory, 'provider_5xx')
     assert.equal(item.providerReplayEvidence.available, true)
     assert.equal(item.providerReplayEvidence.count, 0)
     assert.equal('prompt' in item, false)
@@ -3546,6 +3651,70 @@ test('GET /api/admin/security/events paginates with cursor', async () => {
   }
 })
 
+test('admin security incident APIs enforce permissions and optimistic transitions', async () => {
+  resetSecurityEvents()
+  const server = await createTestServer()
+  try {
+    const first = recordSecurityEvent({ type: 'security.incident.first', severity: 'critical', source: 'test' })
+    const second = recordSecurityEvent({ type: 'security.incident.second', severity: 'warning', source: 'test' })
+
+    const denied = await requestJson(server.url, '/api/admin/security/incidents', {
+      method: 'POST',
+      token: 'demo-access.taskops',
+      body: { eventIds: [first.id], criticalConfirmed: true, reasonCode: 'incident_confirmed' },
+    })
+    assert.equal(denied.status, 403)
+    assert.equal(denied.payload.error.message, 'Missing permission: security:alerts:manage')
+
+    const created = await requestJson(server.url, '/api/admin/security/incidents', {
+      method: 'POST',
+      token: 'demo-access.opsplus',
+      body: { eventIds: [first.id], criticalConfirmed: true, reasonCode: 'incident_confirmed' },
+    })
+    assert.equal(created.status, 200)
+    assert.equal(created.payload.data.status, 'open')
+    assert.equal(created.payload.data.criticalConfirmed, true)
+    assert.equal(created.payload.data.eventCount, 1)
+    const incident = created.payload.data
+
+    const attached = await requestJson(server.url, `/api/admin/security/incidents/${incident.id}/events`, {
+      method: 'POST',
+      token: 'demo-access.opsplus',
+      body: { eventIds: [second.id], expectedVersion: incident.version, reasonCode: 'related_event_attached' },
+    })
+    assert.equal(attached.status, 200)
+    assert.equal(attached.payload.data.version, 2)
+    assert.equal(attached.payload.data.eventCount, 2)
+
+    const stale = await requestJson(server.url, `/api/admin/security/incidents/${incident.id}/resolve`, {
+      method: 'POST',
+      token: 'demo-access.opsplus',
+      body: { expectedVersion: 1, reasonCode: 'incident_contained' },
+    })
+    assert.equal(stale.status, 409)
+    assert.equal(stale.payload.error.code, 'SECURITY_INCIDENT_VERSION_CONFLICT')
+
+    const resolved = await requestJson(server.url, `/api/admin/security/incidents/${incident.id}/resolve`, {
+      method: 'POST',
+      token: 'demo-access.opsplus',
+      body: { expectedVersion: 2, reasonCode: 'incident_contained' },
+    })
+    assert.equal(resolved.status, 200)
+    assert.equal(resolved.payload.data.status, 'resolved')
+    assert.equal(resolved.payload.data.version, 3)
+
+    const listed = await requestJson(server.url, '/api/admin/security/incidents?status=resolved', {
+      method: 'GET',
+      token: 'demo-access.opsplus',
+    })
+    assert.equal(listed.status, 200)
+    assert.ok(listed.payload.data.some((item) => item.id === incident.id))
+  } finally {
+    resetSecurityEvents()
+    await server.close()
+  }
+})
+
 test('GET /api/admin/security/alerts requires audit read permission', async () => {
   const server = await createTestServer()
   try {
@@ -3602,6 +3771,61 @@ test('GET /api/admin/security/alerts returns aggregated threshold alerts', async
     else process.env.SECURITY_ALERT_BODY_REJECTED_THRESHOLD = previous.bodyRejected
     if (previous.authFailure == null) delete process.env.SECURITY_ALERT_AUTH_FAILURE_THRESHOLD
     else process.env.SECURITY_ALERT_AUTH_FAILURE_THRESHOLD = previous.authFailure
+    resetSecurityEvents()
+    await server.close()
+  }
+})
+
+test('security threshold alerts enter the durable notification email queue', async () => {
+  resetSecurityEvents()
+  const previous = {
+    window: process.env.SECURITY_ALERT_WINDOW_MINUTES,
+    rateLimit: process.env.SECURITY_ALERT_RATE_LIMIT_THRESHOLD,
+    emailEnabled: process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED,
+    emailUrl: process.env.NOTIFICATION_EMAIL_WEBHOOK_URL,
+    workerEnabled: process.env.NOTIFICATION_DELIVERY_WORKER_ENABLED,
+  }
+  process.env.SECURITY_ALERT_WINDOW_MINUTES = '15'
+  process.env.SECURITY_ALERT_RATE_LIMIT_THRESHOLD = '2'
+  process.env.NOTIFICATION_EMAIL_DELIVERY_ENABLED = 'true'
+  process.env.NOTIFICATION_EMAIL_WEBHOOK_URL = 'http://127.0.0.1:9876/security-email'
+  process.env.NOTIFICATION_DELIVERY_WORKER_ENABLED = 'true'
+  const repository = createSeedRepository()
+  const server = await createInjectedAdminServer(repository)
+  try {
+    recordSecurityEvent({ type: 'rate_limit.exceeded', severity: 'warning', source: 'rate_limit', clientKey: '198.51.100.51', pathname: '/api/auth/login' })
+    recordSecurityEvent({ type: 'rate_limit.exceeded', severity: 'warning', source: 'rate_limit', clientKey: '198.51.100.52', pathname: '/api/auth/login' })
+    await flushSecurityEvents()
+    await repository.securityEvents.notifyAlerts()
+
+    const deliveries = await repository.notificationDeliveries.list({
+      status: 'queued',
+      notificationType: 'security.event.alert',
+      limit: 100,
+    })
+    const queued = deliveries.items.filter((item) =>
+      item.channel === 'email' && item.notification?.resourceType === 'security_alert')
+    assert.ok(queued.length > 0)
+
+    await repository.securityEvents.notifyAlerts()
+    const repeated = await repository.notificationDeliveries.list({
+      status: 'queued',
+      notificationType: 'security.event.alert',
+      limit: 100,
+    })
+    assert.equal(repeated.items.filter((item) =>
+      item.channel === 'email' && item.notification?.resourceType === 'security_alert').length, queued.length)
+  } finally {
+    for (const [key, value] of Object.entries({
+      SECURITY_ALERT_WINDOW_MINUTES: previous.window,
+      SECURITY_ALERT_RATE_LIMIT_THRESHOLD: previous.rateLimit,
+      NOTIFICATION_EMAIL_DELIVERY_ENABLED: previous.emailEnabled,
+      NOTIFICATION_EMAIL_WEBHOOK_URL: previous.emailUrl,
+      NOTIFICATION_DELIVERY_WORKER_ENABLED: previous.workerEnabled,
+    })) {
+      if (value == null) delete process.env[key]
+      else process.env[key] = value
+    }
     resetSecurityEvents()
     await server.close()
   }

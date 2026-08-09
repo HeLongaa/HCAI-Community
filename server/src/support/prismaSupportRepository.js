@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { HttpError } from '../common/errors/httpError.js'
+import { dataRightsSafeSubjectRef } from '../dataRights/dataRightsLifecycle.js'
 import {
   assertSupportTransition,
   decodeSupportCursor,
@@ -10,14 +11,15 @@ import {
 } from './supportOperations.js'
 
 const userSelect = { id: true, displayName: true, profile: { select: { handle: true } } }
-const ticketInclude = {
-  requester: { select: userSelect },
-  assignedTo: { select: userSelect },
-  messages: { include: { author: { select: userSelect } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
-  caseLinks: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
-}
 const conflict = (message = 'Support ticket was modified concurrently') => new HttpError(409, 'VERSION_CONFLICT', message)
 const active = ['open', 'in_progress', 'waiting_on_user']
+const lockTicket = (db, id) => db.$queryRawUnsafe(
+  'SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext($1))',
+  `support-ticket:${id}`,
+)
+const assertMutable = (ticket) => {
+  if (ticket?.retentionRedactedAt) throw new HttpError(409, 'SUPPORT_TICKET_RETAINED', 'Retained support evidence cannot be modified')
+}
 
 const whereFor = (query) => ({
   ...(query.status ? { status: query.status } : {}),
@@ -38,10 +40,29 @@ const orderByFor = (query) => query.sort === 'priority'
   : [{ [query.sort]: query.order }, { id: query.order }]
 
 export const createPrismaSupportRepository = (client, { runSerializableTransaction, recordAudit, notificationDeliveries } = {}) => {
-  const find = (db, id, requesterId = null) => db.supportTicket.findFirst({
-    where: { id: String(id), ...(requesterId ? { requesterId } : {}) },
-    include: ticketInclude,
-  })
+  const hydrateTickets = async (db, rows) => {
+    if (rows.length === 0) return []
+    const ticketIds = rows.map((row) => row.id)
+    const messages = await db.supportTicketMessage.findMany({ where: { ticketId: { in: ticketIds } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] })
+    const caseLinks = await db.supportTicketCaseLink.findMany({ where: { ticketId: { in: ticketIds } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] })
+    const userIds = [...new Set([
+      ...rows.flatMap((row) => [row.requesterId, row.assignedToId]),
+      ...messages.map((message) => message.authorId),
+    ].filter(Boolean))]
+    const users = userIds.length ? await db.user.findMany({ where: { id: { in: userIds } }, select: userSelect }) : []
+    const usersById = new Map(users.map((user) => [user.id, user]))
+    return rows.map((row) => ({
+      ...row,
+      requester: row.requesterId ? usersById.get(row.requesterId) ?? null : null,
+      assignedTo: row.assignedToId ? usersById.get(row.assignedToId) ?? null : null,
+      messages: messages.filter((message) => message.ticketId === row.id).map((message) => ({ ...message, author: message.authorId ? usersById.get(message.authorId) ?? null : null })),
+      caseLinks: caseLinks.filter((linkRow) => linkRow.ticketId === row.id),
+    }))
+  }
+  const find = async (db, id, requesterId = null) => {
+    const row = await db.supportTicket.findFirst({ where: { id: String(id), ...(requesterId ? { requesterId } : {}) } })
+    return row ? (await hydrateTickets(db, [row]))[0] : null
+  }
 
   const notifyRequester = async (db, ticket, payload) => {
     const notification = await db.notification.create({ data: {
@@ -63,8 +84,9 @@ export const createPrismaSupportRepository = (client, { runSerializableTransacti
     create: async (payload, actor) => runSerializableTransaction(async (db) => {
       const now = new Date()
       const due = supportSlaDates(payload.category, payload.priority, now)
-      const row = await db.supportTicket.create({ data: {
+      const created = await db.supportTicket.create({ data: {
         requesterId: actor.id,
+        requesterSubjectRef: dataRightsSafeSubjectRef(actor.id),
         category: payload.category,
         priority: payload.priority,
         subject: payload.subject,
@@ -73,7 +95,8 @@ export const createPrismaSupportRepository = (client, { runSerializableTransacti
         relatedResourceId: payload.relatedResourceId,
         locale: payload.locale,
         ...due,
-      }, include: ticketInclude })
+      } })
+      const row = (await hydrateTickets(db, [created]))[0]
       await recordAudit({ actor, action: 'support.ticket.created', resourceType: 'support_ticket', resourceId: row.id, metadata: { category: row.category, priority: row.priority, relatedResourceType: row.relatedResourceType } }, db)
       return serializeSupportTicket(row)
     }),
@@ -86,23 +109,24 @@ export const createPrismaSupportRepository = (client, { runSerializableTransacti
     list: async (actor, options = {}) => {
       const rows = await client.supportTicket.findMany({
         where: { requesterId: actor.id },
-        include: ticketInclude,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: options.limit + 1,
         ...(options.cursor ? { cursor: { id: String(options.cursor) }, skip: 1 } : {}),
       })
-      const page = rows.slice(0, options.limit)
+      const page = await hydrateTickets(client, rows.slice(0, options.limit))
       return { items: page.map((row) => serializeSupportTicket(row)), limit: options.limit, nextCursor: rows.length > options.limit ? page.at(-1)?.id ?? null : null }
     },
 
     addRequesterMessage: async (id, payload, actor) => runSerializableTransaction(async (db) => {
+      await lockTicket(db, String(id))
       const current = await find(db, id, actor.id)
       if (!current) return null
+      assertMutable(current)
       if (current.status === 'closed') throw new HttpError(409, 'SUPPORT_TICKET_CLOSED', 'Closed support tickets cannot receive messages')
       const nextStatus = current.status === 'waiting_on_user' ? 'in_progress' : current.status
       const changed = await db.supportTicket.updateMany({ where: { id: current.id, requesterId: actor.id, version: payload.expectedVersion, status: current.status }, data: { status: nextStatus, version: { increment: 1 } } })
       if (changed.count !== 1) throw conflict()
-      await db.supportTicketMessage.create({ data: { ticketId: current.id, authorId: actor.id, authorType: 'requester', body: payload.message } })
+      await db.supportTicketMessage.create({ data: { ticketId: current.id, authorId: actor.id, authorSubjectRef: dataRightsSafeSubjectRef(actor.id), authorType: 'requester', body: payload.message } })
       await recordAudit({ actor, action: 'support.ticket.requester_message_added', resourceType: 'support_ticket', resourceId: current.id, metadata: { reasonCode: payload.reasonCode, status: nextStatus } }, db)
       return serializeSupportTicket(await find(db, current.id, actor.id))
     }),
@@ -116,14 +140,14 @@ export const createPrismaSupportRepository = (client, { runSerializableTransacti
       let cursorId = decoded?.id ?? null
       do {
         const batch = await client.supportTicket.findMany({
-          where: whereFor(query), include: ticketInclude, orderBy: orderByFor(query), take: query.slaState ? batchSize : targetCount,
+          where: whereFor(query), orderBy: orderByFor(query), take: query.slaState ? batchSize : targetCount,
           ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
         })
         rows.push(...(query.slaState ? batch.filter((row) => supportSlaState(row, now) === query.slaState) : batch))
         cursorId = batch.at(-1)?.id ?? null
         if (batch.length < (query.slaState ? batchSize : targetCount) || !query.slaState) break
       } while (rows.length < targetCount)
-      const page = rows.slice(0, query.limit)
+      const page = await hydrateTickets(client, rows.slice(0, query.limit))
       return { items: page.map((row) => serializeSupportTicket(row, { includeDetails: false, now })), limit: query.limit, nextCursor: rows.length > query.limit && page.at(-1) ? encodeSupportCursor(query, page.at(-1)) : null }
     },
 
@@ -133,8 +157,10 @@ export const createPrismaSupportRepository = (client, { runSerializableTransacti
     },
 
     updateAdmin: async (id, payload, actor) => runSerializableTransaction(async (db) => {
+      await lockTicket(db, String(id))
       const current = await find(db, id)
       if (!current) return null
+      assertMutable(current)
       if (payload.status) assertSupportTransition(current.status, payload.status)
       let assignee = null
       if (payload.assigneeUserId) {
@@ -162,14 +188,16 @@ export const createPrismaSupportRepository = (client, { runSerializableTransacti
     }),
 
     addOperatorMessage: async (id, payload, actor) => runSerializableTransaction(async (db) => {
+      await lockTicket(db, String(id))
       const current = await find(db, id)
       if (!current) return null
+      assertMutable(current)
       if (current.status === 'closed') throw new HttpError(409, 'SUPPORT_TICKET_CLOSED', 'Closed support tickets cannot receive messages')
       const now = new Date()
       const nextStatus = current.status === 'open' ? 'in_progress' : current.status
       const changed = await db.supportTicket.updateMany({ where: { id: current.id, version: payload.expectedVersion, status: current.status }, data: { status: nextStatus, firstRespondedAt: current.firstRespondedAt ?? now, version: { increment: 1 } } })
       if (changed.count !== 1) throw conflict()
-      await db.supportTicketMessage.create({ data: { ticketId: current.id, authorId: actor.id, authorType: 'operator', body: payload.message } })
+      await db.supportTicketMessage.create({ data: { ticketId: current.id, authorId: actor.id, authorSubjectRef: dataRightsSafeSubjectRef(actor.id), authorType: 'operator', body: payload.message } })
       const updated = await find(db, current.id)
       await recordAudit({ actor, action: 'admin.support.message_added', resourceType: 'support_ticket', resourceId: current.id, metadata: { reasonCode: payload.reasonCode, status: updated.status, version: updated.version } }, db)
       await notifyRequester(db, updated, { type: 'support.message_added', title: 'Support replied', body: `A support operator replied to "${updated.subject}".` })
@@ -177,15 +205,17 @@ export const createPrismaSupportRepository = (client, { runSerializableTransacti
     }),
 
     linkCase: async (id, payload, actor) => runSerializableTransaction(async (db) => {
+      await lockTicket(db, String(id))
       const current = await find(db, id)
       if (!current) return null
+      assertMutable(current)
       if (current.version !== payload.expectedVersion) throw conflict()
       const exists = payload.caseType === 'admin_review'
         ? await db.adminReview.findUnique({ where: { id: payload.caseId }, select: { id: true } })
         : await db.moderationCase.findUnique({ where: { id: payload.caseId }, select: { id: true } })
       if (!exists) throw new HttpError(422, 'SUPPORT_CASE_NOT_FOUND', 'Linked case does not exist')
       try {
-        await db.supportTicketCaseLink.create({ data: { ticketId: current.id, caseType: payload.caseType, caseId: payload.caseId, createdById: actor.id } })
+        await db.supportTicketCaseLink.create({ data: { ticketId: current.id, caseType: payload.caseType, caseId: payload.caseId, createdById: actor.id, createdBySubjectRef: dataRightsSafeSubjectRef(actor.id) } })
       } catch (error) {
         if (error?.code === 'P2002') throw new HttpError(409, 'SUPPORT_CASE_ALREADY_LINKED', 'Case is already linked to this support ticket')
         throw error

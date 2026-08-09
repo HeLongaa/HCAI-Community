@@ -5,6 +5,7 @@ import {
   buildProviderRetryDecision,
   buildSafeProviderError,
   classifyProviderError,
+  classifyProviderHttpFailure,
   parseProviderRetryAfter,
   providerErrorCategories,
   providerErrorPolicies,
@@ -17,11 +18,28 @@ test('Provider error taxonomy is complete and classifies stable failure families
   assert.equal(classifyProviderError({ code: 'FETCH_TIMEOUT' }), 'timeout')
   assert.equal(classifyProviderError({ statusCode: 503 }), 'provider_5xx')
   assert.equal(classifyProviderError({ code: 'PROVIDER_INCIDENT' }), 'provider_incident')
+  assert.equal(classifyProviderError({ code: 'PROVIDER_BALANCE_INSUFFICIENT' }), 'provider_balance')
   assert.equal(classifyProviderError({ code: 'CONTENT_POLICY_REJECTED' }), 'content_policy')
   assert.equal(classifyProviderError({ code: 'DATABASE_UNAVAILABLE' }), 'local_dependency')
   assert.equal(classifyProviderError({ statusCode: 401 }), 'auth_configuration')
   assert.equal(classifyProviderError({ statusCode: 422 }), 'invalid_request')
   assert.equal(classifyProviderError({ code: 'USER_CANCELLED' }), 'user_cancelled')
+})
+
+test('Provider HTTP failures distinguish account balance from auth and upstream outages', () => {
+  assert.equal(classifyProviderHttpFailure({ statusCode: 403, providerReasonCode: 'NOT_ENOUGH_BALANCE' }), 'provider_balance')
+  assert.equal(classifyProviderHttpFailure({ statusCode: 403 }), 'auth_configuration')
+  assert.equal(classifyProviderHttpFailure({ statusCode: 502 }), 'provider_5xx')
+  const safe = buildSafeProviderError({
+    statusCode: 503,
+    code: 'PROVIDER_BALANCE_INSUFFICIENT',
+    details: { providerReasonCode: 'NOT_ENOUGH_BALANCE', rawBody: 'secret response' },
+  })
+  assert.equal(safe.code, 'PROVIDER_BALANCE_INSUFFICIENT')
+  assert.equal(safe.category, 'provider_balance')
+  assert.equal(safe.reasonCode, 'provider_balance_insufficient')
+  assert.equal(safe.retryable, false)
+  assert.equal(JSON.stringify(safe).includes('secret response'), false)
 })
 
 test('safe Provider errors retain only bounded projected evidence', () => {

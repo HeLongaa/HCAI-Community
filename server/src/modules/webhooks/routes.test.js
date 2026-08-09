@@ -118,3 +118,32 @@ test('matching domain events become signed deliveries, dead-letter, and replay i
     assert.equal(created.payload.data.subscription.id, subscription.id)
   } finally { await server.close() }
 })
+
+test('Provider alert deliveries are Admin-only and replay dead letters idempotently', async () => {
+  const { repository, server } = await setup()
+  try {
+    await repository.providerAlertDeliveries.enqueueFromAuditEvents([{
+      id: 'audit-provider-alert-route',
+      action: 'creative.provider_budget.threshold_crossed',
+      resourceId: 'daily:router',
+      createdAt: '2026-07-29T00:00:00.000Z',
+      metadata: { sourceKey: 'provider-alert-route', providerId: 'router', workspace: 'video', crossedThresholdPercent: 80, severity: 'warning' },
+    }], { channels: ['webhook'], maxAttempts: 1 })
+    const [claim] = await repository.providerAlertDeliveries.claim({ workerId: 'route-test' })
+    const dead = await repository.providerAlertDeliveries.complete(claim.id, claim.leaseToken, { outcome: 'permanent_failure', statusCode: 403, responseClass: '4xx', errorCode: 'PROVIDER_ALERT_REMOTE_REJECTED' })
+
+    const forbidden = await requestJson(server.url, '/api/admin/provider-alert-deliveries', { method: 'GET', token: ownerToken })
+    assert.equal(forbidden.status, 403)
+    const listed = await requestJson(server.url, '/api/admin/provider-alert-deliveries?status=dead_lettered&channel=webhook', { method: 'GET', token: adminToken })
+    assert.equal(listed.status, 200); assert.equal(listed.payload.data.length, 1)
+    assert.equal(Object.hasOwn(listed.payload.data[0], 'payload'), false)
+    assert.equal(JSON.stringify(listed.payload).includes('provider-alert-secret'), false)
+
+    const body = { expectedVersion: dead.version, reasonCode: 'provider_recovered', idempotencyKey: 'provider-alert-route-replay-0001', maxAttempts: 3 }
+    const replayed = await requestJson(server.url, `/api/admin/provider-alert-deliveries/${dead.id}/replay`, { token: adminToken, body })
+    assert.equal(replayed.status, 200); assert.equal(replayed.payload.data.status, 'queued'); assert.equal(replayed.payload.data.replayCount, 1)
+    assert.equal(Object.hasOwn(replayed.payload.data, 'payload'), false)
+    const duplicate = await requestJson(server.url, `/api/admin/provider-alert-deliveries/${dead.id}/replay`, { token: adminToken, body })
+    assert.equal(duplicate.status, 200); assert.equal(duplicate.payload.data.replayCount, 1)
+  } finally { await server.close() }
+})

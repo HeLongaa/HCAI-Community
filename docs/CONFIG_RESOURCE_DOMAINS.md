@@ -71,6 +71,10 @@ Task rule:
 
 Unknown fields are rejected. Announcement end time must be after start time. Keys use lowercase letters, numbers, dots, slashes, underscores, and hyphens.
 
+## Retention
+
+Superseded published revisions are minimized after 365 days by a default-disabled leased worker. Full title, description, value, and actor data are removed, while version/event/hash/linkage fields and a bounded SHA-256-only shape summary remain. The current revision is never age-swept. Publication and retention share `configuration-resource:<id>` advisory locks; PostgreSQL rejects malformed summaries and any attempt to restore minimized content, and rollback returns `REVISION_REDACTED`.
+
 ## Verification
 
 Run:

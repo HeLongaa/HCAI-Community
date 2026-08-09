@@ -3,14 +3,17 @@ import { ArchiveRestore, ChevronRight, Clock3, Database, RefreshCw, ShieldCheck 
 
 import { adminService } from '../../services/adminService'
 import type { DataRightsBackupClass, DataRightsMetricsDto, DataRightsRequestDto, DataRightsRequestType, DataRightsStatus } from '../../services/contracts'
+import { AdminActionFeedback, type AdminActionFeedbackMessage } from './AdminActionFeedback'
 
-type Props = { isZh: boolean; canRead: boolean; canManage: boolean; notify: (message: string) => void }
+type Props = { isZh: boolean; canRead: boolean; canManage: boolean }
 const requestTypes: DataRightsRequestType[] = ['data_export', 'account_deletion']
 const statuses: DataRightsStatus[] = ['identity_verified', 'processing', 'primary_completed', 'completed', 'cancelled', 'blocked']
 const backupClasses: DataRightsBackupClass[] = ['primary_database', 'object_storage', 'audit_archive']
 const formatDate = (value: string | null, isZh: boolean) => value ? new Date(value).toLocaleString(isZh ? 'zh-CN' : 'en-US') : '-'
 
-export function DataRightsAdminPanel({ isZh, canRead, canManage, notify }: Props) {
+const actionError = (error: unknown, fallback: string) => error instanceof Error && error.message ? `${fallback} ${error.message}` : fallback
+
+export function DataRightsAdminPanel({ isZh, canRead, canManage }: Props) {
   const [requests, setRequests] = useState<DataRightsRequestDto[]>([])
   const [metrics, setMetrics] = useState<DataRightsMetricsDto | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -25,6 +28,8 @@ export function DataRightsAdminPanel({ isZh, canRead, canManage, notify }: Props
   const [currentTime, setCurrentTime] = useState(0)
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [readError, setReadError] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<AdminActionFeedbackMessage | null>(null)
 
   const selected = useMemo(() => requests.find((item) => item.id === selectedId) ?? null, [requests, selectedId])
   const load = useCallback(async () => {
@@ -39,11 +44,12 @@ export function DataRightsAdminPanel({ isZh, canRead, canManage, notify }: Props
       setRequests(items)
       setMetrics(nextMetrics)
       setSelectedId((current) => items.some((item) => item.id === current) ? current : items[0]?.id ?? null)
+      setReadError(null)
     } catch (error) {
       console.info('[data-rights-admin]', error)
-      notify(isZh ? '数据权利请求加载失败。' : 'Could not load data rights requests.')
+      setReadError(isZh ? '数据权利请求加载失败。' : 'Could not load data rights requests.')
     } finally { setLoading(false) }
-  }, [canRead, isZh, notify, requestType, status])
+  }, [canRead, isZh, requestType, status])
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void load(), 0)
@@ -53,20 +59,28 @@ export function DataRightsAdminPanel({ isZh, canRead, canManage, notify }: Props
   const processRequest = async () => {
     if (!selected || !canManage) return
     setBusy(true)
+    setFeedback(null)
     try {
       const updated = await adminService.processDataRightsRequest(selected.id, { expectedVersion: selected.version, reasonCode })
       setRequests((current) => current.map((item) => item.id === updated.id ? updated : item))
-      setMetrics(await adminService.dataRightsMetrics())
-      notify(isZh ? '数据权利请求已处理。' : 'Data rights request processed.')
+      try {
+        setMetrics(await adminService.dataRightsMetrics())
+        setReadError(null)
+      } catch (metricError) {
+        console.info('[data-rights-admin-metrics]', metricError)
+        setReadError(isZh ? '请求已处理，但指标刷新失败。' : 'The request was processed, but metrics could not be refreshed.')
+      }
+      setFeedback({ kind: 'success', text: isZh ? '数据权利请求已处理。' : 'Data rights request processed.' })
     } catch (error) {
       console.info('[data-rights-admin]', error)
-      notify(isZh ? '请求处理失败，请检查宽限期和版本。' : 'Processing failed; check the grace period and version.')
+      setFeedback({ kind: 'error', text: actionError(error, isZh ? '请求处理失败，请检查宽限期和版本。' : 'Processing failed; check the grace period and version.') })
     } finally { setBusy(false) }
   }
 
   const recordBackup = async () => {
     if (!selected || !canManage || !expiredAt) return
     setBusy(true)
+    setFeedback(null)
     try {
       const updated = await adminService.recordDataRightsBackupReceipt(selected.id, {
         backupClass,
@@ -76,12 +90,18 @@ export function DataRightsAdminPanel({ isZh, canRead, canManage, notify }: Props
         verifiedByRef,
       })
       setRequests((current) => current.map((item) => item.id === updated.id ? updated : item))
-      setMetrics(await adminService.dataRightsMetrics())
+      try {
+        setMetrics(await adminService.dataRightsMetrics())
+        setReadError(null)
+      } catch (metricError) {
+        console.info('[data-rights-admin-metrics]', metricError)
+        setReadError(isZh ? '凭证已记录，但指标刷新失败。' : 'The evidence was recorded, but metrics could not be refreshed.')
+      }
       setObjectRefHash(''); setEvidenceHash(''); setExpiredAt('')
-      notify(isZh ? '备份到期凭证已记录。' : 'Backup expiry evidence recorded.')
+      setFeedback({ kind: 'success', text: isZh ? '备份到期凭证已记录。' : 'Backup expiry evidence recorded.' })
     } catch (error) {
       console.info('[data-rights-admin]', error)
-      notify(isZh ? '备份凭证记录失败，请检查到期时间与哈希。' : 'Could not record backup evidence; check expiry and hashes.')
+      setFeedback({ kind: 'error', text: actionError(error, isZh ? '备份凭证记录失败，请检查到期时间与哈希。' : 'Could not record backup evidence; check expiry and hashes.') })
     } finally { setBusy(false) }
   }
 
@@ -92,6 +112,8 @@ export function DataRightsAdminPanel({ isZh, canRead, canManage, notify }: Props
 
   return <section className="panel data-rights-admin" data-testid="data-rights-admin-panel">
     <div className="panel-heading"><div><span className="eyebrow">{isZh ? '隐私运营' : 'Privacy operations'}</span><h2>{isZh ? '数据权利请求' : 'Data rights requests'}</h2></div><button className="icon-button" type="button" title={isZh ? '刷新' : 'Refresh'} aria-label={isZh ? '刷新数据权利请求' : 'Refresh data rights requests'} disabled={loading} onClick={() => void load()}><RefreshCw size={17}/></button></div>
+    <AdminActionFeedback message={readError ? { kind: 'error', text: readError } : null} />
+    <AdminActionFeedback message={feedback} />
     {metrics && <div className="data-rights-metrics">
       <div><Database size={16}/><strong>{metrics.total}</strong><span>{isZh ? '总请求' : 'Total'}</span></div>
       <div><Clock3 size={16}/><strong>{metrics.active}</strong><span>{isZh ? '处理中' : 'Active'}</span></div>

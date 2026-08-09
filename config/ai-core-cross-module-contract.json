@@ -62,7 +62,12 @@
     "delivery": "server/src/creative/deliveryAssets.js",
     "routes": "server/src/modules/creative/routes.js",
     "userInterface": "src/features/generations/GenerationCenterPage.tsx",
-    "adminInterface": "src/features/admin/AdminPage.tsx",
+    "adminInterfaces": [
+      "src/features/admin/AdminPage.tsx",
+      "src/features/admin/AdminGenerationRecordsPanel.tsx",
+      "src/features/admin/AdminGenerationRecoveryPanel.tsx",
+      "src/features/admin/useAdminGenerationOperations.ts"
+    ],
     "document": "docs/AI_CORE_CROSS_MODULE_REUSE.md"
   }
 }

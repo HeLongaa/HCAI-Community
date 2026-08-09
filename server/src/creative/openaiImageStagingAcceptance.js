@@ -116,6 +116,8 @@ export const runOpenAIImageStagingAcceptance = async ({
   fetchImpl = fetch,
   now = new Date(),
   repositories: providedRepositories = null,
+  inputSafetyClassifier = null,
+  outputSafetyClassifier = null,
 } = {}) => {
   resetCreativePolicyState()
   const repositories = providedRepositories ?? createSeedRepository()
@@ -147,6 +149,8 @@ export const runOpenAIImageStagingAcceptance = async ({
     now: () => new Date(now),
     inputAssetReader: async (asset) => asset.id === inputAssetId ? { body: sourcePng } : null,
     openAIImageFetchImpl: countedFetch,
+    inputSafetyClassifier,
+    outputSafetyClassifier,
   })
   const server = createServer(router, {
     resolveUser: async (token) => token === authToken ? actor : null,
@@ -199,19 +203,29 @@ export const runOpenAIImageStagingAcceptance = async ({
       parameters: sharedParameters,
     })
     if (
-      blocked.status !== 422 ||
-      blocked.payload?.error?.code !== 'CREATIVE_MODERATION_BLOCKED' ||
+      blocked.status !== 200 ||
+      blocked.payload?.data?.status !== 'review_required' ||
+      blocked.payload?.data?.safety?.decision !== 'block' ||
+      blocked.payload?.data?.outputs?.length !== 0 ||
+      !blocked.payload?.data?.safety?.moderationCaseId ||
       providerCalls !== callsBeforeBlockedPrompt
     ) {
-      throw new Error('OpenAI Image pre-dispatch moderation acceptance failed')
+      throw new Error(
+        'OpenAI Image pre-dispatch moderation acceptance failed: ' +
+        `http=${blocked.status} code=${blocked.payload?.error?.code ?? 'none'} status=${blocked.payload?.data?.status ?? 'none'} ` +
+        `decision=${blocked.payload?.data?.safety?.decision ?? 'none'} ` +
+        `outputs=${blocked.payload?.data?.outputs?.length ?? 'none'} ` +
+        `case=${Boolean(blocked.payload?.data?.safety?.moderationCaseId)} ` +
+        `providerCalls=${providerCalls}/${callsBeforeBlockedPrompt}`,
+      )
     }
 
     const textLedger = await repositories.creativeProviderCosts.findForGeneration(textGeneration.id)
     const editLedger = await repositories.creativeProviderCosts.findForGeneration(editGeneration.id)
-    if (!['settled', 'reconciliation_required'].includes(textLedger?.status)) {
+    if (textLedger?.status !== 'settled') {
       throw new Error('OpenAI Image text cost closeout acceptance failed')
     }
-    if (!['settled', 'reconciliation_required'].includes(editLedger?.status)) {
+    if (editLedger?.status !== 'settled') {
       throw new Error('OpenAI Image edit cost closeout acceptance failed')
     }
     if (providerCalls !== 2) {
@@ -226,6 +240,8 @@ export const runOpenAIImageStagingAcceptance = async ({
       textToImageCompleted: true,
       imageToImageCompleted: true,
       inputModerationPassed: true,
+      inputAssetSafetyPassed: editGeneration.safety?.input?.decision === 'allow' && editGeneration.safety.input.classified === true,
+      outputSafetyPassed: true,
       outputScanPassed: true,
       persistedOutputCount: 2,
       lineageVerified: true,
@@ -241,4 +257,18 @@ export const runOpenAIImageStagingAcceptance = async ({
   }
 }
 
-export const openAIImageStagingAcceptanceFixture = Object.freeze({ sourcePng })
+export const openAIImageStagingAcceptanceFixture = Object.freeze({
+  sourcePng,
+  inputSafetyClassifier: async () => ({
+    decision: 'allow',
+    classifierId: 'fixture-input-safety',
+    classifierVersion: '1',
+    categories: [],
+  }),
+  outputSafetyClassifier: async () => ({
+    decision: 'allow',
+    classifierId: 'fixture-output-safety',
+    classifierVersion: '1',
+    categories: [],
+  }),
+})

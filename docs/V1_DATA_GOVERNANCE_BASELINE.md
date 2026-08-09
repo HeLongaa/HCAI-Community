@@ -12,14 +12,24 @@ production.
 
 The data inventory and implementation contract are frozen. The complete runtime is not implemented.
 
-- All 152 Prisma models are assigned exactly once to a governed data asset.
+- All 171 Prisma models are assigned exactly once to a governed data asset.
 - Six non-Prisma asset classes cover raw generation inputs, raw Provider payloads, observability, backups, export
   packages, and deployment secrets.
 - Unknown data is `restricted`; unknown flows and processors are denied.
 - Production data in fixtures, mocks, demo seeds, Notion, or source control is forbidden.
 - Raw Provider payload persistence and secret persistence outside a managed secret store are forbidden.
-- Account export/deletion, Provider deletion receipts, backup expiry rehearsal, and global retention automation remain
-  unimplemented.
+- Account export/deletion and due-deletion processing are implemented. External Provider deletion runs before local deletion through an explicitly enabled HTTPS privacy gateway, rejects unbound external generations, dispatches every operation reference in deterministic idempotent batches, validates request-bound version 2 receipts, and stores only bounded hash-based evidence. The deployed shared-account HCAI Router does not expose operation-scoped erasure, so a separate reviewed processor remains required before production approval.
+- Production object-storage export acceptance, target-environment 35-day backup scheduling and managed-key destruction, field-level retention automation, processor disclosure, and legal approval remain incomplete. The isolated RELEASE-01 runner now deletes database/media backup objects after recovery and proves restore-negative HEAD/GET behavior, but that simulated boundary is not production acceptance. `config/v1-data-governance.json` carries a one-to-one `retentionAutomationInventory` for all 24 policies; it is the authoritative implemented/partial/pending/blocked inventory and does not change `retentionAutomationComplete=false`.
+- OAuth authorization requests, refresh tokens, and API key credentials now have a default-disabled leased retention worker that hard-deletes terminated credentials after 30 days. Migration `0106`, focused tests, and isolated PostgreSQL acceptance passed; target-environment acceptance is still required and production approval remains false.
+- Audit events now have a default-disabled leased archive-before-prune worker. It preserves the configured recent-event floor, rejects Mock or failed archive storage, and revalidates the bounded 730-day prefix under the audit-chain transaction lock before writing immutable disposition evidence and pruning. Target-environment S3 execution and retained-prefix verification are still required; global retention and production approval remain false.
+- Moderation now has two default-disabled leased 730-day redaction workers. The case worker starts after the 30-day appeal window when no appeal exists, or after the appeal decision; pending appeals, scoped `audit/safety` legal holds, and concurrent holds block processing. The operational worker treats the final `retired` transition as a rule version's terminal time and creation as a completed bulk operation's terminal time. Migrations `0110` and `0111` remove case, rule, transition, and bulk-operation subject links and free-text/target details while retaining bounded categories, hashes, counts, reason codes, outcomes, states, and timestamps. Retention-redacted rules are permanently retired, and bulk replay remains deduplicated by a non-reversible idempotency hash. Target-environment acceptance is pending and production approval remains false.
+- Marketplace retention now has a default-disabled leased worker for mutable task-family records. Migration `0113` hard-deletes untouched 30-day drafts and minimizes terminal task, proposal, submission, dispute-review, notification, search, and portfolio-source copies after 730 days. Active submissions, open disputes, unsettled escrow/accounting, and scoped `tasks` legal holds fail closed. All task-family writes share `task:<id>` database locks, and a redacted task cannot be re-identified. This remains partial: `TaskLifecycleMutation`, `DomainEventOutbox`, `PointLedger`/internal accounting, and normalized `TaskSubmissionAsset` links are governed as append-only or immutable evidence and cannot be rewritten or deleted without an approved anonymized-evidence contract. Isolated PostgreSQL acceptance passed; target-environment migration and worker acceptance remain pending, so global retention and production approval remain false.
+- Rotated Provider inference credentials now have a default-disabled leased lifecycle worker. It sends only transient SecretRef/version metadata to an explicitly confirmed fixed HTTPS Secret Manager gateway, records hash-only immutable receipts, disables a retired version first, and deletes it only after the replacement has been current for 30 days. Stable idempotency keys make retries safe. Encryption, decryption, and signing purposes are excluded by a closed purpose allowlist. Migration `0114` and target-environment gateway acceptance remain required; global retention and production approval remain false.
+- New internal-accounting facts no longer copy a user id or public handle into immutable movement `accountRef`, operation `actorRef`, reconciliation issue keys, missing-account source ids, or reconciliation evidence. Prisma and Seed use the same stable `subject_<sha256>` reference while transient owner ids remain available only to the balance-update transaction. Real PostgreSQL concurrency, reconciliation, dual-reviewed repair, and pseudonymization checks pass. This is partial: historical immutable operations, movements, issues, reviews, and compensation evidence still require an approved anonymized-evidence or cryptographic-erasure contract before a retention worker can process them.
+- Closed support records now use a default-disabled leased two-stage minimization worker. Message bodies are replaced after 365 days; after 730 days requester, assignee, author, creator, subject-reference, free-text, locale context, and related-resource links are removed while bounded ticket state, SLA timestamps, and typed immutable case identifiers remain. Active `support/audit` legal holds and non-terminal data-rights requests block processing. Migration `0115` and target-environment concurrency/access acceptance remain required; global retention and production approval remain false.
+- Terminal Provider lifecycle records now use a default-disabled leased 180-day minimization worker. Replay is correctly governed as a state transition rather than append-only because claim and applied/rejected side-effect results update the row. Migration `0116` adds irreversible retention markers and shared `creative-generation:<id>` write locks across operation, mutation, replay, output-ingestion, and retry records. Provider job/event identifiers, original idempotency/source keys, requester and asset/storage/claim references, previews, and free JSON are removed only after every lifecycle record is terminal and review, legal-hold, accounting, quota, and reconciliation blockers are closed; bounded status, reason, timing, count, and SHA-256 evidence remains. Isolated PostgreSQL acceptance passed, but target-environment migration, scheduling, replay, alerting, and access-control acceptance remain required; global retention and production approval remain false.
+- Superseded system-setting and configuration-resource history now has a default-disabled leased 365-day minimization worker. It preserves revision IDs, versions, event types, content hashes, predecessor links, reason codes, and a database-validated bounded SHA-256 shape summary while irreversibly clearing full values, titles/descriptions, actor references, change diffs, and notes. Current revisions and pending/approved rollback targets are excluded. Publication and retention share scope advisory locks, migration `0117` prevents malformed summaries and restoration after minimization, and isolated PostgreSQL 18 migration/concurrency/negative acceptance passed. Target-environment migration, scheduling, alerting, and access-control acceptance remain required; global retention and production approval remain false.
+- Media metadata now has a default-disabled leased retention worker. After the object is confirmed deleted, deleted/rejected assets reach 30 days or abandoned pending uploads reach one day, and no active `media/audit/safety` hold exists, migration `0118` deletes mutable Private Library copies, retains immutable task/generation/Chat/lineage evidence and portfolio/scan state rows while clearing owner and free-form context, removes the asset from legacy parent arrays, clears asset owner, subject, file, object, verification, and metadata fields, and retains an irreversible structural tombstone. All media/reference writes share `media-asset:<id>` transaction locks and database triggers reject restoration or reattachment. A fresh PostgreSQL 18 database applied all 112 migrations, and strict hold, object-first, concurrency, relation-minimization, legacy-array cleanup, and negative acceptance passed; target-environment scheduling and storage evidence remain required.
 - No real Provider call, credential, SDK, callback, polling client, deletion request, or production traffic is approved
   by this record.
 
@@ -43,15 +53,15 @@ not become public because the post is public.
 | `governance_configuration` | Internal | PostgreSQL | `Permission`, `RolePermission`, `SystemSetting`, `SystemSettingChange`, `SystemSettingRevision`, `WebhookControl` | Superseded history 365 days |
 | `operation_leases` | Internal | PostgreSQL | `OperationLease` | Expiry/release + 7 days |
 | `identity_account_profile` | Confidential | PostgreSQL | `User`, `Profile`, `ProfilePortfolioAsset` | Verified deletion + 30 days |
-| `authentication_credentials_sessions` | Restricted | PostgreSQL | `AuthAccount`, `OAuthAuthorizationRequest`, `RefreshToken` | OAuth request expiry; unlink/expiry/revoke + 30 days |
-| `account_generation_risk_records` | Restricted | PostgreSQL | `RiskPolicy`, `RiskSignal`, `RiskCase`, `RiskCaseSignal`, `RiskDispositionEvent`, `RiskAppeal` | Security evidence 365 days; subject links are redacted after retention while legal-hold decision evidence is preserved |
+| `authentication_credentials_sessions` | Restricted | PostgreSQL | `AuthAccount`, `AuthEmailAction`, `OAuthAuthorizationRequest`, `RefreshToken` | OAuth/email action expiry; unlink/consume/expiry/revoke + 30 days |
+| `account_generation_risk_records` | Restricted | PostgreSQL | `RiskPolicy`, `RiskSignal`, `RiskCase`, `RiskCaseSignal`, `RiskDispositionEvent`, `RiskAppeal` | Terminal case + 365 days; subject, appeal, actor, and dedupe links are redacted while hash-only decision evidence is preserved; active `audit/safety` hold blocks redaction |
 | `developer_credentials` | Restricted | PostgreSQL | `DeveloperAccessControl`, `ServiceAccount`, `ApiKeyCredential`, `WebhookSubscription`, `WebhookSigningSecret` | Revoke immediately; credential expiry plus 30 days; plaintext API and webhook signing keys have zero durable retention |
 | `marketplace_records` | Confidential | PostgreSQL | `Task`, `TaskProposal`, `TaskSubmission` | Terminal task/dispute + 730 days |
 | `community_content_interactions` | Public | PostgreSQL | `Post`, `Comment`, `PostLike` | Delete request + 30 days |
 | `search_index_records` | Restricted | PostgreSQL | `SearchDocument`, `SearchDocumentGrant`, `SearchSyncQueue` | Searchable projection refresh/delete within 1 day; failed queue evidence within 7 days |
 | `private_library_items` | Confidential | PostgreSQL | `LibraryItem` | Delete request + 30 days |
 | `internal_points_ledger` | Confidential | PostgreSQL | `PointLedger`, `InternalPointAccount` | Terminal entry/account close + 730 days |
-| `media_asset_metadata` | Confidential | PostgreSQL | `MediaAsset`, `MediaStorageObject`, `MediaAssetRelation` | Delete/reject/abandon + 30 days; object state and verification evidence stay server-owned; V1-09 output metadata excludes Provider URLs; V1-36 lineage stores application asset ids only |
+| `media_asset_metadata` | Confidential | PostgreSQL | `MediaAsset`, `MediaStorageObject`, `MediaAssetRelation` | Delete/reject + 30 days, abandoned pending upload + 1 day; object-first irreversible structural tombstone implemented, pending target-environment acceptance |
 | `media_object_bytes` | Restricted | Object storage | Uploads, attachments, generated assets | Revoke now, object delete within 24 hours |
 | `media_scan_safety_records` | Restricted | PostgreSQL/archive | `MediaScanJob` | Terminal scan + 180 days, maximum 50/asset |
 | `creative_generation_records` | Restricted | PostgreSQL | `CreativeGeneration` | Terminal generation + 365 days; preview 30 days |
@@ -63,14 +73,14 @@ not become public because the post is public.
 | `provider_control_records` | Confidential | PostgreSQL | `CreativeProviderControlState`, `CreativeProviderCapEvidence`, `CreativeProviderCircuitState`, `CreativeProviderCircuitEvent` | Control/circuit reconciliation + 730 days; evidence and probe tokens are hash-only |
 | `ai_evaluation_records` | Restricted | PostgreSQL/archive | `AiEvaluationSuite`, `AiEvaluationCase`, `AiEvaluationPolicy`, `AiEvaluationRun`, `AiEvaluationCaseResult` | Created + 730 days; raw prompts/outputs are forbidden and only hashes, bounded scores, safety outcomes, and regression evidence persist |
 | `provider_legal_review_records` | Restricted | PostgreSQL/archive | `ProviderLegalReview` | Created + 730 days; append-only Provider/model/environment/region decisions retain only gate outcomes, SHA-256 evidence and safe internal reviewer references, never contract bodies, URLs, credentials, Provider payloads or personal legal notes |
-| `notification_records` | Confidential | PostgreSQL | `Notification`, `NotificationDelivery`, `WebhookDelivery`, `WebhookDeliveryAttempt`, `WebhookDeliveryReplay` | Created + 180 days; exports omit signing material and retain only owner-visible delivery summaries |
-| `support_ticket_records` | Restricted | PostgreSQL | `SupportTicket`, `SupportTicketMessage`, `SupportTicketCaseLink` | Ticket close + 730 days; then redact request and message bodies unless a scoped hold applies |
+| `notification_records` | Confidential | PostgreSQL | `Notification`, `NotificationDelivery`, `NotificationEmailProviderEvent`, `NotificationEmailSuppression`, `WebhookDelivery`, `WebhookDeliveryAttempt`, `WebhookDeliveryReplay`, `ProviderAlertDelivery`, `ProviderAlertDeliveryAttempt`, `ProviderAlertDeliveryReplay` | Notifications and hash-only Provider event evidence: created/received + 180 days. Active HMAC recipient suppression remains until explicit address consent recovery or account deletion. Provider alerts: terminal update + 180 days; active delivery is excluded. Exports and Admin APIs omit outbound payloads, destinations, recipients and signing material |
+| `support_ticket_records` | Restricted | PostgreSQL | `SupportTicket`, `SupportTicketMessage`, `SupportTicketCaseLink` | Closed + 365 days removes message bodies; closed + 730 days removes subject/free text/resource and actor links while retaining bounded ticket and immutable typed case evidence; legal holds and open data-rights requests block |
 | `moderation_review_records` | Restricted | PostgreSQL | `AdminReview` | Review/appeal close + 730 days |
 | `audit_event_records` | Restricted | PostgreSQL/archive | `AuditEvent`, `AuditArchiveManifest`, `AuditRetentionDisposition` | Created + 730 days; archive-before-prune, legal hold, retained-prefix checkpoints, and immutable disposition evidence are mandatory |
-| `security_event_records` | Restricted | PostgreSQL | `SecurityEvent` | 365 days; confirmed critical incident 730 days |
+| `security_event_records` | Restricted | PostgreSQL | `SecurityEvent`, `SecurityIncident` | 365 days; resolved confirmed-critical incident 730 days; open incidents and matching audit/safety legal holds block deletion; unattributed legacy events fail closed while such a hold exists |
 | `raw_generation_inputs` | Restricted | Browser/runtime memory | Prompt, message, attachment, reference, attestation | Zero durable retention unless separately normalized |
 | `raw_provider_payloads` | Restricted | Runtime memory | Provider request/response/callback/poll | Zero durable retention after allowlisted normalization |
-| `observability_logs_traces_metrics` | Internal | PostgreSQL telemetry store | Sanitized structured logs, Trace spans, and versioned SLO alerts | Logs 30 days, traces 14 days, alerts by incident policy |
+| `observability_logs_traces_metrics` | Internal | PostgreSQL telemetry store | Sanitized structured logs, Trace spans, anonymous daily retention aggregates, and versioned SLO alerts | Logs 30 days, traces 7 days, anonymous aggregates 90 days, alerts by incident policy |
 | `backup_archive_copies` | Restricted | Backup/archive store | Encrypted database/object backup, archive manifest | Rolling maximum 35 days |
 | `user_export_packages` | Restricted | Temporary export storage | Manifest, JSON, clean owned assets, checksums | Package 7 days, private link 24 hours |
 | `deployment_secrets` | Secret | Managed secret store/runtime memory | Keys, credentials, signing material | Rotate every 90 days; retire/delete within 30 |
@@ -176,6 +186,11 @@ V1-67 owns implementation. The baseline requires:
 6. A 30-day fulfillment target, seven-day package retention, and 24-hour private download link.
 7. Created, downloaded, expired, and deleted evidence.
 
+The runtime now sweeps expired export packages with a dedicated, default-disabled leased worker. It accepts only the
+`exports/data-rights/<safe-subject-ref>/<request-id>.json` namespace, treats storage `404` as idempotent success, deletes
+the object before its database locator, and preserves only an immutable hash receipt in the request event and audit
+trail. A failed object deletion keeps the locator for the next bounded retry.
+
 Subject-owned Chat conversations and messages are included in the export with ordering and timestamps. Other-subject
 content and internal safety evidence are redacted according to the per-asset policy.
 
@@ -220,7 +235,7 @@ All eight selected creative Providers remain `not_approved` for real traffic. Th
 | Replicate FLUX 1.1 Pro | Prompt/reference/output | API data normally removed after one hour | Geography, model terms, training, retention/deletion evidence |
 | OpenAI GPT-5.6 Terra | Messages/context | Up to 30-day abuse monitoring; `store=false` | Supported geography and approved retention/ZDR posture |
 | Anthropic Claude Sonnet 5 | Messages/context | 30-day standard with policy/legal/safety exceptions | Supported-country and US-storage approval |
-| Google Veo 3.1 Fast | Prompt/reference/output | Abuse logging and up to 24-hour cache may apply | Approved US region and logging/cache configuration |
+| HCAI Router Seedance 2.0 Fast | Prompt/reference/output | Retention, logging, training, and deletion are not confirmed | Block sensitive data and production until Router/upstream terms and processing locations are approved |
 | Runway Gen-4.5 | Prompt/reference/output | Upload/output URL expiry does not define all retention | Enterprise no-training, retention, deletion, and region terms |
 | ElevenLabs Music v2 Enterprise | Prompt/lyrics/reference/output | Public Music deletion period is not established | Enterprise Music order, region/ZRM, opt-out, deletion receipt |
 | Google Lyria 3 Pro Preview | Prompt/reference/output | Preview retention requires written confirmation | Preview/cross-border approval and model-specific evidence |
@@ -249,6 +264,7 @@ Available foundations:
 - Refresh sessions can be revoked and have expiry timestamps.
 - Media scan history supports archive-before-prune with 180-day and 50-record defaults.
 - Creative records store prompt hash and bounded preview, not a raw prompt column.
+- Terminal creative generations now use a default-disabled two-stage retention Worker: prompt/error previews are cleared after 30 days, and subject, asset-reference, Provider-request and non-allowlisted JSON metadata is removed after 365 days. Active review/appeal, legal hold, Provider lifecycle, ingestion, mutation, quota, credit, cost, or reconciliation work blocks disposition; a database advisory-lock trigger serializes every generation write with retention.
 - Provider adapter metadata rejects secret-like keys.
 - The default-disabled Provider HTTP client reads its credential only from deployment secrets, fixes the destination and
   model endpoint, and sends only an allowlisted minimum payload.
@@ -257,6 +273,7 @@ Available foundations:
 - Admin creative serializers fold unsafe identifiers, URLs, and errors.
 - Mock/S3-compatible object and archive writer boundaries exist.
 - Versioned policy consent is stored as an allowlisted immutable `AuditEvent` without IP, token, user-agent, or raw-content fields.
+- Prisma and Seed observability writes now share a fail-closed persistent-log projector. Root fields match `ObservabilityLog`; event attributes are flat and limited to HTTP status/sampling or bounded frontend identifiers and SHA-256 error evidence. Unknown keys and nested objects are rejected before a log or paired span is written.
 - Support/report/appeal/privacy/export/deletion entry requests use owner-scoped `AdminReview` rows; audit metadata excludes free-form details.
 - The V1-20 Chat contract names the governed conversation asset, 365-day inactivity limit, immediate access revocation,
   30-day primary deletion target, and 35-day backup-expiry boundary.
@@ -269,14 +286,15 @@ Available foundations:
 
 Known gaps:
 
-- No account export package builder or account deletion orchestrator.
-- No field-level retention sweeper outside media scan history.
-- No Provider deletion request/receipt ledger.
-- No backup expiry/restore deletion rehearsal evidence.
-- No global structured-log allowlist enforcement.
-- No legal-hold registry and expiry workflow.
+- Account export expiry automation is implemented; production object-store deletion and failure-retry acceptance is still required.
+- Field-level retention remains incomplete globally. Generation terminal metadata now joins the bounded sweepers already implemented for media scan, Chat, data-rights export packages, observability, notifications, operation leases, private Library, auth credentials, audit events, community, security, risk, and moderation records. Target-environment migration acceptance and the remaining frozen policy conflicts are still required.
+- Provider deletion gateway still needs production processor disclosure, legal approval, and production-like acceptance.
+- Local isolated backup expiry now verifies database/media backup deletion and restore-negative GET behavior after a simulated 35-day boundary. Target-environment lifecycle scheduling and managed-key destruction evidence remain incomplete.
+- Scoped legal-hold registry and expiry behavior are implemented with normalized domain scope, hashed authority references,
+  append-only events, 90-day review, 365-day maximum expiry, domain-level deletion exclusion, and blocked-request retry.
+  Subject-scoped deletion-cutoff serialization and concurrent hold-creation versus Provider-dispatch acceptance passed on isolated PostgreSQL. Target-environment migration acceptance remains required.
 - No account-level Chat export/deletion orchestration beyond owner conversation deletion and restore tombstones.
-- Current foreign keys do not implement the frozen anonymization plan by themselves.
+- Community anonymization now uses a fixed deleted system identity and transactional review/legal-hold checks; target-environment migration and concurrency acceptance are still required. Other domains' foreign keys do not implement their frozen anonymization plans by themselves.
 
 ## Implementation Handoff
 

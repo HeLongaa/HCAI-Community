@@ -1,9 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { HttpError } from '../common/errors/httpError.js'
 import {
+  notificationEmailProviderEventEvidence,
+  notificationRecipientFingerprint,
+} from './emailProviderEvents.js'
+import {
   buildNotificationDeliveryBusinessMetrics,
   buildNotificationDeliveryConfig,
   defaultNotificationChannelConfigs,
+  maskEmail,
   normalizeDeliveryErrorCode,
   notificationChannelConfigDto,
   notificationChannelConfigRevisionDto,
@@ -20,6 +25,8 @@ export const createSeedNotificationDeliveryRepository = ({
 } = {}) => {
   const deliveries = new Map()
   const attempts = new Map()
+  const emailProviderEvents = new Map()
+  const emailSuppressions = new Map()
   const channelConfigs = new Map(defaultNotificationChannelConfigs(source).map((row) => [row.channel, row]))
   const channelRevisions = new Map([...channelConfigs.values()].map((row) => [row.channel, [{
     id: `notification-channel-revision-${row.channel}`,
@@ -83,16 +90,33 @@ export const createSeedNotificationDeliveryRepository = ({
   }
 
   const repository = {
+    _state: { emailProviderEvents, emailSuppressions },
+    deleteForNotificationIds(notificationIds) {
+      const targetIds = new Set(notificationIds.map(String))
+      const deliveryIds = new Set([...deliveries.values()]
+        .filter((row) => targetIds.has(row.notificationId))
+        .map((row) => row.id))
+      let attemptCount = 0
+      for (const [id, attempt] of attempts) {
+        if (!deliveryIds.has(attempt.deliveryId)) continue
+        attempts.delete(id)
+        attemptCount += 1
+      }
+      for (const id of deliveryIds) deliveries.delete(id)
+      return { deliveries: deliveryIds.size, attempts: attemptCount }
+    },
     createForNotification(notification, recipient) {
       if (!notification?.id || !recipient?.id) return []
       const now = new Date()
       const emailConfig = config().email
       const emailControl = channelConfigs.get('email')
+      const recipientFingerprint = notificationRecipientFingerprint(recipient.email, source)
+      const recipientSuppressed = recipientFingerprint ? emailSuppressions.has(recipientFingerprint) : false
       const definitions = [
         { channel: 'in_app', status: 'sent', sentAt: now, maxAttempts: 1, errorCode: null },
-        emailControl.enabled && emailConfig.available && recipient.email
+        emailControl.enabled && emailConfig.available && recipient.email && !recipientSuppressed
           ? { channel: 'email', status: 'queued', maxAttempts: emailControl.maxAttempts, errorCode: null }
-          : { channel: 'email', status: 'suppressed', suppressedAt: now, maxAttempts: emailControl.maxAttempts, errorCode: recipient.email ? emailControl.enabled ? 'CHANNEL_UNAVAILABLE' : 'CHANNEL_DISABLED' : 'RECIPIENT_EMAIL_MISSING' },
+          : { channel: 'email', status: 'suppressed', suppressedAt: now, maxAttempts: emailControl.maxAttempts, errorCode: recipient.email ? recipientSuppressed ? 'RECIPIENT_SUPPRESSED' : emailControl.enabled ? 'CHANNEL_UNAVAILABLE' : 'CHANNEL_DISABLED' : 'RECIPIENT_EMAIL_MISSING' },
       ]
       const created = []
       for (const definition of definitions) {
@@ -157,8 +181,22 @@ export const createSeedNotificationDeliveryRepository = ({
       const due = [...deliveries.values()]
         .filter((row) => (retryableStatuses.has(row.status) && row.availableAt <= now) || (row.status === 'processing' && row.leaseExpiresAt <= now))
         .sort((left, right) => left.availableAt - right.availableAt || left.createdAt - right.createdAt)
-        .slice(0, Math.min(Math.max(Number(limit), 1), 100))
-      return due.map((row) => {
+      const claims = []
+      const claimLimit = Math.min(Math.max(Number(limit), 1), 100)
+      for (const row of due) {
+        if (claims.length >= claimLimit) break
+        const notification = getNotificationById?.(row.notificationId)
+        const recipient = notification ? getRecipientById?.(notification.recipientId) ?? null : null
+        const fingerprint = row.channel === 'email' ? notificationRecipientFingerprint(recipient?.email, source) : null
+        if (fingerprint && emailSuppressions.has(fingerprint)) {
+          if (row.status === 'processing' && row.leaseToken) {
+            const staleAttempt = [...attempts.values()].find((item) => item.deliveryId === row.id && item.leaseToken === row.leaseToken)
+            if (staleAttempt?.status === 'processing') Object.assign(staleAttempt, { status: 'failed', responseClass: 'permanent', errorCode: 'RECIPIENT_SUPPRESSED', completedAt: now })
+          }
+          Object.assign(row, { status: 'suppressed', suppressedAt: now, leaseToken: null, leaseExpiresAt: null, lastErrorCode: 'RECIPIENT_SUPPRESSED', version: row.version + 1, updatedAt: now })
+          await audit(null, 'notification.delivery.suppressed', row, { reasonCode: 'recipient_suppressed' })
+          continue
+        }
         if (row.status === 'processing' && row.leaseToken) {
           const expiredAttempt = [...attempts.values()].find((item) => item.deliveryId === row.id && item.leaseToken === row.leaseToken)
           if (expiredAttempt?.status === 'processing') Object.assign(expiredAttempt, { status: 'timed_out', responseClass: 'retryable', errorCode: 'LEASE_EXPIRED', completedAt: now })
@@ -172,9 +210,105 @@ export const createSeedNotificationDeliveryRepository = ({
         row.updatedAt = now
         const attempt = { id: `notification-attempt-${randomUUID()}`, deliveryId: row.id, attemptNumber: row.attemptCount, status: 'processing', workerId: String(workerId), leaseToken, responseClass: null, statusCode: null, errorCode: null, startedAt: now, completedAt: null, createdAt: now }
         attempts.set(attempt.id, attempt)
-        const notification = getNotificationById?.(row.notificationId)
-        return { ...dto(row), leaseToken, notification, recipient: notification ? getRecipientById?.(notification.recipientId) ?? null : null }
+        claims.push({ ...dto(row), leaseToken, notification, recipient })
+      }
+      return claims
+    },
+    async suppressClaimIfNeeded(claim) {
+      const row = deliveries.get(String(claim?.id))
+      if (!row || row.channel !== 'email' || row.status !== 'processing' || row.leaseToken !== claim.leaseToken) return null
+      const notification = getNotificationById?.(row.notificationId)
+      const recipient = notification ? getRecipientById?.(notification.recipientId) ?? null : null
+      const fingerprint = notificationRecipientFingerprint(recipient?.email, source)
+      if (!fingerprint || !emailSuppressions.has(fingerprint)) return null
+      const now = new Date()
+      const attempt = [...attempts.values()].find((item) => item.deliveryId === row.id && item.leaseToken === row.leaseToken)
+      if (attempt) Object.assign(attempt, { status: 'failed', responseClass: 'permanent', errorCode: 'RECIPIENT_SUPPRESSED', completedAt: now })
+      Object.assign(row, { status: 'suppressed', suppressedAt: now, leaseToken: null, leaseExpiresAt: null, lastErrorCode: 'RECIPIENT_SUPPRESSED', version: row.version + 1, updatedAt: now })
+      await audit(null, 'notification.delivery.suppressed', row, { reasonCode: 'recipient_suppressed' })
+      return dto(row)
+    },
+    async ingestEmailProviderEvent(verified) {
+      const evidence = notificationEmailProviderEventEvidence(verified, source)
+      const existing = emailProviderEvents.get(evidence.providerEventHash)
+      if (existing) {
+        if (existing.payloadHash !== evidence.payloadHash) {
+          throw new HttpError(409, 'NOTIFICATION_EMAIL_EVENT_IDEMPOTENCY_CONFLICT', 'Provider event ID is already bound to different evidence')
+        }
+        return { accepted: true, replayed: true, suppressed: emailSuppressions.has(evidence.recipientFingerprint), eventId: existing.id }
+      }
+      const event = { id: `notification-email-event-${randomUUID()}`, ...evidence }
+      emailProviderEvents.set(evidence.providerEventHash, event)
+      const matchedDelivery = [...deliveries.values()].find((row) => row.channel === 'email' && row.providerReceiptHash === evidence.providerReceiptHash)
+      const matchedNotification = matchedDelivery ? getNotificationById?.(matchedDelivery.notificationId) : null
+      const matchedRecipient = matchedNotification ? getRecipientById?.(matchedNotification.recipientId) ?? null : null
+      const recipientMatched = Boolean(
+        matchedRecipient?.id
+        && notificationRecipientFingerprint(matchedRecipient.email, source) === evidence.recipientFingerprint,
+      )
+      if (evidence.suppressesRecipient && recipientMatched && !emailSuppressions.has(evidence.recipientFingerprint)) {
+        emailSuppressions.set(evidence.recipientFingerprint, {
+          id: `notification-email-suppression-${randomUUID()}`,
+          userId: matchedRecipient.id,
+          recipientFingerprint: evidence.recipientFingerprint,
+          sourceEventHash: evidence.providerEventHash,
+          reasonType: evidence.eventType === 'complaint' ? 'complaint' : 'permanent_bounce',
+          reasonCode: evidence.reasonCode,
+          createdAt: evidence.receivedAt,
+        })
+      }
+      const suppressed = emailSuppressions.has(evidence.recipientFingerprint)
+      await recordAudit({
+        actor: null,
+        action: 'notification.email.provider_event_recorded',
+        resourceType: 'notification_email_provider_event',
+        resourceId: event.id,
+        metadata: {
+          eventType: evidence.eventType,
+          bounceClass: evidence.bounceClass,
+          reasonCode: evidence.reasonCode,
+          providerReceiptHash: evidence.providerReceiptHash,
+          recipientFingerprint: evidence.recipientFingerprint,
+          payloadHash: evidence.payloadHash,
+          recipientMatched,
+          suppressed,
+        },
       })
+      return { accepted: true, replayed: false, suppressed, eventId: event.id }
+    },
+    async listEmailSuppressions() {
+      return [...emailSuppressions.values()]
+        .sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt) || right.id.localeCompare(left.id))
+        .slice(0, 100)
+        .map((row) => {
+          const recipient = getRecipientById?.(row.userId) ?? null
+          return {
+            id: row.id,
+            recipientFingerprintPreview: row.recipientFingerprint.slice(0, 12),
+            reasonType: row.reasonType,
+            reasonCode: row.reasonCode,
+            recipient: { handle: recipient?.handle ?? null, emailHint: maskEmail(recipient?.email) },
+            createdAt: row.createdAt.toISOString(),
+          }
+        })
+    },
+    async releaseEmailSuppression(id, payload, actor) {
+      const row = [...emailSuppressions.values()].find((item) => item.id === String(id))
+      if (!row) return null
+      emailSuppressions.delete(row.recipientFingerprint)
+      await recordAudit({
+        actor,
+        action: 'notification.email.suppression_released',
+        resourceType: 'notification_email_suppression',
+        resourceId: row.id,
+        metadata: {
+          reasonCode: payload.reasonCode,
+          suppressionReasonType: row.reasonType,
+          recipientFingerprint: row.recipientFingerprint,
+          sourceEventHash: row.sourceEventHash,
+        },
+      })
+      return { id: row.id, released: true }
     },
     async complete(id, leaseToken, result = {}) {
       const row = deliveries.get(String(id))

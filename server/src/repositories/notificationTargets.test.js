@@ -54,3 +54,25 @@ test('observability notifications retain safe incident drill-down metadata', () 
   assert.equal(metadata.escalationLevel, 2)
   assert.deepEqual(metadata.target.admin, { tab: 'Observability', observabilityAlertId: 'observability-alert-1' })
 })
+
+test('Provider operations notifications retain classified status without leaking raw evidence', () => {
+  const metadata = sanitizeNotificationMetadata({
+    providerId: 'hcai-router-seedance-2-fast',
+    providerStatus: '502',
+    providerCategory: 'provider_5xx',
+    statusCode: 503,
+    retryable: true,
+    rawPrompt: 'confidential prompt',
+    providerUrl: 'https://provider.example/jobs/secret',
+    apiKey: 'secret-provider-token',
+  }, { resourceType: 'creative_generation', resourceId: 'gen-alert-1' })
+
+  assert.equal(metadata.providerStatus, '502')
+  assert.equal(metadata.providerCategory, 'provider_5xx')
+  assert.equal(metadata.statusCode, 503)
+  assert.equal(metadata.retryable, true)
+  const serialized = JSON.stringify(metadata)
+  assert.equal(serialized.includes('confidential prompt'), false)
+  assert.equal(serialized.includes('provider.example'), false)
+  assert.equal(serialized.includes('secret-provider-token'), false)
+})

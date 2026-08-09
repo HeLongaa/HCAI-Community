@@ -24,6 +24,9 @@
     "deadLetterRecovery": true,
     "optimisticConcurrency": true,
     "secretFreeProjection": true,
-    "externalEmailFailClosed": true
+    "externalEmailFailClosed": true,
+    "productionWebhookSigningRequired": true,
+    "productionSenderRequired": true,
+    "productionProviderReceiptRequired": true
   }
 }

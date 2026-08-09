@@ -16,6 +16,7 @@ import { createSeedProviderOperationsRepository } from '../modelControl/seedProv
 import { createSeedModelEvaluationRepository } from '../modelControl/seedModelEvaluationRepository.js'
 import { createSeedProviderLegalRepository } from '../modelControl/seedProviderLegalRepository.js'
 import { createSeedGenerationExecutionRepository } from '../creative/seedGenerationExecutionRepository.js'
+import { createSeedProviderAlertDeliveryRepository } from '../creative/providerAlertDeliveries.js'
 import { createSeedObservabilityRepository } from '../observability/seedObservabilityRepository.js'
 import { createSeedOAuthAdminRepository } from '../auth/seedOAuthAdminRepository.js'
 import { createSeedAuthSessionAdminRepository } from '../auth/seedAuthSessionAdminRepository.js'
@@ -29,10 +30,19 @@ import { createSeedBillingAdminRepository } from '../accounting/seedBillingAdmin
 import { createSeedEntitlementRepository } from '../entitlements/seedEntitlementRepository.js'
 import { createSeedNotificationManagementRepository, isSeedNotificationEnabled } from '../notifications/seedNotificationManagementRepository.js'
 import { createSeedNotificationDeliveryRepository } from '../notifications/seedNotificationDeliveryRepository.js'
+import { notificationRetentionContract, notificationRetentionCutoff, notificationRetentionSweepLimit } from '../notifications/notificationRetention.js'
+import { operationLeaseRetentionContract, operationLeaseRetentionCutoff, operationLeaseRetentionSweepLimit, operationLeaseRetentionTimestamp } from '../operations/operationLeaseRetention.js'
+import { privateLibraryRetentionContract, privateLibraryRetentionCutoff, privateLibraryRetentionSweepLimit } from '../library/libraryRetention.js'
+import { authCredentialRetentionContract, authCredentialRetentionCutoff, authCredentialRetentionSweepLimit, authCredentialTerminalAt } from '../auth/authCredentialRetention.js'
 import { createSeedDeveloperAccessRepository } from '../developerAccess/seedDeveloperAccessRepository.js'
 import { createSeedWebhookRepository } from '../webhooks/seedWebhookRepository.js'
 import { createSeedSupportRepository } from '../support/seedSupportRepository.js'
 import { createSeedDataRightsRepository } from '../dataRights/seedDataRightsRepository.js'
+import {
+  buildAuthEmailActionConfig,
+  createAuthEmailActionCodec,
+  hashAuthEmailActionToken,
+} from '../auth/emailActions.js'
 import { createSeedModerationCaseRepository } from '../trust/seedModerationCaseRepository.js'
 import { createSeedSafetyOperationsRepository } from '../trust/seedSafetyOperationsRepository.js'
 import { communityModerationTransition } from '../trust/communityModeration.js'
@@ -51,7 +61,16 @@ import {
 import { hashPassword, verifyPassword } from '../auth/passwords.js'
 import { createAccessToken, createOpaqueToken, futureDate, refreshTokenTtlMs, verifyAccessToken } from '../auth/sessionTokens.js'
 import { seedStore } from '../data/seed.js'
-import { flushSecurityEvents, listSecurityEvents } from '../security/securityEvents.js'
+import {
+  assignSecurityEventsToIncident,
+  flushSecurityEvents,
+  getSecurityEventsByIds,
+  listSecurityEvents,
+} from '../security/securityEvents.js'
+import {
+  validateSecurityIncidentEventIds,
+  validateSecurityIncidentReasonCode,
+} from '../security/securityRetention.js'
 import {
   applySecurityAlertDispositions,
   buildSecurityAlertPolicy,
@@ -107,6 +126,7 @@ import { dispatchMediaScanAlert } from '../media/alertDispatcher.js'
 import { buildMediaBusinessMetrics } from '../media/mediaBusinessMetrics.js'
 import { writeJsonArchive } from '../storage/archiveWriter.js'
 import { createSeedChatRepository } from '../chat/seedChatRepository.js'
+import { createSeedInspirationRepository } from '../inspiration/seedInspirationRepository.js'
 import { writeStorageObject } from '../storage/objectWriter.js'
 import {
   buildOperationsMetricSamples,
@@ -130,8 +150,11 @@ import { resolveCreativeDeliveryAssets } from '../creative/deliveryAssets.js'
 import { buildGenerationBusinessMetrics } from '../creative/generationBusinessMetrics.js'
 import { taskWorkflowDto } from '../tasks/taskLifecycle.js'
 import {
+  accountingActorRef,
+  accountingAvailableAccountRef,
   accountingOperationKey,
   accountingPayloadHash,
+  accountingSubjectRef,
   reconcilePointLedgerRows,
   validateMovementGroup,
 } from '../accounting/internalAccounting.js'
@@ -151,6 +174,7 @@ import { searchResourceTypes } from '../search/searchContract.js'
 const sessionByRefreshToken = new Map()
 const authSessionById = new Map()
 const emailAccountByEmail = new Map()
+const authEmailActionsByHash = new Map()
 const oauthAccountByProviderKey = new Map()
 const oauthAccountMetadataByProviderKey = new Map()
 const oauthAuthorizationRequestsByStateHash = new Map()
@@ -190,6 +214,28 @@ const accountLifecycleById = new Map()
 
 const getAccountByHandle = (handle) => seedStore.demoAccountByHandle.get(handle) ?? null
 const getAccountById = (id) => seedStore.demoAccounts.find((account) => account.id === id) ?? null
+const registerSeedIdentityProfile = (account) => {
+  if (seedStore.profileByHandle.has(account.handle)) return
+  const displayName = account.displayName || account.handle
+  const profile = {
+    handle: account.handle,
+    lane: account.profile?.lane ?? 'both',
+    initials: displayName.slice(0, 2).toUpperCase(),
+    name: { en: displayName, zh: displayName },
+    role: { en: 'Member', zh: '成员' },
+    bio: { en: '', zh: '' },
+    tags: [],
+    zhTags: [],
+    categories: [],
+    languages: [],
+    stats: { score: 0, completed: 0, posted: 0, response: 'New', acceptance: 'New', earned: '0 pts', paid: '0', rank: 'New member' },
+    badges: [],
+    portfolio: [],
+    reviews: [],
+  }
+  seedStore.profileByHandle.set(account.handle, profile)
+  seedStore.profiles.push(profile)
+}
 const getSeedProfilePrivacy = (handle) => {
   const current = profilePrivacyByHandle.get(handle)
   if (current) return current
@@ -378,7 +424,7 @@ const applySeedAccountingOperation = ({
     reasonCode,
     originalOperationKey,
     reconciliationIssueId,
-    actorRef: actor?.handle ?? actor?.id ?? 'system',
+    actorRef: accountingActorRef(actor),
     appliedAt: now,
     createdAt: now,
     updatedAt: now,
@@ -442,10 +488,11 @@ const scanSeedAccounting = () => {
     rowsByHandle.set(row.userHandle, rows)
   }
   for (const [handle, rows] of rowsByHandle) {
+    const subjectRef = accountingSubjectRef(handle)
     const report = reconcilePointLedgerRows(rows)
     for (const drift of report.issues) {
       addIssue({
-        issueKey: `point_balance_drift:${handle}:${drift.ledgerId}`,
+        issueKey: `point_balance_drift:${subjectRef}:${drift.ledgerId}`,
         type: 'point_balance_drift',
         unit: 'points',
         sourceType: 'point_ledger',
@@ -453,13 +500,13 @@ const scanSeedAccounting = () => {
         expectedAmount: drift.expectedBalance,
         actualAmount: drift.actualBalance,
         differenceAmount: drift.difference,
-        evidence: { userHandle: handle },
+        evidence: { subjectRef },
       })
     }
     const account = getSeedPointAccount(handle)
     if (account.balance !== report.actualBalance) {
       addIssue({
-        issueKey: `point_balance_drift:${handle}:account`,
+        issueKey: `point_balance_drift:${subjectRef}:account`,
         type: 'point_balance_drift',
         unit: 'points',
         sourceType: 'internal_point_account',
@@ -467,7 +514,7 @@ const scanSeedAccounting = () => {
         expectedAmount: report.actualBalance,
         actualAmount: account.balance,
         differenceAmount: account.balance - report.actualBalance,
-        evidence: { userHandle: handle, accountVersion: account.version },
+        evidence: { subjectRef, accountVersion: account.version },
       })
     }
   }
@@ -674,7 +721,61 @@ const issueSession = (account, options = {}) => {
   }
 }
 
-const registerEmailAccount = async ({ email, password, displayName, handle }, consent = null, clientContext = null) => {
+const createSeedAuthEmailAction = (account, kind, config, { enforceCooldown = false } = {}) => {
+  const now = new Date()
+  if (enforceCooldown && [...authEmailActionsByHash.values()].some((action) =>
+    action.userId === account.id && action.kind === kind && now.getTime() - action.createdAt.getTime() < config.requestCooldownSeconds * 1_000
+  )) return { queued: false, cooldown: true }
+  for (const [hash, action] of authEmailActionsByHash) {
+    if (action.userId === account.id && action.kind === kind && !action.consumedAt && !action.revokedAt) {
+      authEmailActionsByHash.set(hash, { ...action, revokedAt: now, revokeReasonCode: 'superseded' })
+    }
+  }
+  const id = `auth-email-action-${randomUUID()}`
+  const encrypted = createAuthEmailActionCodec(config).create({ id, userId: account.id, kind })
+  const action = {
+    id,
+    userId: account.id,
+    kind,
+    tokenHash: encrypted.tokenHash,
+    ciphertext: encrypted.ciphertext,
+    encryptionKeyId: encrypted.encryptionKeyId,
+    encryptionIv: encrypted.encryptionIv,
+    encryptionTag: encrypted.encryptionTag,
+    expiresAt: new Date(now.getTime() + (kind === 'verify_email' ? config.verificationTtlSeconds : config.passwordResetTtlSeconds) * 1_000),
+    consumedAt: null,
+    revokedAt: null,
+    revokeReasonCode: null,
+    createdAt: now,
+  }
+  authEmailActionsByHash.set(action.tokenHash, action)
+  const verification = kind === 'verify_email'
+  const notification = {
+    id: `notification-${randomUUID()}`,
+    recipientId: account.id,
+    recipientHandle: account.handle,
+    type: verification ? 'auth_email_verification' : 'auth_password_reset',
+    title: verification ? 'Verify your email / 验证邮箱' : 'Reset your password / 重置密码',
+    body: verification
+      ? 'Use the secure link in this email to verify your address. / 请使用邮件中的安全链接验证邮箱。'
+      : 'Use the secure link in this email to reset your password. / 请使用邮件中的安全链接重置密码。',
+    resourceType: 'auth_email_action',
+    resourceId: action.id,
+    metadata: { kind, securityRequired: true },
+    readAt: null,
+    createdAt: now.toISOString(),
+  }
+  notifications.unshift(notification)
+  notificationDeliveryRepository?.createForNotification(notification, account)
+  recordAudit(null, verification ? 'auth.email_verification.requested' : 'auth.password_reset.requested', 'auth_email_action', action.id, {
+    kind,
+    tokenStoredAsHash: true,
+    tokenEncryptedForDelivery: true,
+  })
+  return { queued: true, cooldown: false }
+}
+
+const registerEmailAccount = async ({ email, password, displayName, handle }, consent = null, clientContext = null, actionConfig = buildAuthEmailActionConfig()) => {
   const normalizedEmail = normalizeEmail(email)
   if (
     emailAccountByEmail.has(normalizedEmail) ||
@@ -686,6 +787,8 @@ const registerEmailAccount = async ({ email, password, displayName, handle }, co
     id: `seed-user-${randomUUID()}`,
     handle,
     email: normalizedEmail,
+    emailVerified: !actionConfig.verificationRequired,
+    emailVerifiedAt: actionConfig.verificationRequired ? null : new Date().toISOString(),
     displayName,
     role: 'member',
     permissions: [...rolePermissions.member],
@@ -704,6 +807,7 @@ const registerEmailAccount = async ({ email, password, displayName, handle }, co
   seedStore.demoAccountByAccessToken.set(account.tokens.accessToken, account)
   seedStore.demoAccountByRefreshToken.set(account.tokens.refreshToken, account)
   emailAccountByEmail.set(normalizedEmail, account)
+  registerSeedIdentityProfile(account)
   recordAudit(account, 'auth.account.registered', 'user', account.id, { provider: 'email' })
   if (consent) {
     const record = { ...consent, acceptedAt: new Date().toISOString() }
@@ -715,6 +819,10 @@ const registerEmailAccount = async ({ email, password, displayName, handle }, co
       account.id,
       record,
     )
+  }
+  if (actionConfig.verificationRequired) {
+    createSeedAuthEmailAction(account, 'verify_email', actionConfig)
+    return { verificationRequired: true, email: normalizedEmail, user: account }
   }
   return issueSession(account, { clientContext })
 }
@@ -780,6 +888,10 @@ const completeOAuthLogin = async ({ profile, linkUserId = null, clientContext = 
     if (!actor || (linkedHandle && getAccountByHandle(linkedHandle)?.id !== linkUserId)) {
       return null
     }
+    if (normalizeEmail(actor.email) === normalizeEmail(profile.email)) {
+      actor.emailVerified = true
+      actor.emailVerifiedAt = actor.emailVerifiedAt ?? new Date().toISOString()
+    }
     const existingProviderAccount = findOAuthAccountForProvider(actor, profile.provider)
     if (existingProviderAccount && existingProviderAccount.providerUserId !== profile.providerUserId) {
       return null
@@ -801,6 +913,8 @@ const completeOAuthLogin = async ({ profile, linkUserId = null, clientContext = 
     if (existingProviderAccount && existingProviderAccount.providerUserId !== profile.providerUserId) {
       return null
     }
+    existing.emailVerified = true
+    existing.emailVerifiedAt = existing.emailVerifiedAt ?? new Date().toISOString()
     linkSeedOAuthAccount(key, existing.handle)
     recordAudit(existing, 'auth.oauth.linked', 'auth_account', oauthAuditResourceId(profile.provider, profile.providerUserId), { provider: profile.provider })
     return issueSession(existing, { clientContext })
@@ -811,6 +925,8 @@ const completeOAuthLogin = async ({ profile, linkUserId = null, clientContext = 
     id: `seed-user-${randomUUID()}`,
     handle,
     email: normalizedEmail,
+    emailVerified: true,
+    emailVerifiedAt: new Date().toISOString(),
     displayName: profile.displayName,
     role: 'member',
     permissions: [...rolePermissions.member],
@@ -828,6 +944,7 @@ const completeOAuthLogin = async ({ profile, linkUserId = null, clientContext = 
   seedStore.demoAccountByHandle.set(handle, account)
   seedStore.demoAccountByAccessToken.set(account.tokens.accessToken, account)
   seedStore.demoAccountByRefreshToken.set(account.tokens.refreshToken, account)
+  registerSeedIdentityProfile(account)
   linkSeedOAuthAccount(key, account.handle)
   recordAudit(account, 'auth.oauth.registered', 'user', account.id, { provider: profile.provider })
   return issueSession(account, { clientContext })
@@ -957,6 +1074,7 @@ const auditArchiveManifests = []
 const auditRetentionDispositions = []
 const policyConsentByUserId = new Map()
 const operationLeaseStore = new Map()
+const securityIncidentStore = new Map()
 const stableHash = (value) =>
   createHash('sha256').update(JSON.stringify(value ?? null)).digest('hex')
 
@@ -973,6 +1091,14 @@ const recordAudit = (actor, action, resourceType, resourceId = null, metadata = 
   }, auditEvents[0] ?? null)
   auditEvents.unshift(event)
   return event
+}
+
+const seedSecurityIncidentDto = (incident) => {
+  const { eventIds, ...safeIncident } = incident
+  return {
+  ...safeIncident,
+  eventCount: getSecurityEventsByIds(incident.eventIds).length,
+  }
 }
 
 const leaseExpiry = (ttlSeconds) => new Date(Date.now() + Math.max(1, Number(ttlSeconds ?? 300)) * 1000)
@@ -1091,7 +1217,7 @@ const settleTaskReward = (task, recipientHandle) => {
     payload: { taskId: String(task.id), publisherHandle, recipientHandle, amount: pointsReward },
     movements: [
       { unit: 'points', accountRef: `task:${task.id}:points:escrow`, accountType: 'escrow', amount: -pointsReward },
-      { unit: 'points', accountRef: `user:${recipientHandle}:points:available`, accountType: 'available', ownerHandle: recipientHandle, amount: pointsReward },
+      { unit: 'points', accountRef: accountingAvailableAccountRef(recipientHandle, 'points'), accountType: 'available', ownerHandle: recipientHandle, amount: pointsReward },
     ],
   })
   const entry = {
@@ -1163,7 +1289,7 @@ const createTaskEscrow = (task, publisherHandle) => {
     reasonCode: 'task_published',
     payload: { taskId: String(task.id), publisherHandle, amount: pointsReward },
     movements: [
-      { unit: 'points', accountRef: `user:${publisherHandle}:points:available`, accountType: 'available', ownerHandle: publisherHandle, amount: -pointsReward },
+      { unit: 'points', accountRef: accountingAvailableAccountRef(publisherHandle, 'points'), accountType: 'available', ownerHandle: publisherHandle, amount: -pointsReward },
       { unit: 'points', accountRef: `task:${task.id}:points:escrow`, accountType: 'escrow', amount: pointsReward },
     ],
   })
@@ -1205,7 +1331,7 @@ const finalizeTaskEscrow = (task, publisherHandle, decision, reasonCode = 'task_
     payload: { taskId: String(task.id), publisherHandle, amount: pointsReward },
     movements: [
       { unit: 'points', accountRef: `task:${task.id}:points:escrow`, accountType: 'escrow', amount: -pointsReward },
-      { unit: 'points', accountRef: `user:${publisherHandle}:points:available`, accountType: 'available', ownerHandle: publisherHandle, amount: pointsReward },
+      { unit: 'points', accountRef: accountingAvailableAccountRef(publisherHandle, 'points'), accountType: 'available', ownerHandle: publisherHandle, amount: pointsReward },
     ],
   })
   const release = {
@@ -1250,7 +1376,7 @@ const createManualPointAdjustment = (payload, actor, options = {}) => {
     },
     movements: [
       { unit: 'points', accountRef: 'system:adjustments:points:source', accountType: 'system_source', amount: -payload.delta },
-      { unit: 'points', accountRef: `user:${account.handle}:points:available`, accountType: 'available', ownerHandle: account.handle, amount: payload.delta },
+      { unit: 'points', accountRef: accountingAvailableAccountRef(account.handle, 'points'), accountType: 'available', ownerHandle: account.handle, amount: payload.delta },
     ],
     actor,
     allowNegative: true,
@@ -1390,18 +1516,24 @@ function uniqueHandles(handles) {
 
 function createNotificationsForHandles(handles, payload) {
   const now = new Date().toISOString()
-  const created = uniqueHandles(handles)
+  const recipients = uniqueHandles(handles)
     .map((handle) => getAccountByHandle(handle))
     .filter(Boolean)
     .filter((recipient) => isSeedNotificationEnabled(recipient.id, payload.type))
-    .filter((recipient) => !payload.dedupeUnread || !notifications.some((notification) =>
+  const created = []
+  for (const recipient of recipients) {
+    const existing = payload.dedupeUnread ? notifications.find((notification) =>
       notification.recipientHandle === recipient.handle &&
       notification.type === payload.type &&
       notification.resourceType === payload.resourceType &&
       notification.resourceId === (payload.resourceId ?? null) &&
-      !notification.readAt,
-    ))
-    .map((recipient) => ({
+      !notification.readAt
+    ) : null
+    if (existing) {
+      notificationDeliveryRepository?.createForNotification(existing, recipient)
+      continue
+    }
+    created.push({
       id: `notification-${randomUUID()}`,
       recipientId: recipient.id,
       recipientHandle: recipient.handle,
@@ -1415,7 +1547,8 @@ function createNotificationsForHandles(handles, payload) {
       templateVersion: payload.templateVersion ?? null,
       readAt: null,
       createdAt: now,
-    }))
+    })
+  }
   notifications.unshift(...created)
   for (const notification of created) {
     notificationDeliveryRepository?.createForNotification(notification, getAccountById(notification.recipientId))
@@ -2549,12 +2682,30 @@ const getSeedMediaScanJobArchiveManifest = (options = {}) => {
 
 export const createSeedRepository = () => {
   const auditRecorder = ({ actor, action, resourceType, resourceId, metadata }) => recordAudit(actor, action, resourceType, resourceId, metadata)
+  const inspiration = createSeedInspirationRepository({ getUserById: getAccountById, recordAudit: auditRecorder })
   const domainEvents = createSeedDomainEventRepository({ recordAudit: auditRecorder })
   const domainEventConsumers = createSeedDomainEventConsumerRepository({ recordAudit: auditRecorder })
   const jobs = createSeedJobRepository({ recordAudit: auditRecorder })
   const creativeGenerationExecutions = createSeedGenerationExecutionRepository({ recordAudit: auditRecorder })
   const systemSettings = createSeedSystemSettingsRepository({ recordAudit: auditRecorder })
   const configResources = createSeedConfigResourcesRepository({ recordAudit: auditRecorder })
+  const configurationRetention = {
+    sweepRetention: async ({ now = new Date(), limit = 100 } = {}) => {
+      const system = await systemSettings.sweepRetention({ now, limit })
+      const resources = system.inspected < limit
+        ? await configResources.sweepRetention({ now, limit: limit - system.inspected })
+        : { inspected: 0, revisionsMinimized: 0, changesMinimized: 0, blocked: 0 }
+      const result = {
+        policyId: system.policyId,
+        inspected: system.inspected + resources.inspected,
+        revisionsMinimized: system.revisionsMinimized + resources.revisionsMinimized,
+        changesMinimized: system.changesMinimized,
+        blocked: system.blocked + resources.blocked,
+      }
+      auditRecorder({ actor: null, action: 'system.configuration.retention_minimized', resourceType: 'configuration_retention', resourceId: result.policyId, metadata: result })
+      return result
+    },
+  }
   const modelControl = createSeedModelControlRepository({ recordAudit: auditRecorder })
   const modelRouting = createSeedModelRoutingRepository({ modelControl, recordAudit: auditRecorder })
   const modelEvaluation = createSeedModelEvaluationRepository({ modelControl })
@@ -2677,7 +2828,11 @@ export const createSeedRepository = () => {
       }
       if (targetType === 'creative_generation') {
         const generation = creativeGenerationsById.get(String(targetId)) ?? null
-        const account = generation ? getAccountByHandle(generation.ownerHandle ?? generation.userHandle) : null
+        const account = generation
+          ? (getAccountById(generation.actorId) ??
+              getAccountByHandle(generation.actorHandle) ??
+              (generation.actorId === actor?.id || generation.actorHandle === actor?.handle ? actor : null))
+          : null
         return generation && account ? { affectedUser: account, contentHash: createHash('sha256').update(`creative_generation:${generation.id}:${generation.updatedAt ?? generation.createdAt ?? ''}`).digest('hex') } : null
       }
       return null
@@ -2760,6 +2915,9 @@ export const createSeedRepository = () => {
     findOwnerById: getAccountById,
     recordAudit: ({ actor, action, resourceType, resourceId, metadata }) => recordAudit(actor, action, resourceType, resourceId, metadata),
   })
+  const providerAlertDeliveries = createSeedProviderAlertDeliveryRepository({
+    recordAudit: ({ actor, action, resourceType, resourceId, metadata }) => recordAudit(actor, action, resourceType, resourceId, metadata),
+  })
   const support = createSeedSupportRepository({
     getUserById: getAccountById,
     recordAudit: ({ actor, action, resourceType, resourceId, metadata }) => recordAudit(actor, action, resourceType, resourceId, metadata),
@@ -2810,8 +2968,53 @@ export const createSeedRepository = () => {
       if (profile) seedStore.profileByHandle.set(account.handle, { ...profile, name: { en: 'Deleted user', zh: '已删除用户' }, bio: { en: '', zh: '' }, tags: [], zhTags: [], languages: [] })
       return { identity: 1, sessions: 1, profile: profile ? 1 : 0, tasks: seedStore.tasks.filter((item) => [item.publisher, item.assignee].includes(account.handle)).length, community: seedStore.posts.filter((item) => item.ownerHandle === account.handle || item.authorHandle === account.handle).length, notifications: notifications.filter((item) => item.recipientId === account.id).length, billing: seedStore.pointsLedger.filter((item) => item.userHandle === account.handle).length }
     },
+    listProviderDeletionRecords: async (request) => [...creativeGenerationsById.values()]
+      .filter((generation) => generation.actorId === request.subjectId)
+      .map((generation) => ({
+        providerId: generation.providerId,
+        providerJobId: creativeProviderOperationsByGenerationId.get(generation.id)?.providerJobId ?? generation.providerJobId ?? null,
+        providerRequestId: generation.providerRequestId ?? null,
+      })),
     recordAudit: ({ actor, action, resourceType, resourceId, metadata }) => recordAudit(actor, action, resourceType, resourceId, metadata),
   })
+  const authCredentialRetention = {
+    sweepRetention: async ({ now = new Date(), limit } = {}) => {
+      const cutoff = authCredentialRetentionCutoff(now).getTime()
+      const take = authCredentialRetentionSweepLimit(limit)
+      const candidates = [
+        ...[...oauthAuthorizationRequestsByStateHash.entries()].map(([key, row]) => ({ key, row, type: 'oauthAuthorizationRequest' })),
+        ...[...sessionByRefreshToken.entries()].map(([key, row]) => ({ key, row, type: 'refreshToken' })),
+        ...[...authEmailActionsByHash.entries()].map(([key, row]) => ({ key, row, type: 'authEmailAction' })),
+      ].filter(({ row }) => authCredentialTerminalAt(row) <= cutoff)
+        .sort((left, right) => authCredentialTerminalAt(left.row) - authCredentialTerminalAt(right.row) || left.row.id.localeCompare(right.row.id))
+        .slice(0, take)
+      let oauthAuthorizationRequests = 0
+      let refreshTokens = 0
+      let authEmailActions = 0
+      for (const candidate of candidates) {
+        if (candidate.type === 'oauthAuthorizationRequest') {
+          oauthAuthorizationRequests += Number(oauthAuthorizationRequestsByStateHash.delete(candidate.key))
+        } else if (candidate.type === 'refreshToken') {
+          refreshTokens += Number(sessionByRefreshToken.delete(candidate.key))
+        } else {
+          authEmailActions += Number(authEmailActionsByHash.delete(candidate.key))
+          const notificationIds = notifications.filter((item) => item.resourceType === 'auth_email_action' && item.resourceId === candidate.row.id).map((item) => item.id)
+          notificationDeliveryRepository?.deleteForNotificationIds(notificationIds)
+          for (let index = notifications.length - 1; index >= 0; index -= 1) {
+            if (notificationIds.includes(notifications[index].id)) notifications.splice(index, 1)
+          }
+        }
+      }
+      const apiKeyResult = candidates.length < take
+        ? await developerAccess.sweepCredentialRetention({ now, limit: take - candidates.length })
+        : { inspected: 0, deleted: 0 }
+      return {
+        policyId: authCredentialRetentionContract.policyId,
+        inspected: candidates.length + apiKeyResult.inspected,
+        deleted: { oauthAuthorizationRequests, refreshTokens, apiKeyCredentials: apiKeyResult.deleted, authEmailActions },
+      }
+    },
+  }
   return {
   chat: createSeedChatRepository({
     recordAudit: ({ actor, action, resourceType, resourceId, metadata }) =>
@@ -2820,6 +3023,7 @@ export const createSeedRepository = () => {
   releaseChanges,
   systemSettings,
   configResources,
+  configurationRetention,
   modelControl,
   modelRouting,
   modelGovernance,
@@ -2843,8 +3047,10 @@ export const createSeedRepository = () => {
   entitlements,
   developerAccess,
   webhooks,
+  providerAlertDeliveries,
   support,
   dataRights,
+  authCredentialRetention,
   auth: {
     getCurrentUser: () => seedStore.me,
     findDemoAccountByAccessToken: (token) => {
@@ -2877,6 +3083,67 @@ export const createSeedRepository = () => {
     issueSession: (account, clientContext) => issueSession(account, { clientContext }),
     registerEmailAccount,
     verifyPasswordCredentials,
+    requestEmailVerification: async ({ email }, actionConfig = buildAuthEmailActionConfig()) => {
+      if (!actionConfig.verificationRequired) return { accepted: true }
+      const account = emailAccountByEmail.get(normalizeEmail(email))
+      if (account && !account.emailVerified) createSeedAuthEmailAction(account, 'verify_email', actionConfig, { enforceCooldown: true })
+      return { accepted: true }
+    },
+    requestPasswordReset: async ({ email }, actionConfig = buildAuthEmailActionConfig()) => {
+      if (!actionConfig.passwordResetEnabled) return { accepted: true }
+      const account = emailAccountByEmail.get(normalizeEmail(email))
+      if (account && getSeedAccountLifecycle(account).status === 'active') createSeedAuthEmailAction(account, 'password_reset', actionConfig, { enforceCooldown: true })
+      return { accepted: true }
+    },
+    consumeEmailVerification: async ({ token }, clientContext = null) => {
+      const hash = hashAuthEmailActionToken(token)
+      const action = authEmailActionsByHash.get(hash)
+      if (!action || action.kind !== 'verify_email' || action.consumedAt || action.revokedAt || action.expiresAt <= new Date()) return null
+      const account = getAccountById(action.userId)
+      if (!account) return null
+      action.consumedAt = new Date()
+      account.emailVerified = true
+      account.emailVerifiedAt = action.consumedAt.toISOString()
+      recordAudit(account, 'auth.email.verified', 'user', account.id, { actionId: action.id })
+      return issueSession(account, { clientContext })
+    },
+    resetPassword: async ({ token, password }) => {
+      const hash = hashAuthEmailActionToken(token)
+      const action = authEmailActionsByHash.get(hash)
+      if (!action || action.kind !== 'password_reset' || action.consumedAt || action.revokedAt || action.expiresAt <= new Date()) return null
+      const account = getAccountById(action.userId)
+      if (!account) return null
+      action.consumedAt = new Date()
+      account.passwordHash = await hashPassword(password)
+      const now = new Date()
+      for (const [id, session] of authSessionById) {
+        if (getAccountByHandle(session.handle)?.id === account.id && !session.revokedAt) {
+          authSessionById.set(id, { ...session, revokedAt: now, revokeReasonCode: 'password_reset', version: session.version + 1 })
+        }
+      }
+      for (const [refreshToken, session] of sessionByRefreshToken) {
+        if (getAccountByHandle(session.handle)?.id === account.id && !session.revokedAt) {
+          sessionByRefreshToken.set(refreshToken, { ...session, revokedAt: now })
+        }
+      }
+      recordAudit(account, 'auth.password.reset', 'user', account.id, { actionId: action.id, allSessionsRevoked: true })
+      return { reset: true }
+    },
+    prepareEmailDelivery: async (claim, actionConfig = buildAuthEmailActionConfig()) => {
+      if (claim?.notification?.resourceType !== 'auth_email_action') return claim
+      const action = [...authEmailActionsByHash.values()].find((item) => item.id === claim.notification.resourceId)
+      if (!action || action.consumedAt || action.revokedAt || action.expiresAt <= new Date()) return { ...claim, authEmailActionUnavailable: true }
+      const token = createAuthEmailActionCodec(actionConfig).decrypt(action)
+      const verification = action.kind === 'verify_email'
+      const url = `${actionConfig.origin}/#auth?action=${verification ? 'verify-email' : 'password-reset'}&token=${encodeURIComponent(token)}`
+      return {
+        ...claim,
+        notification: {
+          ...claim.notification,
+          body: `${verification ? 'Verify your email / 验证邮箱' : 'Reset your password / 重置密码'}\n\n${url}\n\nThis link expires soon and can be used once. / 此链接即将过期且仅可使用一次。`,
+        },
+      }
+    },
     loginWithPassword,
     createOAuthAuthorizationRequest,
     consumeOAuthAuthorizationRequest,
@@ -4382,7 +4649,7 @@ export const createSeedRepository = () => {
         }
         movements = [
           { unit: 'points', accountRef: 'system:reconciliation:points:source', accountType: 'system_source', amount: -delta },
-          { unit: 'points', accountRef: `user:${account.userHandle}:points:available`, accountType: 'available', ownerHandle: account.userHandle, amount: delta },
+          { unit: 'points', accountRef: accountingAvailableAccountRef(account.userHandle, 'points'), accountType: 'available', ownerHandle: account.userHandle, amount: delta },
         ]
         repairPayload = { issueId: issue.id, accountId: account.id, userHandle: account.userHandle, delta }
       } else if (issue.type === 'quota_state_mismatch' && issue.sourceType === 'creative_quota_window') {
@@ -4494,6 +4761,73 @@ export const createSeedRepository = () => {
       }
       return { updated }
     },
+    sweepRetention: ({ now = new Date(), limit } = {}) => {
+      const cutoff = notificationRetentionCutoff(now).getTime()
+      const take = notificationRetentionSweepLimit(limit)
+      const notificationCandidates = notifications
+        .filter((notification) => new Date(notification.createdAt).getTime() <= cutoff)
+        .map((notification) => ({ id: notification.id, family: 'notification', retainedAt: new Date(notification.createdAt).getTime() }))
+      const providerAlertCandidates = [...providerAlertDeliveries._state.deliveries.values()]
+        .filter((delivery) => notificationRetentionContract.providerAlertTerminalStatuses.includes(delivery.status))
+        .filter((delivery) => new Date(delivery.updatedAt).getTime() <= cutoff)
+        .map((delivery) => ({ id: delivery.id, family: 'provider_alert', retainedAt: new Date(delivery.updatedAt).getTime() }))
+      const emailProviderEventCandidates = [...notificationDeliveryRepository._state.emailProviderEvents.values()]
+        .filter((event) => new Date(event.receivedAt).getTime() <= cutoff)
+        .map((event) => ({ id: event.id, key: event.providerEventHash, family: 'email_provider_event', retainedAt: new Date(event.receivedAt).getTime() }))
+      const candidates = [...notificationCandidates, ...providerAlertCandidates, ...emailProviderEventCandidates]
+        .sort((left, right) => left.retainedAt - right.retainedAt || left.id.localeCompare(right.id))
+        .slice(0, take)
+      const notificationIds = new Set(candidates.filter((candidate) => candidate.family === 'notification').map((candidate) => candidate.id))
+      const providerAlertIds = new Set(candidates.filter((candidate) => candidate.family === 'provider_alert').map((candidate) => candidate.id))
+      const emailProviderEventKeys = new Set(candidates.filter((candidate) => candidate.family === 'email_provider_event').map((candidate) => candidate.key))
+      const childCounts = notificationDeliveryRepository.deleteForNotificationIds([...notificationIds])
+      for (let index = notifications.length - 1; index >= 0; index -= 1) {
+        if (notificationIds.has(notifications[index].id)) notifications.splice(index, 1)
+      }
+      let providerAlertAttempts = 0
+      for (let index = providerAlertDeliveries._state.attempts.length - 1; index >= 0; index -= 1) {
+        if (providerAlertIds.has(providerAlertDeliveries._state.attempts[index].deliveryId)) {
+          providerAlertDeliveries._state.attempts.splice(index, 1)
+          providerAlertAttempts += 1
+        }
+      }
+      let providerAlertReplays = 0
+      for (const [key, deliveryId] of providerAlertDeliveries._state.replays) {
+        if (providerAlertIds.has(deliveryId)) {
+          providerAlertDeliveries._state.replays.delete(key)
+          providerAlertReplays += 1
+        }
+      }
+      let providerAlertDeliveryCount = 0
+      for (const id of providerAlertIds) {
+        const delivery = providerAlertDeliveries._state.deliveries.get(id)
+        if (!delivery || !notificationRetentionContract.providerAlertTerminalStatuses.includes(delivery.status) || new Date(delivery.updatedAt).getTime() > cutoff) continue
+        providerAlertDeliveries._state.deliveries.delete(id)
+        for (const [key, deliveryId] of providerAlertDeliveries._state.keys) {
+          if (deliveryId === id) providerAlertDeliveries._state.keys.delete(key)
+        }
+        providerAlertDeliveryCount += 1
+      }
+      let emailProviderEventCount = 0
+      for (const key of emailProviderEventKeys) {
+        const event = notificationDeliveryRepository._state.emailProviderEvents.get(key)
+        if (!event || new Date(event.receivedAt).getTime() > cutoff) continue
+        notificationDeliveryRepository._state.emailProviderEvents.delete(key)
+        emailProviderEventCount += 1
+      }
+      return {
+        policyId: notificationRetentionContract.policyId,
+        inspected: candidates.length,
+        deleted: {
+          notifications: notificationIds.size,
+          ...childCounts,
+          emailProviderEvents: emailProviderEventCount,
+          providerAlertDeliveries: providerAlertDeliveryCount,
+          providerAlertAttempts,
+          providerAlertReplays,
+        },
+      }
+    },
     createForHandles: createNotificationsForHandles,
   },
   providerLifecycleNotifications: {
@@ -4602,7 +4936,84 @@ export const createSeedRepository = () => {
     unsilenceAlert: (id, payload, actor) => recordSeedSecurityAlertDisposition(id, 'unsilenced', payload, actor),
     notifyAlerts: (actor = null) => notifySecurityEventAlerts(actor),
   },
+  securityRetention: {
+    listIncidents: async ({ status = null, limit = 50 } = {}) => [...securityIncidentStore.values()]
+      .filter((incident) => !status || incident.status === status)
+      .sort((left, right) => right.openedAt.localeCompare(left.openedAt) || right.id.localeCompare(left.id))
+      .slice(0, Math.min(Math.max(Number(limit) || 50, 1), 100))
+      .map(seedSecurityIncidentDto),
+    createIncident: async (actor, payload, now = new Date()) => {
+      const eventIds = validateSecurityIncidentEventIds(payload.eventIds)
+      const reasonCode = validateSecurityIncidentReasonCode(payload.reasonCode)
+      const events = getSecurityEventsByIds(eventIds)
+      if (events.length !== eventIds.length) throw new HttpError(404, 'SECURITY_EVENT_NOT_FOUND', 'One or more security events were not found')
+      if (events.some((event) => event.incidentId)) throw new HttpError(409, 'SECURITY_EVENT_ALREADY_ASSIGNED', 'One or more security events already belong to an incident')
+      const timestamp = now.toISOString()
+      const incident = {
+        id: `security-incident-${randomUUID()}`,
+        status: 'open',
+        criticalConfirmed: payload.criticalConfirmed === true,
+        reasonCode,
+        resolvedReasonCode: null,
+        openedAt: timestamp,
+        resolvedAt: null,
+        version: 1,
+        eventIds,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }
+      securityIncidentStore.set(incident.id, incident)
+      assignSecurityEventsToIncident(eventIds, incident.id)
+      recordAudit(actor, 'admin.security.incident_created', 'security_incident', incident.id, { criticalConfirmed: incident.criticalConfirmed, reasonCode, eventCount: eventIds.length })
+      return seedSecurityIncidentDto(incident)
+    },
+    attachEvents: async (actor, id, payload) => {
+      const incident = securityIncidentStore.get(String(id)) ?? null
+      if (!incident) return null
+      const eventIds = validateSecurityIncidentEventIds(payload.eventIds)
+      const reasonCode = validateSecurityIncidentReasonCode(payload.reasonCode)
+      if (incident.status !== 'open') throw new HttpError(409, 'SECURITY_INCIDENT_RESOLVED', 'Resolved incidents cannot accept events')
+      if (incident.version !== payload.expectedVersion) throw new HttpError(409, 'SECURITY_INCIDENT_VERSION_CONFLICT', 'Security incident was updated by another operation')
+      const events = getSecurityEventsByIds(eventIds)
+      if (events.length !== eventIds.length) throw new HttpError(404, 'SECURITY_EVENT_NOT_FOUND', 'One or more security events were not found')
+      if (events.some((event) => event.incidentId && event.incidentId !== incident.id)) throw new HttpError(409, 'SECURITY_EVENT_ALREADY_ASSIGNED', 'One or more security events already belong to another incident')
+      assignSecurityEventsToIncident(eventIds, incident.id)
+      incident.eventIds = [...new Set([...incident.eventIds, ...eventIds])]
+      incident.version += 1
+      incident.updatedAt = new Date().toISOString()
+      recordAudit(actor, 'admin.security.incident_events_attached', 'security_incident', incident.id, { reasonCode, eventCount: eventIds.length, version: incident.version })
+      return seedSecurityIncidentDto(incident)
+    },
+    resolveIncident: async (actor, id, payload, now = new Date()) => {
+      const incident = securityIncidentStore.get(String(id)) ?? null
+      if (!incident) return null
+      const reasonCode = validateSecurityIncidentReasonCode(payload.reasonCode)
+      if (incident.status === 'resolved') throw new HttpError(409, 'SECURITY_INCIDENT_RESOLVED', 'Security incident is already resolved')
+      if (incident.version !== payload.expectedVersion) throw new HttpError(409, 'SECURITY_INCIDENT_VERSION_CONFLICT', 'Security incident was updated by another operation')
+      incident.status = 'resolved'
+      incident.resolvedReasonCode = reasonCode
+      incident.resolvedAt = now.toISOString()
+      incident.version += 1
+      incident.updatedAt = incident.resolvedAt
+      recordAudit(actor, 'admin.security.incident_resolved', 'security_incident', incident.id, { reasonCode, version: incident.version })
+      return seedSecurityIncidentDto(incident)
+    },
+  },
   operationLeases: {
+    sweepRetention: async ({ now = new Date(), limit } = {}) => {
+      const cutoff = operationLeaseRetentionCutoff(now)
+      const take = operationLeaseRetentionSweepLimit(limit)
+      const candidates = [...operationLeaseStore.values()]
+        .filter((lease) => operationLeaseRetentionTimestamp(lease) <= cutoff)
+        .sort((left, right) => operationLeaseRetentionTimestamp(left) - operationLeaseRetentionTimestamp(right) || left.key.localeCompare(right.key))
+        .slice(0, take)
+      for (const lease of candidates) operationLeaseStore.delete(lease.key)
+      return {
+        policyId: operationLeaseRetentionContract.policyId,
+        inspected: candidates.length,
+        deleted: candidates.length,
+      }
+    },
     acquire: async ({ key, ownerId, ttlSeconds = 300, metadata = null } = {}) => {
       const leaseKey = String(key ?? '').trim()
       if (!leaseKey) {
@@ -4780,6 +5191,28 @@ export const createSeedRepository = () => {
       status: patch.status ?? 'completed',
       completedAt: patch.completedAt ?? new Date().toISOString(),
     }, actor, 'creative.generation.completed'),
+    beginReviewResume: (id, approval, actor) => {
+      const current = creativeGenerationsById.get(String(id))
+      if (!current || (current.actorId && current.actorId !== actor.id) || (!current.actorId && current.actorHandle !== actor.handle)) return null
+      if (current.status !== 'review_required' || current.safety?.moderationCaseId !== approval.moderationCaseId) return false
+      return patchCreativeGeneration(String(id), {
+        status: 'queued',
+        completedAt: null,
+        failedAt: null,
+        errorCode: null,
+        errorMessagePreview: null,
+        safety: {
+          ...current.safety,
+          reviewRequired: false,
+          reviewResume: {
+            status: 'claimed',
+            moderationCaseId: approval.moderationCaseId,
+            decisionId: approval.decisionId,
+            decisionOutcome: approval.decisionOutcome,
+          },
+        },
+      }, actor, 'creative.generation.review_resume_claimed')
+    },
     fail: (id, patch = {}, actor) => patchCreativeGeneration(String(id), {
       ...patch,
       status: 'failed',
@@ -5868,7 +6301,7 @@ export const createSeedRepository = () => {
         reasonCode: 'generation_reserved',
         payload: { generationId: ledger.generationId, actorHandle: ledger.actorHandle, amount },
         movements: [
-          { unit: 'creative_credit', accountRef: `user:${ledger.actorHandle}:creative_credit:available`, accountType: 'available', amount: -amount },
+          { unit: 'creative_credit', accountRef: accountingAvailableAccountRef(ledger.actorId ?? ledger.actorHandle, 'creative_credit'), accountType: 'available', amount: -amount },
           { unit: 'creative_credit', accountRef: `generation:${ledger.generationId}:creative_credit:reserved`, accountType: 'reserved', amount },
         ],
         actor,
@@ -5958,7 +6391,7 @@ export const createSeedRepository = () => {
         payload: { generationId: updated.generationId, ledgerId: updated.id, amount: refundedAmount },
         movements: [
           { unit: 'creative_credit', accountRef: `generation:${updated.generationId}:creative_credit:reserved`, accountType: 'reserved', amount: -refundedAmount },
-          { unit: 'creative_credit', accountRef: `user:${updated.actorHandle}:creative_credit:available`, accountType: 'available', amount: refundedAmount },
+          { unit: 'creative_credit', accountRef: accountingAvailableAccountRef(updated.actorId ?? updated.actorHandle, 'creative_credit'), accountType: 'available', amount: refundedAmount },
         ],
         actor,
       })
@@ -6002,7 +6435,7 @@ export const createSeedRepository = () => {
         payload: { generationId: updated.generationId, ledgerId: updated.id, amount: updated.reservationAmount },
         movements: [
           { unit: 'creative_credit', accountRef: `generation:${updated.generationId}:creative_credit:reserved`, accountType: 'reserved', amount: -updated.reservationAmount },
-          { unit: 'creative_credit', accountRef: `user:${updated.actorHandle}:creative_credit:available`, accountType: 'available', amount: updated.reservationAmount },
+          { unit: 'creative_credit', accountRef: accountingAvailableAccountRef(updated.actorId ?? updated.actorHandle, 'creative_credit'), accountType: 'available', amount: updated.reservationAmount },
         ],
         actor,
       })
@@ -6584,8 +7017,9 @@ export const createSeedRepository = () => {
         updatedAt: now,
       }
       const scanResult = await scanMediaAsset(asset)
-      const policyReviewRequired = Boolean(payload.generation.safety?.reviewRequired)
-      const effectiveScanStatus = policyReviewRequired ? 'review' : scanResult?.status ?? 'pending'
+      const outputSafetyDecision = payload.output.safety?.decision ?? payload.generation.safety?.output?.decision ?? 'review'
+      const policyReviewRequired = Boolean(payload.generation.safety?.reviewRequired) || outputSafetyDecision !== 'allow'
+      const effectiveScanStatus = outputSafetyDecision === 'block' ? 'rejected' : policyReviewRequired ? 'review' : scanResult?.status ?? 'pending'
       const updated = {
         ...asset,
         status: effectiveScanStatus === 'rejected' ? 'rejected' : 'uploaded',
@@ -6610,6 +7044,9 @@ export const createSeedRepository = () => {
           rejectionReason: scanResult?.reason ?? undefined,
           creativeReviewRequired: policyReviewRequired,
           creativeReviewReasons: payload.generation.safety?.reasons ?? [],
+          outputSafetyDecision,
+          outputSafetyClassified: payload.output.safety?.classified === true,
+          outputSafetyEvidenceHash: payload.output.safety?.evidenceHash ?? null,
           completedAt: new Date().toISOString(),
         }),
         updatedAt: new Date().toISOString(),
@@ -6704,8 +7141,9 @@ export const createSeedRepository = () => {
       }
       mediaAssetsById.set(asset.id, asset)
       const scanResult = await scanMediaAsset(asset)
-      const policyReviewRequired = Boolean(payload.generation.safety?.reviewRequired)
-      const effectiveScanStatus = policyReviewRequired ? 'review' : scanResult?.status ?? 'pending'
+      const outputSafetyDecision = payload.output.safety?.decision ?? payload.generation.safety?.output?.decision ?? 'review'
+      const policyReviewRequired = Boolean(payload.generation.safety?.reviewRequired) || outputSafetyDecision !== 'allow'
+      const effectiveScanStatus = outputSafetyDecision === 'block' ? 'rejected' : policyReviewRequired ? 'review' : scanResult?.status ?? 'pending'
       const updated = {
         ...asset,
         status: effectiveScanStatus === 'rejected' ? 'rejected' : 'uploaded',
@@ -6731,6 +7169,9 @@ export const createSeedRepository = () => {
           rejectionReason: scanResult?.reason ?? undefined,
           creativeReviewRequired: policyReviewRequired,
           creativeReviewReasons: payload.generation.safety?.reasons ?? [],
+          outputSafetyDecision,
+          outputSafetyClassified: payload.output.safety?.classified === true,
+          outputSafetyEvidenceHash: payload.output.safety?.evidenceHash ?? null,
           completedAt: now,
         }),
         updatedAt: now,
@@ -7186,7 +7627,9 @@ export const createSeedRepository = () => {
     },
     createDownload: (id, actor) => {
       const asset = mediaAssetsById.get(String(id)) ?? null
-      if (!asset || !canAccessOwnedResource(asset.ownerHandle, actor) || asset.status !== 'uploaded' || asset.metadata?.security?.scanStatus !== 'clean' || (asset.storage && asset.storage.state !== 'available') || asset.archivedAt || asset.deletedAt) {
+      const generatedAsset = Boolean(asset?.metadata?.creative || asset?.metadata?.ingestion)
+      const outputSafetyAllowed = !generatedAsset || asset?.metadata?.security?.outputSafetyDecision === 'allow'
+      if (!asset || !canAccessOwnedResource(asset.ownerHandle, actor) || asset.status !== 'uploaded' || asset.metadata?.security?.scanStatus !== 'clean' || !outputSafetyAllowed || (asset.storage && asset.storage.state !== 'available') || asset.archivedAt || asset.deletedAt) {
         return null
       }
       recordAudit(actor, 'media.download.signed', 'media_asset', asset.id, {
@@ -7354,10 +7797,12 @@ export const createSeedRepository = () => {
   },
   moderationCases,
   safetyOperations,
+  inspiration,
   library: {
-    list: (options = {}) => {
+    list: (options = {}, actor) => {
       const search = options.search ? options.search.toLowerCase() : null
       const filtered = seedLibraryItems.filter((item) => {
+        if (item.deletedAt || !canAccessOwnedResource(item.ownerHandle, actor)) return false
         if (options.type && item.type !== options.type) return false
         if (options.source && item.source !== options.source) return false
         if (options.sourceId && item.sourceId !== options.sourceId) return false
@@ -7381,6 +7826,10 @@ export const createSeedRepository = () => {
         ownerHandle: actor.handle,
         sourceId: payload.sourceId ?? null,
         metadata: payload.metadata ?? null,
+        version: 1,
+        deletedAt: null,
+        deletionReasonCode: null,
+        createdAt: new Date().toISOString(),
       }
       seedLibraryItems.unshift(item)
       libraryItemsById.set(item.id, item)
@@ -7389,16 +7838,52 @@ export const createSeedRepository = () => {
     },
     findById: (id) => {
       const item = libraryItemsById.get(String(id)) ?? null
+      if (item?.deletedAt) return null
       return item ? serializeLibraryItem(item) : null
+    },
+    softDelete: (id, payload, actor) => {
+      const item = libraryItemsById.get(String(id)) ?? null
+      if (!item || !canAccessOwnedResource(item.ownerHandle, actor)) return null
+      if (item.deletedAt) return serializeLibraryItem(item)
+      if ((item.version ?? 1) !== payload.expectedVersion) throw new HttpError(409, 'VERSION_CONFLICT', 'Library item version is stale')
+      Object.assign(item, {
+        version: (item.version ?? 1) + 1,
+        deletedAt: new Date().toISOString(),
+        deletionReasonCode: payload.reasonCode,
+      })
+      recordAudit(actor, 'library.deleted', 'library_item', item.id, { reasonCode: payload.reasonCode, version: item.version })
+      return serializeLibraryItem(item)
+    },
+    restore: (id, payload, actor) => {
+      const item = libraryItemsById.get(String(id)) ?? null
+      if (!item || !canAccessOwnedResource(item.ownerHandle, actor)) return null
+      if (!item.deletedAt) return serializeLibraryItem(item)
+      if ((item.version ?? 1) !== payload.expectedVersion) throw new HttpError(409, 'VERSION_CONFLICT', 'Library item version is stale')
+      Object.assign(item, { version: (item.version ?? 1) + 1, deletedAt: null, deletionReasonCode: null })
+      recordAudit(actor, 'library.restored', 'library_item', item.id, { reasonCode: payload.reasonCode, version: item.version })
+      return serializeLibraryItem(item)
+    },
+    sweepRetention: ({ now = new Date(), limit } = {}) => {
+      const cutoff = privateLibraryRetentionCutoff(now).getTime()
+      const candidates = [...libraryItemsById.values()]
+        .filter((item) => item.deletedAt && new Date(item.deletedAt).getTime() <= cutoff)
+        .sort((left, right) => new Date(left.deletedAt) - new Date(right.deletedAt) || left.id.localeCompare(right.id))
+        .slice(0, privateLibraryRetentionSweepLimit(limit))
+      for (const item of candidates) {
+        libraryItemsById.delete(item.id)
+        const index = seedLibraryItems.findIndex((candidate) => candidate.id === item.id)
+        if (index >= 0) seedLibraryItems.splice(index, 1)
+      }
+      return { policyId: privateLibraryRetentionContract.policyId, inspected: candidates.length, deleted: candidates.length }
     },
     findAccessibleChatContext: (id, actor) => {
       const item = libraryItemsById.get(String(id)) ?? null
-      if (!item || item.ownerHandle !== actor.handle) return null
+      if (!item || item.deletedAt || item.ownerHandle !== actor.handle) return null
       return { title: item.title, content: item.text }
     },
     convertToTask: (id, payload, actor) => {
       const item = libraryItemsById.get(String(id)) ?? null
-      if (!item) {
+      if (!item || item.deletedAt) {
         return null
       }
       if (!canAccessOwnedResource(item.ownerHandle, actor)) {
@@ -7431,7 +7916,7 @@ export const createSeedRepository = () => {
     },
     sendToWorkspace: (id, actor) => {
       const item = libraryItemsById.get(String(id)) ?? null
-      if (!item) {
+      if (!item || item.deletedAt) {
         return null
       }
       if (!canAccessOwnedResource(item.ownerHandle, actor)) {

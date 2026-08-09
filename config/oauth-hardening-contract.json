@@ -7,6 +7,9 @@
   "runtime": {
     "productionDevFallback": false,
     "explicitUnavailableMode": true,
+    "productionSignals": ["NODE_ENV", "DEPLOYMENT_ENV"],
+    "canonicalCallbackOriginRequired": true,
+    "trustedBrowserReturnOriginRequired": true,
     "providerTimeoutMs": { "default": 8000, "minimum": 1000, "maximum": 15000 }
   },
   "authorizationRequest": {
@@ -31,7 +34,9 @@
   "browserCallback": {
     "accessTokenEmbedded": false,
     "refreshCookie": true,
-    "csrfCookie": true
+    "csrfCookie": true,
+    "crossOriginProductReturn": true,
+    "apiOriginLocalStorageRequired": false
   },
   "requiredSecurityEvents": [
     "auth.oauth.state_rejected",

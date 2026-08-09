@@ -4,6 +4,9 @@ import path from 'node:path'
 const root = process.cwd()
 const contract = JSON.parse(fs.readFileSync(path.join(root, 'config/observability-contract.json'), 'utf8'))
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
+const structuredLogging = fs.readFileSync(path.join(root, 'server/src/observability/structuredLogging.js'), 'utf8')
+const prismaRepository = fs.readFileSync(path.join(root, 'server/src/observability/prismaObservabilityRepository.js'), 'utf8')
+const seedRepository = fs.readFileSync(path.join(root, 'server/src/observability/seedObservabilityRepository.js'), 'utf8')
 const checks = []
 const add = (name, pass, detail) => checks.push({ name, pass: Boolean(pass), detail })
 const unique = (values) => new Set(values).size === values.length
@@ -16,6 +19,10 @@ add('trace propagation uses W3C trace context', contract.correlation.traceHeader
 add('structured log fields are unique', unique(contract.correlation.fields), `${contract.correlation.fields.length} field(s)`)
 add('async correlation fields are complete', ['jobId', 'attemptId', 'eventId', 'causationId', 'correlationId'].every((field) => contract.correlation.asyncFields.includes(field)), contract.correlation.asyncFields.join(', '))
 add('sensitive log fields are forbidden', ['authorization', 'cookie', 'password', 'secret', 'token', 'prompt', 'providerPayload'].every((field) => contract.correlation.sensitiveFieldsForbidden.includes(field)), contract.correlation.sensitiveFieldsForbidden.join(', '))
+add('persistent log root fields exactly match the governed schema', contract.logPersistence.schemaVersion === 1 && unique(contract.logPersistence.rootFields) && ['id', 'timestamp', 'event', 'requestId', 'traceId', 'spanId', 'attributes', 'attributesSchemaVersion'].every((field) => contract.logPersistence.rootFields.includes(field)), `${contract.logPersistence.rootFields.length} field(s)`)
+add('persistent log attributes are event-specific and flat', contract.logPersistence.unknownFieldDisposition === 'reject_before_persistence' && contract.logPersistence.nestedAttributesAllowed === false && ['http.request.completed', 'client.route.view', 'client.runtime.error'].every((event) => Array.isArray(contract.logPersistence.eventAttributeFields[event])), Object.keys(contract.logPersistence.eventAttributeFields).join(', '))
+add('persistent log projector rejects unknown fields and non-scalar attributes', structuredLogging.includes('projectPersistedObservabilityLog') && structuredLogging.includes('rejectUnsupportedKeys') && structuredLogging.includes('Observability log attributes must be an object or null') && structuredLogging.includes('unsupported field'), 'fail closed')
+add('Prisma and Seed enforce the same projector before writes', [prismaRepository, seedRepository].every((source) => source.includes('projectPersistedObservabilityLog(log)')), 'shared write boundary')
 add('error taxonomy is unique', unique(contract.errorTaxonomy), contract.errorTaxonomy.join(', '))
 add('metric families are unique', unique(contract.metricRules.families.map((family) => family.id)), `${contract.metricRules.families.length} family(s)`)
 add('all metric names use the product prefix', contract.metricRules.families.flatMap((family) => family.metrics).every((metric) => metric.startsWith(contract.metricRules.prefix)), contract.metricRules.prefix)

@@ -101,3 +101,67 @@ test('notification delivery config fails closed when channel or worker wiring is
   assert.throws(() => buildNotificationDeliveryConfig({ NOTIFICATION_EMAIL_DELIVERY_ENABLED: 'true' }), /requires NOTIFICATION_EMAIL_WEBHOOK_URL/)
   assert.throws(() => buildNotificationDeliveryConfig({ NOTIFICATION_DELIVERY_WORKER_ENABLED: 'true' }), /requires NOTIFICATION_EMAIL_DELIVERY_ENABLED/)
 })
+
+test('production notification email requires signed requests, a sender, and Provider receipts', async () => {
+  const base = {
+    NODE_ENV: 'production',
+    NOTIFICATION_EMAIL_DELIVERY_ENABLED: 'true',
+    NOTIFICATION_EMAIL_WEBHOOK_URL: 'https://mailer.example.com/notifications',
+  }
+  assert.throws(() => buildNotificationDeliveryConfig(base), /WEBHOOK_SECRET with at least 32 characters/)
+  assert.throws(() => buildNotificationDeliveryConfig({ ...base, NOTIFICATION_EMAIL_WEBHOOK_SECRET: 'x'.repeat(32) }), /valid NOTIFICATION_EMAIL_FROM/)
+  assert.throws(() => buildNotificationDeliveryConfig({
+    ...base,
+    NOTIFICATION_EMAIL_WEBHOOK_SECRET: 'x'.repeat(32),
+    NOTIFICATION_EMAIL_FROM: 'notifications@example.com',
+    NOTIFICATION_EMAIL_REQUIRE_PROVIDER_RECEIPT: 'false',
+  }), /requires provider message receipts/)
+  assert.throws(() => buildNotificationDeliveryConfig({
+    ...base,
+    NOTIFICATION_EMAIL_WEBHOOK_URL: 'https://mailer.example.com/notifications?token=unsafe',
+    NOTIFICATION_EMAIL_WEBHOOK_SECRET: 'x'.repeat(32),
+    NOTIFICATION_EMAIL_FROM: 'notifications@example.com',
+  }), /production query parameters/)
+
+  const configured = buildNotificationDeliveryConfig({
+    ...base,
+    NOTIFICATION_EMAIL_WEBHOOK_SECRET: 'x'.repeat(32),
+    NOTIFICATION_EMAIL_FROM: 'System.Notifications@Example.com',
+  })
+  assert.equal(configured.email.from, 'System.Notifications@Example.com')
+
+  const client = createNotificationEmailClient({
+    source: {
+      ...base,
+      NOTIFICATION_EMAIL_WEBHOOK_SECRET: 'x'.repeat(32),
+      NOTIFICATION_EMAIL_FROM: 'notifications@example.com',
+    },
+    fetchImpl: async () => new Response('{}', { status: 202 }),
+  })
+  const result = await client.send({
+    delivery: { id: 'delivery-no-receipt' },
+    notification: { id: 'notification-no-receipt', type: 'system.test', title: 'Test', body: 'Test' },
+    recipient: { email: 'member@example.com' },
+  })
+  assert.deepEqual(result, { outcome: 'permanent_failure', statusCode: 202, errorCode: 'PROVIDER_RECEIPT_MISSING' })
+
+  const fallbackReceiptClient = createNotificationEmailClient({
+    source: {
+      ...base,
+      NOTIFICATION_EMAIL_WEBHOOK_SECRET: 'x'.repeat(32),
+      NOTIFICATION_EMAIL_FROM: 'notifications@example.com',
+    },
+    fetchImpl: async () => new Response('{}', {
+      status: 202,
+      headers: { 'x-message-id': ' ', 'x-request-id': 'request-receipt' },
+    }),
+  })
+  const fallbackReceipt = await fallbackReceiptClient.send({
+    delivery: { id: 'delivery-fallback-receipt' },
+    notification: { id: 'notification-fallback-receipt', type: 'system.test', title: 'Test', body: 'Test' },
+    recipient: { email: 'member@example.com' },
+  })
+  assert.equal(fallbackReceipt.outcome, 'sent')
+  assert.equal(fallbackReceipt.receiptHeader, 'x-request-id')
+  assert.match(fallbackReceipt.receiptHash, /^[a-f0-9]{64}$/)
+})

@@ -11,9 +11,21 @@ export const runNotificationDeliveryWorkerOnce = async ({
   const claims = await repositories.notificationDeliveries.claim({ workerId, limit, leaseSeconds })
   const results = []
   for (const claim of claims) {
+    const suppressed = await repositories.notificationDeliveries.suppressClaimIfNeeded?.(claim)
+    if (suppressed) {
+      results.push(suppressed)
+      continue
+    }
     let result
     if (claim.channel === 'email') {
-      result = await emailClient.send(claim)
+      const prepared = await repositories.auth?.prepareEmailDelivery?.(claim, undefined) ?? claim
+      result = prepared.authEmailActionUnavailable
+        ? { outcome: 'permanent_failure', errorCode: 'AUTH_EMAIL_ACTION_UNAVAILABLE' }
+        : await emailClient.send({
+            delivery: prepared.delivery ?? prepared,
+            notification: prepared.notification,
+            recipient: prepared.recipient ?? prepared.notification?.recipient,
+          })
     } else {
       result = { outcome: 'permanent_failure', errorCode: 'CHANNEL_UNSUPPORTED' }
     }
@@ -25,5 +37,6 @@ export const runNotificationDeliveryWorkerOnce = async ({
     sent: results.filter((item) => item?.status === 'sent').length,
     retryScheduled: results.filter((item) => item?.status === 'retry_scheduled').length,
     deadLettered: results.filter((item) => item?.status === 'dead_lettered').length,
+    suppressed: results.filter((item) => item?.status === 'suppressed').length,
   }
 }

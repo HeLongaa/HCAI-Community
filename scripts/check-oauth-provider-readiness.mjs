@@ -15,13 +15,20 @@ const providers = [
 
 const apiOriginArgument = process.argv.find((argument) => argument.startsWith('--api-origin='))
 const apiOrigin = apiOriginArgument?.slice('--api-origin='.length) || process.env.OAUTH_PREFLIGHT_API_ORIGIN || null
+const callbackOriginArgument = process.argv.find((argument) => argument.startsWith('--callback-origin='))
+const callbackOrigin = callbackOriginArgument?.slice('--callback-origin='.length) || process.env.OAUTH_CALLBACK_ORIGIN || apiOrigin
+const browserOriginArgument = process.argv.find((argument) => argument.startsWith('--browser-origin='))
+const browserOrigin = browserOriginArgument?.slice('--browser-origin='.length) || process.env.OAUTH_PREFLIGHT_BROWSER_ORIGIN || process.env.OAUTH_BROWSER_RETURN_ORIGIN || null
 const allowLocal = process.argv.includes('--allow-local')
 const failures = []
 
 const fail = (provider, check) => failures.push(`${provider}: ${check}`)
 
-const parseApiOrigin = (value) => {
-  if (!value) return null
+const parseExactOrigin = (name, value, required = true) => {
+  if (!value) {
+    if (required) fail(name, `${name} origin is missing`)
+    return null
+  }
   try {
     const origin = new URL(value)
     const loopbackHttp = allowLocal && origin.protocol === 'http:' && ['localhost', '127.0.0.1', '::1'].includes(origin.hostname)
@@ -30,12 +37,26 @@ const parseApiOrigin = (value) => {
     }
     return origin
   } catch {
-    fail('api', 'API origin must be an HTTPS origin without path, query, or fragment (or loopback HTTP with --allow-local)')
+    fail(name, `${name} origin must be HTTPS without path, query, or fragment (or loopback HTTP with --allow-local)`)
     return null
   }
 }
 
-const parsedApiOrigin = parseApiOrigin(apiOrigin)
+const parsedApiOrigin = parseExactOrigin('api', apiOrigin, false)
+const parsedCallbackOrigin = parseExactOrigin('callback', callbackOrigin)
+const parsedBrowserOrigin = parseExactOrigin('browser', browserOrigin)
+if (parsedApiOrigin && parsedCallbackOrigin && parsedApiOrigin.origin !== parsedCallbackOrigin.origin) {
+  fail('callback', 'callback origin must equal the inspected API origin')
+}
+const trustedOrigins = String(process.env.AUTH_TRUSTED_ORIGINS ?? process.env.CORS_ALLOWED_ORIGINS ?? '')
+  .split(',')
+  .map((value) => {
+    try { return new URL(value.trim()).origin } catch { return null }
+  })
+  .filter(Boolean)
+if (parsedBrowserOrigin && !trustedOrigins.includes(parsedBrowserOrigin.origin)) {
+  fail('browser', 'browser return origin must be included in AUTH_TRUSTED_ORIGINS or CORS_ALLOWED_ORIGINS')
+}
 
 const validateRedirect = (provider, value) => {
   if (!value) return fail(provider, 'redirect URI is missing')
@@ -56,8 +77,8 @@ const validateRedirect = (provider, value) => {
   }
 }
 
-const expectedCallback = (provider) => parsedApiOrigin
-  ? new URL(`/api/auth/oauth/${provider}/callback`, parsedApiOrigin).toString()
+const expectedCallback = (provider) => parsedCallbackOrigin
+  ? new URL(`/api/auth/oauth/${provider}/callback`, parsedCallbackOrigin).toString()
   : null
 
 for (const provider of providers) {
@@ -69,7 +90,7 @@ for (const provider of providers) {
   if (!apiOrigin && !clientIdPresent) fail(provider.id, `${provider.clientIdKey} is missing`)
   if (!secretPresent) fail(provider.id, `${provider.secretKey} is missing`)
   if (!apiOrigin || redirect) validateRedirect(provider.id, redirect)
-  if (parsedApiOrigin && redirect && redirect !== expectedCallback(provider.id)) {
+  if (parsedCallbackOrigin && redirect && redirect !== expectedCallback(provider.id)) {
     fail(provider.id, `${provider.redirectKey} must equal ${expectedCallback(provider.id)}`)
   }
   console.log(`${provider.id}: client_id=${clientIdPresent ? 'environment' : apiOrigin ? 'admin/runtime' : 'missing'} secret=${secretPresent ? 'present' : 'missing'} redirect=${redirect || (apiOrigin ? 'admin/runtime' : 'missing')}`)
@@ -92,8 +113,10 @@ if (parsedApiOrigin) {
         fail(provider.id, `public Provider status is mode=${status.mode ?? 'missing'} available=${String(status.available)}`)
       } else if (status.callbackUrl !== expectedCallback(provider.id)) {
         fail(provider.id, `effective callback must equal ${expectedCallback(provider.id)}`)
+      } else if (status.browserReturnOrigin !== parsedBrowserOrigin?.origin) {
+        fail(provider.id, 'effective browser return origin does not match preflight')
       } else {
-        console.log(`${provider.id}: public_status=external/available callback=exact`)
+        console.log(`${provider.id}: public_status=external/available callback=exact browser_return=exact`)
       }
     }
   } catch (error) {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildAuditRetentionPolicy } from '../audit/auditRetention.js'
+import { runAuditRetentionWorkerOnce } from '../audit/auditRetentionWorker.js'
 
 const databaseUrl = process.env.FOUNDATION_DATABASE_URL
 
@@ -12,6 +12,7 @@ test('Prisma audit integrity serializes concurrent appends and rejects evidence 
   assert.ok(repository)
   const runId = `audit-integrity-${Date.now()}`
   const actor = { id: runId, handle: runId }
+  let retentionDispositionId = null
   try {
     for (let index = 0; index < 4; index += 1) {
       await repository.client.auditEvent.create({
@@ -45,35 +46,37 @@ test('Prisma audit integrity serializes concurrent appends and rejects evidence 
       /immutable audit evidence cannot be update/,
     )
 
-    const policy = buildAuditRetentionPolicy({
+    const retentionSource = {
       AUDIT_RETENTION_DAYS: '30',
       AUDIT_RETENTION_BATCH_SIZE: '3',
       AUDIT_RETENTION_MIN_RETAINED: '1',
       AUDIT_RETENTION_LEGAL_HOLD: 'false',
       AUDIT_RETENTION_PRUNE_ENABLED: 'true',
-    })
-    const retention = await repository.audit.retentionPreview(policy, new Date('2026-07-17T12:00:00.000Z'))
-    assert.equal(retention.preview.candidateCount, 3)
-    const pruned = await repository.audit.pruneRetention({
-      actor,
-      policy,
-      previewId: retention.preview.previewId,
-      archive: {
+    }
+    const pruned = await runAuditRetentionWorkerOnce({
+      repository: repository.audit,
+      source: retentionSource,
+      now: new Date('2026-07-17T12:00:00.000Z'),
+      archiveWriter: async (_artifact, options) => ({
         persisted: true,
         provider: 'integration',
-        storageKey: `integration/${runId}.json`,
+        storageKey: options.storageKey,
         checksumSha256: 'a'.repeat(64),
         bytes: 1024,
-      },
-      now: new Date('2026-07-17T12:00:00.000Z'),
+      }),
     })
     assert.equal(pruned.status, 'complete')
-    assert.equal(pruned.disposition.eventCount, 3)
+    assert.equal(pruned.deleted, 3)
+    retentionDispositionId = pruned.dispositionId
+    const [disposition] = (await repository.audit.listRetentionDispositions())
+      .filter((item) => item.id === retentionDispositionId)
+    assert.equal(disposition.eventCount, 3)
+    assert.equal(disposition.actorId, 'system-audit-retention')
     const anchoredIntegrity = await repository.audit.verify()
     assert.equal(anchoredIntegrity.status, 'complete')
     assert.equal(anchoredIntegrity.firstSequence, '4')
     await assert.rejects(
-      repository.client.auditRetentionDisposition.delete({ where: { id: pruned.disposition.id } }),
+      repository.client.auditRetentionDisposition.delete({ where: { id: retentionDispositionId } }),
       /immutable audit evidence cannot be delete/,
     )
 
@@ -87,7 +90,12 @@ test('Prisma audit integrity serializes concurrent appends and rejects evidence 
   } finally {
     await repository.client.$transaction(async (transaction) => {
       await transaction.$executeRawUnsafe("SET LOCAL app.audit_maintenance = 'on'")
-      await transaction.auditRetentionDisposition.deleteMany({ where: { actorId: runId } })
+      if (retentionDispositionId) {
+        await transaction.auditRetentionDisposition.deleteMany({ where: { id: retentionDispositionId } })
+        await transaction.auditEvent.deleteMany({
+          where: { actorId: 'system-audit-retention', resourceId: retentionDispositionId },
+        })
+      }
       await transaction.auditArchiveManifest.deleteMany({ where: { actorId: runId } })
       await transaction.auditEvent.deleteMany({ where: { actorId: runId } })
     })

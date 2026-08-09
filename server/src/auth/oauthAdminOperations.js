@@ -1,5 +1,6 @@
 import { HttpError } from '../common/errors/httpError.js'
 import { validationFailed } from '../common/http/validation.js'
+import { isProductionEnvironment } from '../common/runtimeEnvironment.js'
 import { isAllowedOAuthProviderSecretReference, oauthProviderSecretReference } from './oauth.js'
 
 export const oauthAdminProviders = Object.freeze(['google', 'github', 'apple', 'discord'])
@@ -60,7 +61,7 @@ export const parseOAuthProviderConfigurationRequest = (provider, raw = {}, sourc
   const redirectUri = text(raw.redirectUri, 'redirectUri', 2048)
   try {
     const parsed = new URL(redirectUri)
-    const local = source.NODE_ENV !== 'production' && ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)
+    const local = !isProductionEnvironment(source) && ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)
     if (
       (parsed.protocol !== 'https:' && !(local && parsed.protocol === 'http:')) ||
       parsed.username || parsed.password || parsed.search || parsed.hash ||

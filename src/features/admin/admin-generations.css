@@ -1,0 +1,299 @@
+.generation-operations-workspace {
+  display: grid;
+  min-width: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.generation-workspace-header {
+  min-width: 0;
+  padding: 0 0 16px;
+}
+
+.generation-workspace-header > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.generation-workspace-header small {
+  color: var(--product-accent, #ed5a42);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.generation-workspace-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.generation-workspace-header p {
+  max-width: 720px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.generation-workspace-select {
+  display: none;
+  min-width: 0;
+}
+
+.generation-action-feedback {
+  margin: 12px 0;
+}
+
+.panel.admin-generation-operations-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+.admin-generation-operations-panel input,
+.admin-generation-operations-panel select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.generation-record-filters {
+  grid-template-columns: repeat(5, minmax(110px, 1fr));
+  align-items: end;
+}
+
+.generation-metrics-filters {
+  grid-template-columns: repeat(4, minmax(130px, 1fr)) auto;
+  align-items: end;
+}
+
+.generation-record-filters label,
+.generation-metrics-filters label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.generation-record-filters label > span,
+.generation-metrics-filters label > span {
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.generation-record-filters input,
+.generation-record-filters select,
+.generation-metrics-filters input,
+.generation-metrics-filters select {
+  width: 100%;
+}
+
+.generation-record-filters > button,
+.generation-metrics-filters > button {
+  min-height: 40px;
+  align-self: end;
+}
+
+.generation-record-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--border);
+}
+
+.generation-record-summary > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 11px 12px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.generation-record-summary strong {
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.1;
+}
+
+.generation-volume-metrics,
+.generation-business-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.generation-business-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.generation-volume-metrics .metric-card,
+.generation-business-metrics .metric-card {
+  min-width: 0;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 6px;
+}
+
+.generation-volume-metrics .metric-card > *,
+.generation-business-metrics .metric-card > * {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.generation-bulk-panel {
+  margin-top: 0;
+  background: var(--panel-soft);
+}
+
+.admin-generation-operations-panel[data-workspace='recovery'] > .admin-detail-panel {
+  margin-top: 0;
+}
+
+.admin-generation-operations-panel[data-workspace='recovery'] .admin-table {
+  min-width: 0;
+}
+
+.admin-row.generation-row {
+  grid-template-columns: 28px minmax(92px, 0.65fr) minmax(0, 0.85fr) minmax(0, 1fr) minmax(0, 1.35fr);
+  align-items: start;
+}
+
+.admin-row.generation-row > * {
+  min-width: 0;
+}
+
+.admin-row.generation-row > strong,
+.admin-row.generation-row > span,
+.admin-row.generation-row > small {
+  overflow-wrap: anywhere;
+}
+
+.admin-row.generation-row > label:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+}
+
+.admin-row.generation-row .button-row {
+  grid-column: 1 / -1;
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.generation-mutation-controls {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.generation-mutation-controls .button-row {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+@media (max-width: 900px) {
+  .generation-workspace-select {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    padding: 12px 0 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  .generation-workspace-select > span {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .generation-workspace-select select {
+    width: 100%;
+    min-height: 40px;
+  }
+
+  .generation-record-filters,
+  .generation-metrics-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .generation-record-filters > button,
+  .generation-metrics-filters > button {
+    width: 100%;
+  }
+
+  .generation-volume-metrics,
+  .generation-business-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .admin-row.generation-row,
+  .generation-mutation-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-generation-operations-panel > .section-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .admin-generation-operations-panel > .section-header > div,
+  .admin-generation-operations-panel .inline-actions,
+  .generation-business-metrics .metric-card {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .admin-generation-operations-panel .inline-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .generation-business-metrics .metric-card > * {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .admin-row.generation-row .button-row {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 560px) {
+  .generation-workspace-header h2 {
+    font-size: 18px;
+  }
+
+  .generation-record-filters,
+  .generation-metrics-filters,
+  .generation-volume-metrics,
+  .generation-business-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .generation-record-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .generation-record-summary > span:last-child {
+    grid-column: 1 / -1;
+  }
+}

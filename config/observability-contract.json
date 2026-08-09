@@ -12,6 +12,17 @@
     "asyncFields": ["jobId", "attemptId", "eventId", "causationId", "correlationId"],
     "sensitiveFieldsForbidden": ["authorization", "cookie", "password", "secret", "token", "prompt", "messageBody", "providerPayload", "storageUrl"]
   },
+  "logPersistence": {
+    "schemaVersion": 1,
+    "unknownFieldDisposition": "reject_before_persistence",
+    "nestedAttributesAllowed": false,
+    "rootFields": ["id", "timestamp", "level", "service", "environment", "event", "requestId", "traceId", "spanId", "parentSpanId", "module", "operation", "outcome", "durationMs", "errorCode", "method", "routeTemplate", "statusCode", "resourceType", "resourceId", "attributes", "attributesSchemaVersion"],
+    "eventAttributeFields": {
+      "http.request.completed": ["statusClass", "sampled"],
+      "client.route.view": ["errorName", "release", "clientOccurredAt", "messageHash", "stackHash", "componentStackHash"],
+      "client.runtime.error": ["errorName", "release", "clientOccurredAt", "messageHash", "stackHash", "componentStackHash"]
+    }
+  },
   "errorTaxonomy": ["validation", "authentication", "authorization", "not_found", "conflict", "rate_limit", "dependency", "timeout", "policy", "internal"],
   "metricRules": {
     "prefix": "museflow_",
@@ -28,6 +39,11 @@
   "slos": [
     { "id": "api-availability", "indicator": "successful eligible API requests / eligible API requests", "target": 0.999, "windowDays": 30, "ownerTask": "OBS-02" },
     { "id": "api-latency", "indicator": "eligible API requests completed within 750ms", "target": 0.99, "windowDays": 30, "ownerTask": "OBS-02" },
+    { "id": "generation-success", "indicator": "completed generations / terminal generations", "target": 0.95, "windowDays": 30, "ownerTask": "OBS-03" },
+    { "id": "generation-first-result-latency", "indicator": "completed generations with first persisted output within 120s", "target": 0.9, "windowDays": 30, "ownerTask": "OBS-03" },
+    { "id": "generation-retry-rate", "indicator": "generations completed without a retry attempt / generations", "target": 0.95, "windowDays": 30, "ownerTask": "OBS-03" },
+    { "id": "generation-abandonment-rate", "indicator": "terminal generations without a successful user cancel mutation / terminal generations", "target": 0.98, "windowDays": 30, "ownerTask": "OBS-03" },
+    { "id": "frontend-error-rate", "indicator": "browser route views without a reported runtime error / browser route views", "target": 0.99, "windowDays": 30, "ownerTask": "OBS-03" },
     { "id": "async-start-latency", "indicator": "eligible async jobs started within 60s", "target": 0.99, "windowDays": 30, "ownerTask": "JOB-02" },
     { "id": "notification-delivery", "indicator": "eligible in-app notifications persisted within 60s", "target": 0.995, "windowDays": 30, "ownerTask": "NOTIFY-01" }
   ],

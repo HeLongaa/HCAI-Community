@@ -2,6 +2,7 @@ import { api, setStoredAccessToken } from './apiClient'
 import type {
   ApiAccount,
   ApiSession,
+  AuthEmailRequestResponse,
   LoginRequest,
   LogoutRequest,
   OAuthProvider,
@@ -10,8 +11,10 @@ import type {
   OAuthSessionResponse,
   OAuthStartResponse,
   RefreshSessionRequest,
+  RegistrationResponse,
   RegisterRequest,
   RevokeSessionsResponse,
+  PasswordResetResponse,
   SessionResponse,
   UnlinkOAuthAccountResponse,
 } from './contracts'
@@ -35,9 +38,25 @@ export const authService = {
     return session
   },
   async register(payload: RegisterRequest) {
-    const session = await api.post<SessionResponse>('/auth/register', payload)
+    const result = await api.post<RegistrationResponse>('/auth/register', payload)
+    if ('accessToken' in result) setStoredAccessToken(result.accessToken)
+    return result
+  },
+  async resendEmailVerification(email: string) {
+    return api.post<AuthEmailRequestResponse>('/auth/email/verification/resend', { email }, { token: null })
+  },
+  async verifyEmail(token: string) {
+    const session = await api.post<SessionResponse>('/auth/email/verify', { token }, { token: null })
     setStoredAccessToken(session.accessToken)
     return session
+  },
+  async requestPasswordReset(email: string) {
+    return api.post<AuthEmailRequestResponse>('/auth/password-reset/request', { email }, { token: null })
+  },
+  async resetPassword(token: string, password: string) {
+    const result = await api.post<PasswordResetResponse>('/auth/password-reset/confirm', { token, password }, { token: null })
+    setStoredAccessToken(null)
+    return result
   },
   async listOAuthProviders() {
     return api.get<OAuthProviderMetadata[]>('/auth/oauth/providers')

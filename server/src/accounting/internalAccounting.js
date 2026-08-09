@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { dataRightsSafeSubjectRef } from '../dataRights/dataRightsLifecycle.js'
 
 const allowedUnits = new Set(['points', 'creative_credit', 'quota_unit', 'provider_currency'])
 
@@ -16,6 +17,22 @@ export const accountingOperationKey = ({ kind, sourceType, sourceId, phase = 'ap
   [kind, sourceType, sourceId, phase]
     .map((value) => String(value ?? '').trim().toLowerCase())
     .join(':')
+
+export const accountingSubjectRef = (subjectId) => {
+  const value = String(subjectId ?? '').trim()
+  if (!value) throw new TypeError('Accounting subject id is required')
+  return dataRightsSafeSubjectRef(value)
+}
+
+export const accountingAvailableAccountRef = (subjectId, unit) => {
+  if (!allowedUnits.has(unit)) throw new TypeError('Accounting unit is invalid')
+  return `${accountingSubjectRef(subjectId)}:${unit}:available`
+}
+
+export const accountingActorRef = (actor) => {
+  const subjectId = actor?.id ?? actor?.handle
+  return subjectId ? accountingSubjectRef(subjectId) : 'system'
+}
 
 export const validateMovementGroup = ({ unit, movements }) => {
   if (!allowedUnits.has(unit)) {

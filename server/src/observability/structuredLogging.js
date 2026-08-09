@@ -40,6 +40,88 @@ const forbiddenMetricLabels = new Set([
   'prompt',
   'errorMessage',
 ])
+const persistedLogFields = Object.freeze([
+  'id', 'timestamp', 'level', 'service', 'environment', 'event', 'requestId', 'traceId', 'spanId', 'parentSpanId',
+  'module', 'operation', 'outcome', 'durationMs', 'errorCode', 'method', 'routeTemplate', 'statusCode',
+  'resourceType', 'resourceId', 'attributes', 'attributesSchemaVersion',
+])
+const persistedLogFieldSet = new Set(persistedLogFields)
+const requiredPersistedLogFields = Object.freeze([
+  'id', 'timestamp', 'level', 'service', 'environment', 'event', 'requestId', 'traceId', 'spanId', 'module', 'operation', 'outcome',
+])
+const eventAttributeFields = new Map([
+  ['http.request.completed', new Set(['statusClass', 'sampled'])],
+  ['client.route.view', new Set(['errorName', 'release', 'clientOccurredAt', 'messageHash', 'stackHash', 'componentStackHash'])],
+  ['client.runtime.error', new Set(['errorName', 'release', 'clientOccurredAt', 'messageHash', 'stackHash', 'componentStackHash'])],
+])
+const hashAttributeFields = new Set(['messageHash', 'stackHash', 'componentStackHash'])
+const boundedScalarPattern = /^[^\u0000-\u001f\u007f]{1,256}$/
+const sha256Pattern = /^[a-f0-9]{64}$/
+
+const rejectUnsupportedKeys = (value, allowed, scope) => {
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) throw new TypeError(`${scope} contains unsupported field: ${key}`)
+  }
+}
+
+const projectLogAttributes = (event, attributes) => {
+  if (attributes == null) return null
+  if (!attributes || typeof attributes !== 'object' || Array.isArray(attributes)) {
+    throw new TypeError('Observability log attributes must be an object or null')
+  }
+  const allowed = eventAttributeFields.get(event) ?? new Set()
+  rejectUnsupportedKeys(attributes, allowed, `Observability ${event} attributes`)
+  const projected = {}
+  for (const [key, value] of Object.entries(attributes)) {
+    if (value == null) {
+      projected[key] = null
+    } else if (key === 'sampled') {
+      if (typeof value !== 'boolean') throw new TypeError('Observability sampled attribute must be boolean')
+      projected[key] = value
+    } else if (key === 'statusClass') {
+      if (!/^[1-5]xx$/.test(String(value))) throw new TypeError('Observability statusClass attribute must be a status family')
+      projected[key] = String(value)
+    } else if (hashAttributeFields.has(key)) {
+      const normalized = String(value).toLowerCase()
+      if (!sha256Pattern.test(normalized)) throw new TypeError(`Observability ${key} attribute must be a SHA-256 digest`)
+      projected[key] = normalized
+    } else {
+      const normalized = String(value)
+      if (!boundedScalarPattern.test(normalized)) throw new TypeError(`Observability ${key} attribute must be a bounded scalar`)
+      projected[key] = normalized
+    }
+  }
+  return projected
+}
+
+export const projectPersistedObservabilityLog = (input) => {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('Observability log must be an object')
+  rejectUnsupportedKeys(input, persistedLogFieldSet, 'Observability log')
+  for (const field of requiredPersistedLogFields) {
+    if (input[field] == null || input[field] === '') throw new TypeError(`Observability log requires ${field}`)
+  }
+  const timestamp = input.timestamp instanceof Date ? input.timestamp : new Date(input.timestamp)
+  if (Number.isNaN(timestamp.getTime())) throw new TypeError('Observability log timestamp must be valid')
+  const projected = Object.fromEntries(persistedLogFields
+    .filter((field) => field in input && field !== 'timestamp' && field !== 'attributes' && field !== 'attributesSchemaVersion')
+    .map((field) => [field, input[field]]))
+  for (const [field, value] of Object.entries(projected)) {
+    if (value != null && typeof value === 'string' && !boundedScalarPattern.test(value)) {
+      throw new TypeError(`Observability log ${field} must be a bounded scalar`)
+    }
+  }
+  if (!['debug', 'info', 'warn', 'error'].includes(String(projected.level))) throw new TypeError('Observability log level is unsupported')
+  for (const field of ['durationMs', 'statusCode']) {
+    const value = projected[field]
+    if (value != null && (!Number.isSafeInteger(value) || value < 0)) throw new TypeError(`Observability log ${field} must be a non-negative integer`)
+  }
+  return {
+    ...projected,
+    timestamp,
+    attributes: projectLogAttributes(String(input.event), input.attributes),
+    attributesSchemaVersion: 1,
+  }
+}
 
 export const normalizeRequestId = (value) => {
   const candidate = String(value ?? '').trim()

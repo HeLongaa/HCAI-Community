@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { apiBaseUrl, apiData, authHeaders, signInPage } from './helpers'
+import { apiBaseUrl, apiData, authHeaders, registerPageAccount, signInPage } from './helpers'
 
 type OwnProfile = {
   handle: string
@@ -12,8 +12,17 @@ type OwnProfile = {
 
 type DataRightsRequest = { id: string; version: number; status: string; requestType: string }
 
+test('personal profile tolerates legacy accounts without optional collection fields', async ({ page, request }) => {
+  await signInPage(page, request, 'opsplus')
+  await page.goto('/#profile')
+
+  await expect(page.locator('.profile-shell')).toBeVisible()
+  await expect(page.getByText('Page temporarily unavailable')).toHaveCount(0)
+})
+
 test('personal profile privacy and account deletion request remain owner-controlled', async ({ page, request }) => {
-  const session = await signInPage(page, request, 'legalpixel')
+  const handle = `privacy${Date.now().toString(36)}`
+  const session = await registerPageAccount(page, request, handle)
   await page.goto('/')
   await page.locator('.sidebar-profile > button').click()
 
@@ -28,9 +37,9 @@ test('personal profile privacy and account deletion request remain owner-control
   await panel.getByRole('button', { name: 'Save' }).click()
   expect((await privateSave).status()).toBe(200)
 
-  const hidden = await request.get(`${apiBaseUrl}/api/profiles/legalpixel`)
+  const hidden = await request.get(`${apiBaseUrl}/api/profiles/${handle}`)
   expect(hidden.status()).toBe(404)
-  const owner = await apiData<OwnProfile>(request.get(`${apiBaseUrl}/api/profiles/legalpixel`, { headers: authHeaders(session.accessToken) }))
+  const owner = await apiData<OwnProfile>(request.get(`${apiBaseUrl}/api/profiles/${handle}`, { headers: authHeaders(session.accessToken) }))
   expect(owner.privacy.visibility).toBe('private')
 
   await panel.getByLabel('Profile visibility').selectOption('public')
@@ -38,11 +47,11 @@ test('personal profile privacy and account deletion request remain owner-control
   const publicSave = page.waitForResponse((response) => response.url().endsWith('/api/profiles/me') && response.request().method() === 'PATCH')
   await panel.getByRole('button', { name: 'Save' }).click()
   expect((await publicSave).status()).toBe(200)
-  const redacted = await apiData<OwnProfile>(request.get(`${apiBaseUrl}/api/profiles/legalpixel`))
+  const redacted = await apiData<OwnProfile>(request.get(`${apiBaseUrl}/api/profiles/${handle}`))
   expect(redacted.stats).toEqual({})
   expect(redacted.portfolio).toEqual([])
 
-  await panel.getByLabel('Data rights identity confirmation').fill('legalpixel')
+  await panel.getByLabel('Data rights identity confirmation').fill(handle)
   const deletionResponse = page.waitForResponse((response) => response.url().endsWith('/api/users/me/data-rights/requests') && response.request().method() === 'POST')
   await panel.getByRole('button', { name: 'Request deletion' }).click()
   const createdDeletion = (await (await deletionResponse).json() as { data: DataRightsRequest }).data

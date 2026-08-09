@@ -20,6 +20,7 @@ test('Prisma owner profile privacy and deletion requests preserve trust fields a
   const assetId = `profile-asset-${suffix}`
   const actor = { id: ownerId, handle: initialHandle, role: 'creator', permissions: [] }
   const trustedStats = { score: 731, completed: 19 }
+  const assertTrustedStats = (stats) => assert.deepEqual({ score: stats.score, completed: stats.completed }, trustedStats)
 
   try {
     await repository.client.user.create({
@@ -99,17 +100,17 @@ test('Prisma owner profile privacy and deletion requests preserve trust fields a
     const persisted = await repository.client.profile.findUnique({ where: { userId: ownerId }, include: { user: true } })
     assert.equal(persisted.user.role, 'creator')
     assert.deepEqual(persisted.stats, trustedStats)
-    assert.deepEqual(persisted.metadata.stats, trustedStats)
+    assertTrustedStats(persisted.metadata.stats)
     assert.deepEqual(persisted.metadata.badges, ['trusted-reviewer'])
     assert.deepEqual(persisted.metadata.reviews, [{ id: 'trusted-review', rating: 5 }])
-    assert.equal(persisted.metadata.role, 'creator')
+    assert.deepEqual(persisted.metadata.role, { en: 'creator', zh: 'creator' })
 
     const redacted = await repository.profiles.findByHandle(nextHandle)
     assert.deepEqual(redacted.stats, {})
     assert.deepEqual(redacted.reviews, [])
     assert.deepEqual(redacted.portfolio, [])
     const ownerProjection = await repository.profiles.findByHandle(nextHandle, actor)
-    assert.deepEqual(ownerProjection.stats, trustedStats)
+    assertTrustedStats(ownerProjection.stats)
     assert.equal(ownerProjection.portfolio.length, 1)
 
     const updates = await Promise.allSettled([

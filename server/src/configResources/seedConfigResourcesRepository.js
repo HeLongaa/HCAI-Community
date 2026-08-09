@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import { HttpError } from '../common/errors/httpError.js'
 import { hashConfigResource } from './configResourceRuntime.js'
+import { buildConfigurationRetentionSummary, configurationRetentionContract, configurationRetentionCutoff, configurationRetentionSweepLimit } from '../config/configurationRetention.js'
 
 const clone = (value) => value == null ? value : JSON.parse(JSON.stringify(value))
 const nowIso = () => new Date().toISOString()
@@ -147,6 +148,7 @@ export const createSeedConfigResourcesRepository = ({ recordAudit } = {}) => {
         title: snapshot.title, description: snapshot.description ?? null, value: clone(snapshot.value), valueSchemaVersion: 1,
         previousRevisionId: resource.currentRevisionId, eventType: payload.eventType,
         contentHash: hashConfigResource(snapshot), actorRef: payload.actorRef, reasonCode: payload.reasonCode, createdAt: timestamp,
+        retentionSummary: null, retentionSummarySchemaVersion: null, retentionRedactedAt: null,
       }
       revisions.unshift(revision)
       Object.assign(resource, {
@@ -163,5 +165,24 @@ export const createSeedConfigResourcesRepository = ({ recordAudit } = {}) => {
     },
     listRevisions: async (resourceId, options) => page(revisions.filter((item) => item.resourceId === String(resourceId)), options),
     findRevision: async (id) => clone(revisions.find((item) => item.id === String(id)) ?? null),
+    sweepRetention: async ({ now = new Date(), limit } = {}) => {
+      const cutoff = configurationRetentionCutoff(now)
+      const take = configurationRetentionSweepLimit(limit)
+      const candidates = revisions.filter((revision) => !revision.retentionRedactedAt
+        && get(revision.resourceId)?.currentRevisionId !== revision.id
+        && revisions.some((next) => next.previousRevisionId === revision.id && new Date(next.createdAt) <= cutoff))
+        .sort((left, right) => new Date(revisions.find((next) => next.previousRevisionId === left.id)?.createdAt) - new Date(revisions.find((next) => next.previousRevisionId === right.id)?.createdAt) || left.id.localeCompare(right.id))
+        .slice(0, take)
+      for (const row of candidates) {
+        const previous = revisions.find((item) => item.id === row.previousRevisionId)
+        row.retentionSummary = buildConfigurationRetentionSummary({
+          value: { title: row.title, description: row.description, value: row.value },
+          previousValue: previous?.value == null ? undefined : { title: previous.title, description: previous.description, value: previous.value },
+          contentHash: row.contentHash,
+        })
+        Object.assign(row, { title: null, description: null, value: null, actorRef: null, retentionSummarySchemaVersion: 1, retentionRedactedAt: new Date(now).toISOString() })
+      }
+      return { policyId: configurationRetentionContract.policyId, inspected: candidates.length, revisionsMinimized: candidates.length, changesMinimized: 0, blocked: 0 }
+    },
   }
 }

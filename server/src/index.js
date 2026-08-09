@@ -8,6 +8,7 @@ import { repositories } from './repositories/index.js'
 import { createAdminMutationAuditHook } from './audit/adminMutationAudit.js'
 import { resolveApiKeyClientIp } from './common/http/clientIp.js'
 import { configureEnvironmentProxy } from './common/http/environmentProxy.js'
+import { createGracefulShutdown } from './common/process/gracefulShutdown.js'
 
 configureEnvironmentProxy()
 
@@ -16,9 +17,23 @@ const main = async () => {
   const runtimeSource = runtimeConfig.source
   applyRuntimeConfigToProcess(runtimeConfig)
   const env = buildEnv(runtimeSource)
+  const rateLimitStore = createRateLimitStore(runtimeSource)
+  const readinessChecks = {
+    database: async () => {
+      if (!repositories.client?.$queryRaw) throw new Error('Database readiness check is unavailable')
+      await repositories.client.$queryRaw`SELECT 1`
+    },
+    ...(env.rateLimitStore === 'redis'
+      ? {
+          rateLimitStore: async () => {
+            await rateLimitStore.healthCheck()
+          },
+        }
+      : {}),
+  }
   const { registerModules } = await import('./modules/index.js')
   const router = createRouter()
-  registerModules(router, { source: runtimeSource, repositories })
+  registerModules(router, { source: runtimeSource, repositories, readinessChecks })
 
   const server = createServer(router, {
     resolveUser: async (token, request) => (await repositories.developerAccess.authenticateApiKey(token, {
@@ -26,7 +41,7 @@ const main = async () => {
     })) ?? repositories.auth.findDemoAccountByAccessToken(token),
     auditAdminMutation: createAdminMutationAuditHook(repositories.audit),
     onRequestFinished: (input) => repositories.observability.recordHttp(input),
-    rateLimitStore: createRateLimitStore(runtimeSource),
+    rateLimitStore,
     onRateLimitExceeded: (event) => {
       console.warn('[rate-limit]', JSON.stringify(event))
     },
@@ -46,10 +61,20 @@ const main = async () => {
     if (runtimeConfig.appliedKeys.length) console.log(`Applied ${runtimeConfig.appliedKeys.length} database runtime setting overrides`)
   })
 
-  startMediaScanWorker(repositories, {
+  const mediaScanWorker = startMediaScanWorker(repositories, {
     enabled: env.apiEmbeddedWorkersEnabled && env.mediaScanWorkerEnabled,
     intervalSeconds: env.mediaScanWorkerIntervalSeconds,
   })
+
+  const shutdown = createGracefulShutdown({
+    serviceName: 'api',
+    server,
+    workers: [mediaScanWorker],
+    disconnect: () => repositories.client?.$disconnect(),
+    timeoutMs: env.processShutdownTimeoutSeconds * 1000,
+  })
+  process.once('SIGINT', () => { void shutdown('SIGINT') })
+  process.once('SIGTERM', () => { void shutdown('SIGTERM') })
 }
 
 await main()

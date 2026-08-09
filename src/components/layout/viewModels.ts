@@ -16,6 +16,7 @@ import type {
   Role,
   SimulateAction,
   Task,
+  TaskProposalDraft,
   ThemeMode,
   Track,
 } from '../../domain/types'
@@ -23,8 +24,9 @@ import type { TaskChildCollection } from '../../hooks/useTaskWorkflows'
 import type { OAuthLoginResult } from '../../hooks/useAccountState'
 import type { MusicGenerationWorkflow } from '../../hooks/useMusicGenerationWorkflow'
 import type { VideoGenerationWorkflow } from '../../hooks/useVideoGenerationWorkflow'
+import type { GenerationOperationFeedback } from '../../hooks/generationOperationFeedback'
 import type { AppToast, AppToastTone } from '../../hooks/useAppFeedback'
-import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiNotification, ApiPointsSummary, ApiPolicyConsentStatus, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, ApiTaskWorkflow, ApiUserCreativeGeneration, NotificationListQuery, OAuthProvider, RegisterRequest } from '../../services/contracts'
+import type { ApiAcceptanceChecklistItem, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiNotification, ApiPointsSummary, ApiPolicyConsentStatus, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, ApiTaskWorkflow, ApiUserCreativeGeneration, NotificationListQuery, OAuthProvider, RegisterRequest, RegistrationResponse } from '../../services/contracts'
 
 export type AppCopyViewModel = {
   t: Record<string, string>
@@ -42,7 +44,7 @@ export type ShellNavigationViewModel = {
 
 export type PageNavigationViewModel = Pick<ShellNavigationViewModel, 'page' | 'navigateToPage'>
 
-export type PageAccountViewModel = Pick<AccountViewModel, 'accountHandle' | 'hasPermission' | 'permissions' | 'userRole'>
+export type PageAccountViewModel = Pick<AccountViewModel, 'accountHandle' | 'accountName' | 'hasPermission' | 'permissions' | 'userRole'>
 
 export type DataSourceState = {
   label: string
@@ -65,7 +67,9 @@ export type AccountViewModel = {
   loginAs: (handle: string) => Promise<void>
   loginWithPassword: (email: string, password: string) => Promise<void>
   loginWithOAuthProvider: (provider: OAuthProvider) => Promise<OAuthLoginResult>
-  registerWithEmail: (payload: RegisterRequest) => Promise<void>
+  registerWithEmail: (payload: RegisterRequest) => Promise<RegistrationResponse>
+  verifyEmail: (token: string) => Promise<void>
+  resetPassword: (token: string, password: string) => Promise<void>
   acceptCurrentPolicies: (locale: 'en' | 'zh') => Promise<void>
   logout: () => Promise<void>
   openProfile: (profile: MarketplaceProfile) => void
@@ -145,18 +149,20 @@ export type WorkspaceViewModel = {
     targetId: string | null
     error: string | null
   }
+  imageGenerationFeedback: GenerationOperationFeedback | null
   refreshImageGenerationHistory: (cursor?: string | null) => Promise<void>
   selectImageGeneration: (id: string) => void
   cancelImageGeneration: (id: string) => Promise<void>
-  retryImageGeneration: (id: string) => Promise<void>
+  retryImageGeneration: (id: string) => Promise<boolean>
   downloadImageGenerationAsset: (assetId: string) => Promise<void>
   prepareImageAssetForReuse: (assetId: string) => Promise<boolean>
   hasImageGenerationRetryRequest: (id: string) => boolean
   imageProviderCatalog: ApiCreativeProviderCatalog | null
   imageProviderCatalogState: 'loading' | 'ready' | 'error'
+  refreshProviderCatalog: () => Promise<void>
   imageInputAssets: ApiMediaAsset[]
   uploadImageInput: (file: File) => Promise<void>
-  runImageGeneration: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; quality: string; strength: number; inputAssetIds: string[] }) => Promise<void>
+  runImageGeneration: (input: { prompt: string; mode: string; stylePreset: string; aspectRatio: string; quality: string; strength: number; inputAssetIds: string[]; providerId: string }) => Promise<void>
   musicWorkflow: MusicGenerationWorkflow
   videoWorkflow: VideoGenerationWorkflow
   playgroundWorkspace: PlaygroundMode
@@ -165,8 +171,8 @@ export type WorkspaceViewModel = {
 
 export type TaskWorkflowViewModel = {
   taskList: Task[]
-  selectedTask: Task
-  setSelectedTask: Dispatch<SetStateAction<Task>>
+  selectedTask: Task | null
+  setSelectedTask: Dispatch<SetStateAction<Task | null>>
   taskStatus: AsyncResourceState
   proposalStateByTask: Record<string, TaskChildCollection<ApiTaskProposal>>
   submissionStateByTask: Record<string, TaskChildCollection<ApiTaskSubmission>>
@@ -174,7 +180,7 @@ export type TaskWorkflowViewModel = {
   workflowStateByTask: Record<string, ApiTaskWorkflow>
   publishTask: (draft: PublishDraft) => Promise<void>
   claimTask: (task: Task) => Promise<void>
-  submitProposal: (task: Task) => Promise<void>
+  submitProposal: (task: Task, draft: TaskProposalDraft) => Promise<boolean>
   refreshProposals: (task: Task) => Promise<void>
   acceptProposal: (task: Task, proposalId: string) => Promise<void>
   rejectProposal: (task: Task, proposalId: string) => Promise<void>
@@ -191,8 +197,8 @@ export type TaskWorkflowViewModel = {
 
 export type CommunityWorkflowViewModel = {
   postList: Post[]
-  selectedPost: Post
-  setSelectedPost: Dispatch<SetStateAction<Post>>
+  selectedPost: Post | null
+  setSelectedPost: Dispatch<SetStateAction<Post | null>>
   communityFilter: string
   setCommunityFilter: Dispatch<SetStateAction<string>>
   communityView: CommunityView
@@ -226,6 +232,7 @@ export type BillingViewModel = {
 export type ProfileViewModel = {
   selectedProfile: MarketplaceProfile
   accountProfile: MarketplaceProfile
+  profiles: MarketplaceProfile[]
   openProfile: (profile: MarketplaceProfile) => void
   onProfileUpdated: (profile: MarketplaceProfile) => Promise<void> | void
 }

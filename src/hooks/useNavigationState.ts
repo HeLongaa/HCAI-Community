@@ -55,6 +55,8 @@ const parentPages = {
   support: 'home',
 } satisfies Record<Exclude<Page, 'home'>, Page>
 
+const primaryPages = new Set<Page>(['home', 'tasks', 'community', 'inspiration', 'playground', 'generations', 'assets', 'admin', 'api'])
+
 const consumeOAuthRedirectPage = (): Page | null => {
   if (typeof window === 'undefined') return null
   try {
@@ -113,6 +115,7 @@ export function useNavigationState() {
     const selectedWorkspace = workspace ?? (target === 'chat' ? 'chat' : null)
     const query = destination === 'playground' && selectedWorkspace ? `?workspace=${encodeURIComponent(selectedWorkspace)}` : ''
     window.history.pushState(null, '', `#${destination}${query}`)
+    window.dispatchEvent(new Event('hcai:navigation'))
   }
 
   useEffect(() => {
@@ -124,9 +127,11 @@ export function useNavigationState() {
     }
     window.addEventListener('hashchange', restore)
     window.addEventListener('popstate', restore)
+    window.addEventListener('hcai:navigation', restore)
     return () => {
       window.removeEventListener('hashchange', restore)
       window.removeEventListener('popstate', restore)
+      window.removeEventListener('hcai:navigation', restore)
     }
   }, [])
 
@@ -134,7 +139,7 @@ export function useNavigationState() {
     navigateToPage(target, workspace, { resetReturn: true })
   }
 
-  const parentPage = page === 'home' ? null : pageReturnTargets[page] ?? (page === 'inspiration' ? null : parentPages[page])
+  const parentPage = primaryPages.has(page) ? null : pageReturnTargets[page] ?? parentPages[page as Exclude<Page, 'home'>]
 
   const navigateBackToParent = () => {
     if (!parentPage) return

@@ -4,7 +4,7 @@
   "scope": "personal_accounts_only",
   "dependencies": ["OBS-02", "NOTIFY-02"],
   "models": ["ObservabilitySloControl", "ObservabilityAlert", "ObservabilityAlertEvent", "ObservabilityIncidentReview"],
-  "sloIds": ["api-availability", "api-latency"],
+  "sloIds": ["api-availability", "api-latency", "generation-success", "generation-first-result-latency", "generation-retry-rate", "generation-abandonment-rate", "frontend-error-rate"],
   "alertStates": ["firing", "acknowledged", "silenced", "resolved"],
   "eventTypes": ["fired", "recovered", "acknowledged", "silenced", "escalated", "resolved", "reviewed"],
   "routes": [
@@ -26,6 +26,8 @@
     "reviewCorrectiveActionsHashed": true,
     "firingAndEscalationNotifyOnCall": true,
     "rawLogsAndSecretsExcludedFromNotifications": true
+    ,"frontendErrorsGroupedByReleaseRouteAndCode": true
+    ,"frontendRollbackRecommendationRequiresOperator": true
   },
   "metrics": ["active", "criticalActive", "acknowledged", "silenced", "escalated", "meanTimeToAcknowledgeMinutes", "meanTimeToRecoveryMinutes", "reviewCoverage"]
 }

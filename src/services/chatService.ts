@@ -3,6 +3,7 @@ import type {
   ApiChatConversation,
   ApiChatInputAsset,
   ApiChatMessage,
+  ApiChatRuntimeReadiness,
   ApiChatTurn,
   ApiEnvelope,
   ApiPaginationMeta,
@@ -35,6 +36,9 @@ const throwStreamError = async (response: Response): Promise<never> => {
 }
 
 export const chatService = {
+  getRuntimeReadiness() {
+    return api.get<ApiChatRuntimeReadiness>('/chat/runtime')
+  },
   createConversation(mode: ChatMode) {
     return api.post<ApiChatConversation>('/chat/conversations', { mode })
   },

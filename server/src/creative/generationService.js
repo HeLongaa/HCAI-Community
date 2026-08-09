@@ -4,6 +4,7 @@ import {
   createCreativeProviderRegistry,
   getCreativeCapability,
   getCreativeProvider,
+  getCreativeProviderForWorkspace,
   listCreativeProviders,
 } from './providerRegistry.js'
 import { buildMockCreativeGenerationId, executeMockCreativeGeneration } from './mockProvider.js'
@@ -12,6 +13,8 @@ import { applyCreativeGenerationPolicy } from './policy.js'
 import { sha256, statusForPersistedGeneration } from './generationRecords.js'
 import { assertCreativeProviderAdapterContract } from './providerAdapterContract.js'
 import { ingestCreativeProviderOutput } from './providerOutputIngestion.js'
+import { aggregateOutputSafety, classifyCreativeOutput } from './outputSafety.js'
+import { classifyCreativeInputs, creativeInputSafetyPolicyProjection } from './inputSafety.js'
 import { HttpError } from '../common/errors/httpError.js'
 import {
   buildProviderCostReservation,
@@ -34,14 +37,18 @@ import {
 import { attachImageOutputLineage, resolveImageGenerationInputs } from './imageInputAssets.js'
 import { attachVideoOutputLineage, resolveVideoGenerationInputs } from './videoInputAssets.js'
 import {
-  assertGoogleVeoBudgetAllowsDispatch,
-  buildGoogleVeoProviderCostMetadata,
-} from './googleVeoProvider.js'
+  assertRouterVideoBudgetAllowsDispatch,
+  buildRouterVideoProviderCostMetadata,
+} from './routerVideoProvider.js'
 import {
-  assertElevenLabsMusicBudgetAllowsDispatch,
-  buildElevenLabsMusicCostMetadata,
-  readElevenLabsMusicOutputBytes,
-} from './elevenLabsMusicProvider.js'
+  assertMiniMaxVideoBudgetAllowsDispatch,
+  buildMiniMaxVideoProviderCostMetadata,
+} from './minimaxVideoProvider.js'
+import {
+  assertRouterMusicBudgetAllowsDispatch,
+  buildRouterMusicCostMetadata,
+  readRouterMusicOutputBytes,
+} from './routerMusicProvider.js'
 
 const getFixtureProvider = (providerId, registry) => {
   const provider = registry.providers.find((candidate) => candidate.id === providerId)
@@ -57,26 +64,41 @@ const getFixtureProvider = (providerId, registry) => {
   return provider
 }
 
+const assertProviderBudget = (providerCost, assertion) => {
+  try {
+    assertion(providerCost)
+    return providerCost
+  } catch (error) {
+    Object.defineProperty(error, 'providerCost', {
+      value: providerCost,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    })
+    throw error
+  }
+}
+
 const buildProviderCostForRequest = ({ provider, request, source, now }) => {
   if (provider.id === 'replicate-staging') {
     const providerCost = buildReplicateProviderCostMetadata({ request, source, now })
-    assertReplicateProviderBudgetAllowsDispatch(providerCost)
-    return providerCost
+    return assertProviderBudget(providerCost, assertReplicateProviderBudgetAllowsDispatch)
   }
   if (provider.id === 'openai-gpt-image-2') {
     const providerCost = buildOpenAIImageProviderCostMetadata({ request, source, now })
-    assertOpenAIImageBudgetAllowsDispatch(providerCost)
-    return providerCost
+    return assertProviderBudget(providerCost, assertOpenAIImageBudgetAllowsDispatch)
   }
-  if (provider.id === 'google-veo-3-1-fast') {
-    const providerCost = buildGoogleVeoProviderCostMetadata({ request, source, now })
-    assertGoogleVeoBudgetAllowsDispatch(providerCost)
-    return providerCost
+  if (provider.id === 'hcai-router-seedance-2-fast') {
+    const providerCost = buildRouterVideoProviderCostMetadata({ request, source, now })
+    return assertProviderBudget(providerCost, assertRouterVideoBudgetAllowsDispatch)
   }
-  if (provider.id === 'elevenlabs-music-v2-enterprise') {
-    const providerCost = buildElevenLabsMusicCostMetadata({ request, source, now })
-    assertElevenLabsMusicBudgetAllowsDispatch(providerCost)
-    return providerCost
+  if (provider.id === 'hcai-router-minimax-hailuo-2-3') {
+    const providerCost = buildMiniMaxVideoProviderCostMetadata({ request, source, now })
+    return assertProviderBudget(providerCost, assertMiniMaxVideoBudgetAllowsDispatch)
+  }
+  if (provider.id === 'hcai-router-minimax-music-3') {
+    const providerCost = buildRouterMusicCostMetadata({ request, source, now })
+    return assertProviderBudget(providerCost, assertRouterMusicBudgetAllowsDispatch)
   }
   return null
 }
@@ -112,9 +134,12 @@ export const executeCreativeGeneration = async ({
   providerCostRepository = null,
   inputAssetRepository = null,
   inputAssetReader = null,
+  inputSafetyClassifier = null,
   providerControlPlane = null,
+  providerControlIdentity = null,
   providerProbeToken = null,
   fixtureAdapters = {},
+  reviewApproval = null,
 }) => {
   assertImageGenerationRequest(request)
   assertChatGenerationRequest(request)
@@ -124,7 +149,7 @@ export const executeCreativeGeneration = async ({
   const fixtureAdapter = request.providerId ? fixtureAdapters[request.providerId] : null
   const provider = fixtureAdapter
     ? getFixtureProvider(request.providerId, registry)
-    : getCreativeProvider(request.providerId, registry)
+    : getCreativeProviderForWorkspace(request.providerId, request.workspace, registry)
   const capability = getCreativeCapability(provider, request.workspace)
   assertCreativeModeSupported(capability, request.mode)
   assertCreativeParametersSupported(capability, request.mode, request.parameters)
@@ -139,11 +164,24 @@ export const executeCreativeGeneration = async ({
   })
   const resolvedInputAssets = resolvedImageInputs.length > 0 ? resolvedImageInputs : resolvedVideoInputs
 
+  const generationId = generationIdOverride ?? plannedGenerationId({ request, actor, provider })
+  const inputSafetyResult = await classifyCreativeInputs({
+    generation: { id: generationId, workspace: request.workspace, provider: { id: provider.id } },
+    assets: resolvedInputAssets,
+    inputAssetReader,
+    source,
+    classifier: inputSafetyClassifier,
+    now,
+  })
+  const inputSafety = creativeInputSafetyPolicyProjection(inputSafetyResult)
+  const classifiedInputAssetReader = inputSafetyResult.cachedInputs.size > 0
+    ? async (asset) => inputSafetyResult.cachedInputs.get(String(asset.id)) ?? inputAssetReader?.(asset)
+    : inputAssetReader
+
   if (provider.id !== 'mock' && !fixtureAdapter) {
     throw new Error(`Unsupported creative provider adapter: ${provider.id}`)
   }
 
-  const generationId = generationIdOverride ?? plannedGenerationId({ request, actor, provider })
   const policyResult = await applyCreativeGenerationPolicy({
     request,
     actor,
@@ -153,7 +191,37 @@ export const executeCreativeGeneration = async ({
     generationId,
     quotaRepository,
     entitlementRepository,
+    reviewApproval,
+    inputSafety,
   })
+
+  if (policyResult.safety.reviewRequired) {
+    return {
+      id: generationId,
+      workspace: request.workspace,
+      mode: request.mode,
+      status: 'review_required',
+      provider: {
+        id: provider.id,
+        mode: provider.mode,
+        label: provider.label,
+      },
+      prompt: request.prompt,
+      inputAssetIds: request.inputAssetIds,
+      parameters: request.parameters,
+      outputs: [],
+      usage: policyResult.usage,
+      quota: null,
+      credit: null,
+      safety: policyResult.safety,
+      policy: policyResult.policy,
+      createdBy: {
+        id: actor.id,
+        handle: actor.handle,
+      },
+      createdAt: now.toISOString(),
+    }
+  }
 
   let generated
   let providerCostReservation = null
@@ -175,10 +243,10 @@ export const executeCreativeGeneration = async ({
       })
       providerControlDispatch = {
         sourceKey: `provider-control-result:${generationId}`,
-        providerId: providerCost.providerId,
-        providerAccountRef: providerCost.providerAccountRef,
+        providerId: providerControlIdentity?.providerId ?? providerCost.providerId,
+        providerAccountRef: providerControlIdentity?.providerAccountRef ?? providerCost.providerAccountRef,
         workspace: request.workspace,
-        modelFamily: providerCost.model?.family ?? request.workspace,
+        modelFamily: providerControlIdentity?.modelFamily ?? providerCost.model?.family ?? request.workspace,
       }
       if (providerControlPlane?.assertDispatchAllowed) {
         await providerControlPlane.assertDispatchAllowed({
@@ -192,16 +260,23 @@ export const executeCreativeGeneration = async ({
       }
       providerCostReservation = await providerCostRepository.reserve(providerCostReservationPayload, actor)
       if (!providerCostReservation?.reserved) {
-        throw new HttpError(429, 'CREATIVE_PROVIDER_BUDGET_EXCEEDED', 'Provider budget cap exceeded', {
+        const error = new HttpError(429, 'CREATIVE_PROVIDER_BUDGET_EXCEEDED', 'Provider budget cap exceeded', {
           providerId: providerCost.providerId,
           budgetScope: providerCost.budget.budgetScope,
           reasonCode: providerCostReservation?.reasonCode ?? 'budget_cap_exceeded',
         })
+        Object.defineProperty(error, 'providerCost', {
+          value: providerCost,
+          enumerable: false,
+          configurable: false,
+          writable: false,
+        })
+        throw error
       }
     }
     adapterAttempted = Boolean(fixtureAdapter)
     generated = fixtureAdapter
-      ? await fixtureAdapter({ request, provider, actor, source, now, generationId, resolvedInputAssets, inputAssetReader })
+      ? await fixtureAdapter({ request, provider, actor, source, now, generationId, resolvedInputAssets, inputAssetReader: classifiedInputAssetReader })
       : executeMockCreativeGeneration({ request, provider, actor, now })
     if (generationIdOverride) {
       generated = { ...generated, id: generationId }
@@ -290,7 +365,11 @@ export const executeCreativeGeneration = async ({
         ...(generation.usage?.providerCost ? { providerCost: generation.usage.providerCost } : {}),
       },
       quota: policyResult.quota,
-      safety: policyResult.safety,
+      safety: {
+        ...generation.safety,
+        ...policyResult.safety,
+        ...(generation.safety?.providerNative ? { providerNative: generation.safety.providerNative } : {}),
+      },
       policy: policyResult.policy,
     }
   }
@@ -304,12 +383,14 @@ export const persistCreativeGenerationOutputs = async (generation, {
   repositories = null,
   outputDigest = null,
   fetchOutput = null,
+  source = process.env,
+  outputSafetyClassifier = null,
 }) => {
   if (!mediaRepository?.createGeneratedAsset) {
     return generation
   }
   const outputs = await Promise.all(generation.outputs.map(async (output, outputIndex) => {
-    if (['replicate', 'google-veo'].includes(output.storage?.provider)) {
+    if (['replicate', 'hcai-router-seedance', 'hcai-router-minimax'].includes(output.storage?.provider)) {
       return ingestCreativeProviderOutput({
         generation,
         output,
@@ -318,6 +399,8 @@ export const persistCreativeGenerationOutputs = async (generation, {
         actor,
         repositories: repositories ?? { media: mediaRepository },
         fetchOutput,
+        source,
+        outputSafetyClassifier,
       })
     }
     if (output.storage?.provider === 'openai') {
@@ -335,10 +418,12 @@ export const persistCreativeGenerationOutputs = async (generation, {
         actor,
         repositories: repositories ?? { media: mediaRepository },
         fetchOutput: async () => inlineOutput,
+        source,
+        outputSafetyClassifier,
       })
     }
-    if (output.storage?.provider === 'elevenlabs-music-fixture') {
-      const inlineOutput = readElevenLabsMusicOutputBytes(output)
+    if (output.storage?.provider === 'router-music-fixture') {
+      const inlineOutput = readRouterMusicOutputBytes(output)
       if (!inlineOutput) {
         throw new HttpError(503, 'CREATIVE_PROVIDER_OUTPUT_BYTES_MISSING', 'Creative Provider inline output is unavailable', {
           reasonCode: 'inline_output_missing',
@@ -352,12 +437,20 @@ export const persistCreativeGenerationOutputs = async (generation, {
         actor,
         repositories: repositories ?? { media: mediaRepository },
         fetchOutput: async () => inlineOutput,
+        source,
+        outputSafetyClassifier,
       })
     }
     const artifact = buildCreativeArtifactObject({ generation, output })
+    const outputSafety = await classifyCreativeOutput({ generation, output, body: artifact.body, contentType: artifact.contentType, source, classifier: outputSafetyClassifier })
+    const governedOutput = { ...output, safety: outputSafety }
+    const governedGeneration = {
+      ...generation,
+      safety: { ...generation.safety, reviewRequired: generation.safety?.reviewRequired || outputSafety.decision !== 'allow', output: outputSafety },
+    }
     const asset = await mediaRepository.createGeneratedAsset({
-      generation,
-      output,
+      generation: governedGeneration,
+      output: governedOutput,
       artifact,
     }, actor)
     if (!asset) {
@@ -366,7 +459,7 @@ export const persistCreativeGenerationOutputs = async (generation, {
     const scanStatus = asset.metadata?.security?.scanStatus ?? 'pending'
     const downloadPath = `/api/media/assets/${asset.id}/download`
     return {
-      ...output,
+      ...governedOutput,
       contentType: asset.contentType,
       url: publicOutputUrl({ output, assetId: asset.id }),
       storage: {
@@ -389,9 +482,18 @@ export const persistCreativeGenerationOutputs = async (generation, {
       },
     }
   }))
-  return {
+  const outputSafety = aggregateOutputSafety(outputs.map((output) => output.safety).filter(Boolean))
+  const governed = {
     ...generation,
-    status: statusForPersistedGeneration({ ...generation, outputs }),
+    safety: {
+      ...generation.safety,
+      output: outputSafety,
+      reviewRequired: Boolean(generation.safety?.reviewRequired) || outputSafety.decision !== 'allow',
+    },
     outputs,
+  }
+  return {
+    ...governed,
+    status: statusForPersistedGeneration(governed),
   }
 }

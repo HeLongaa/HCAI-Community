@@ -791,6 +791,7 @@ test('buildReplicateLifecycleReplay emits idempotent async lifecycle actions', (
   assert.equal(queued.actions.markRunning, false)
   assert.equal(queued.actions.persistOutputs, false)
   assert.equal(queued.idempotencyKey, 'replicate:pred_lifecycle_1:queued:no-output')
+  assert.equal(queued.generation.safety.providerNative.outcome, 'provider_pending')
 
   const running = buildReplicateLifecycleReplay({
     currentRecord: {
@@ -818,6 +819,7 @@ test('buildReplicateLifecycleReplay emits idempotent async lifecycle actions', (
       id: queued.generation.id,
       status: 'running',
       providerJobId: 'pred_lifecycle_1',
+      safety: running.generation.safety,
     },
     request,
     provider,
@@ -839,6 +841,8 @@ test('buildReplicateLifecycleReplay emits idempotent async lifecycle actions', (
   assert.equal(completed.actions.settleCredits, true)
   assert.equal(completed.actions.refundCredits, false)
   assert.equal(completed.outputDigest.length, 64)
+  assert.equal(running.generation.safety.providerNative.outcome, 'provider_pending')
+  assert.equal(completed.generation.safety.providerNative.outcome, 'provider_allowed')
   assert.doesNotThrow(() => assertCreativeProviderAdapterContract(completed.generation, { request, provider }))
 })
 

@@ -1,0 +1,96 @@
+# Release Application Rehearsal
+
+`RELEASE-02` makes candidate deployment and rollback verification executable. It is separate from the `RELEASE-01` PostgreSQL, Redis, and object-storage recovery rehearsal. A successful run deploys one candidate artifact, verifies the candidate, restores the explicitly identified previous artifact, and repeats the same smoke suite.
+
+## Local Fixture
+
+Run:
+
+```bash
+npm run test:release-application
+npm run release:application:rehearse
+```
+
+The local command starts an in-process HTTP fixture and changes only its in-memory artifact identity. It verifies orchestration, evidence, retry, artifact binding, and rollback without touching a deployment target. It does not build or deploy NewChat and cannot satisfy target-environment acceptance.
+
+Both candidate and rollback phases require:
+
+- `GET /health` returns HTTP 200, `data.status=ok`, and the expected SHA-256 artifact identity in both `data.releaseArtifactSha256` and `x-release-artifact-sha256`.
+- `GET /ready` returns HTTP 200, `data.status=ready`, successful PostgreSQL and production Redis checks, and the same expected artifact identity.
+- `GET /api/openapi.json` returns HTTP 200.
+- `GET /api/compliance/policies` returns HTTP 200.
+- Unauthenticated `GET /api/me` returns HTTP 401.
+- Deployment and smoke durations remain within the frozen objectives.
+
+## Target Environment
+
+Use only a protected staging or rehearsal environment. The target URL must use HTTPS and its hostname must contain `staging` or `rehearsal`; a production hostname is rejected before a deployment command runs.
+
+Required protected environment values:
+
+```text
+RELEASE_APPLICATION_REHEARSAL_CONFIRMATION=release-02-staging-rehearsal
+RELEASE_REHEARSAL_TARGET_ORIGIN=https://api.staging.example.com
+RELEASE_CANDIDATE_ARTIFACT_SHA256=<64 lowercase hex characters>
+RELEASE_PREVIOUS_ARTIFACT_SHA256=<different 64 lowercase hex characters>
+RELEASE_REHEARSAL_DEPLOY_COMMAND_JSON=["kubectl", ...]
+RELEASE_REHEARSAL_ROLLBACK_COMMAND_JSON=["kubectl", ...]
+```
+
+Store these values in the protected Environment Secrets consumed by the workflow. They are configuration rather than
+credentials, but keeping them in Environment Secrets preserves the reviewer and branch boundary when the Environment's
+100-variable quota is already occupied. Do not fall back to repository variables.
+
+Commands are parsed as JSON argument arrays and run without a shell. The executable must be one of `aws`, `az`, `docker`, `gcloud`, `kubectl`, `node`, `npm`, or `npx`. Credential-shaped command arguments are rejected; credentials must come from the protected environment. The runner supplies `RELEASE_TARGET_ARTIFACT_SHA256`, both artifact digests, and the target origin to each command. The deployment adapter must configure `RELEASE_ARTIFACT_SHA256` on the API process so `/health` and `/ready` can prove which artifact serves traffic.
+
+For a single-host protected staging target, use the repository SSH adapter documented in
+`docs/GITHUB_ENVIRONMENT.md`. The remote `infra/staging/deploy-release.sh` command accepts only a SHA-256 whose manifest
+was created by `infra/staging/build-release.sh` or `infra/staging/import-supply-chain-release.sh`. Local artifacts retain
+image-ID verification for rollback compatibility. Registry artifacts bind the approved supply-chain manifest hash,
+source commit, `linux/arm64` target, and the OCI index and ARM64 platform digest for all four images. Deployment
+revalidates local image ID, architecture, and exact GHCR RepoDigest before Compose runs. It then serializes deployments
+with a host lock and starts the production Compose contract through the staging-only override. The public TLS proxy
+remains separate from the application Compose project.
+The privileged build step creates `/opt/newchat-staging/deploy.lock` as `root:newchat-deploy` with mode `0660`; this is
+required so the forced-command deployment user can open the lock without receiving write access to the release root.
+The staging override loads the same protected runtime environment file into both API and Worker so the smoke profile and
+the running processes cannot drift on retention, delivery, lifecycle, and security switches. The file remains outside
+the repository and is never included in release evidence.
+
+After the application services become healthy, the deployment command force-recreates only the stateless inner Gateway
+with `--no-deps`. Docker Compose does not otherwise notice changes to its bind-mounted Caddyfile, which can leave newly
+added routes inactive even when the application image is current. Deployment then requires both `/health` and `/ready`
+to return the selected artifact identity before reporting success.
+
+Import a published candidate only from a `registryReady=true` `production-image-digest-manifest-v1` produced by the
+Container Supply Chain workflow. Obtain its independently verified SHA-256 and expected 40-character source commit,
+authenticate Docker to GHCR through an ephemeral operator session, and run as root:
+
+```bash
+/opt/newchat-staging/bin/import-supply-chain-release \
+  /path/to/production-image-digest-manifest.json \
+  <approved-manifest-sha256> \
+  <expected-source-commit>
+docker logout ghcr.io
+```
+
+The importer rejects extra or missing images, mutable references, source/hash drift, any platform set other than exact
+AMD64 plus ARM64, and target-host image identity drift. Preserve the printed `artifact_sha256` as the RELEASE-02
+candidate. Do not remove the previous local artifact or images until rollback and post-rollback smoke have passed.
+
+Run preflight and execute from the same clean checkout and protected job:
+
+```bash
+npm run release:application:preflight
+npm run release:application:rehearse:env
+```
+
+Preflight binds the commit, complete source snapshot, candidate artifact, previous artifact, target origin, timestamp, and receipt. Execute rejects missing, changed, dirty, target-mismatched, artifact-mismatched, or older-than-30-minute preflight evidence before invoking either command. A candidate failure does not suppress rollback; the runner still attempts to restore and smoke the previous artifact.
+
+The GitHub Actions `Quality Gates` workflow exposes this as `smoke_profile=application-rehearsal`. It uploads the sanitized `latest.json` receipt for 30 days.
+
+## Evidence Boundary
+
+Evidence records source and artifact hashes, target origin, bounded durations, status codes, retry counts, phase results, and a SHA-256 receipt. It does not record command arguments, command output, response bodies, credentials, cookies, or authorization headers.
+
+A local receipt proves only that the fixture and evidence controls execute. `RELEASE-02` remains pending until a protected staging run deploys real immutable artifacts, passes candidate smoke, restores the previous artifact, passes rollback smoke, and an operator reviews the receipt. Production deployment is outside this rehearsal's allowed target boundary.

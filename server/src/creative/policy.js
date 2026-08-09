@@ -71,19 +71,23 @@ export const moderateCreativePrompt = (prompt) => {
   const text = String(prompt ?? '')
   const blockedReasons = blockedModerationRules.filter((rule) => rule.pattern.test(text))
   if (blockedReasons.length > 0) {
-    throw new HttpError(422, 'CREATIVE_MODERATION_BLOCKED', 'Creative prompt failed moderation policy', {
+    return {
+      moderationRequired: true,
+      reviewRequired: true,
+      blocked: true,
       policyVersion,
       reasons: blockedReasons.map((rule) => ({
         id: rule.id,
         label: rule.label,
       })),
-    })
+    }
   }
 
   const reviewReasons = reviewModerationRules.filter((rule) => rule.pattern.test(text))
   return {
     moderationRequired: reviewReasons.length > 0,
     reviewRequired: reviewReasons.length > 0,
+    blocked: false,
     reasons: reviewReasons.map((rule) => ({
       id: rule.id,
       label: rule.label,
@@ -185,9 +189,58 @@ export const applyCreativeGenerationPolicy = async ({
   generationId = null,
   quotaRepository = null,
   entitlementRepository = null,
+  reviewApproval = null,
+  inputSafety = null,
 }) => {
-  const safety = moderateCreativePrompt(request.prompt)
+  const promptSafety = moderateCreativePrompt(request.prompt)
+  const inputDecision = inputSafety?.decision ?? 'allow'
+  const inputReasons = inputDecision === 'allow'
+    ? []
+    : (inputSafety?.categories?.length > 0 ? inputSafety.categories : ['input_safety_review'])
+      .map((category) => ({
+        id: `input_asset:${category}`,
+        label: inputDecision === 'block'
+          ? 'A selected input asset was blocked by the safety policy.'
+          : 'A selected input asset requires safety review.',
+      }))
+  const safety = {
+    ...promptSafety,
+    moderationRequired: promptSafety.moderationRequired || inputDecision !== 'allow',
+    reviewRequired: promptSafety.reviewRequired || inputDecision !== 'allow',
+    blocked: promptSafety.blocked || inputDecision === 'block',
+    reasons: [...promptSafety.reasons, ...inputReasons],
+    input: inputSafety,
+  }
   const usage = estimateCreativeUsage({ request, provider })
+  const approvedByReview = !safety.blocked && reviewApproval?.approved === true && reviewApproval.policyVersion === policyVersion
+  if (safety.blocked && !approvedByReview) {
+    return {
+      policy: {
+        version: policyVersion,
+        action: 'block_before_dispatch',
+        enforcedAt: now.toISOString(),
+        gates: {
+          entitlement: false,
+          quota: false,
+          credit: false,
+          moderation: true,
+          review: true,
+          providerDispatch: false,
+          outputRelease: false,
+        },
+      },
+      quota: null,
+      usage,
+      safety: {
+        ...safety,
+        decision: 'block',
+        stage: 'pre_dispatch',
+        providerDispatchAllowed: false,
+        outputReleaseAllowed: false,
+      },
+      entitlement: null,
+    }
+  }
   const baseQuotaLimit = creativeQuotaLimitFor({ actor, source })
   const entitlement = entitlementRepository?.evaluateForActor
     ? await entitlementRepository.evaluateForActor(actor, {
@@ -214,6 +267,34 @@ export const applyCreativeGenerationPolicy = async ({
       },
     )
   }
+  if (safety.reviewRequired && !approvedByReview) {
+    return {
+      policy: {
+        version: policyVersion,
+        action: 'hold_for_review',
+        enforcedAt: now.toISOString(),
+        gates: {
+          entitlement: Boolean(entitlement),
+          quota: false,
+          credit: false,
+          moderation: true,
+          review: true,
+          providerDispatch: false,
+          outputRelease: false,
+        },
+      },
+      quota: null,
+      usage: { ...usage, entitlement: entitlement?.entitlement ?? null },
+      safety: {
+        ...safety,
+        decision: 'review',
+        stage: 'pre_dispatch',
+        providerDispatchAllowed: false,
+        outputReleaseAllowed: false,
+      },
+      entitlement,
+    }
+  }
   const quota = await reserveCreativeQuota({
     request,
     actor,
@@ -229,6 +310,7 @@ export const applyCreativeGenerationPolicy = async ({
   return {
     policy: {
       version: policyVersion,
+      action: 'allow',
       enforcedAt: now.toISOString(),
       gates: {
         entitlement: Boolean(entitlement),
@@ -236,11 +318,22 @@ export const applyCreativeGenerationPolicy = async ({
         credit: true,
         moderation: true,
         review: safety.reviewRequired,
+        providerDispatch: true,
+        outputRelease: true,
       },
     },
     quota,
     usage: { ...usage, entitlement: entitlement?.entitlement ?? null },
-    safety,
+    safety: {
+      ...safety,
+      blocked: false,
+      reviewRequired: false,
+      decision: 'allow',
+      stage: 'pre_dispatch',
+      providerDispatchAllowed: true,
+      outputReleaseAllowed: true,
+      ...(approvedByReview ? { moderationCaseId: reviewApproval.moderationCaseId, appealEligible: false, reviewApproval } : {}),
+    },
     entitlement,
   }
 }

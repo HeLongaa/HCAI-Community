@@ -7,6 +7,7 @@ import {
   parseModelPromotionRequest,
   parseProviderSecretRefCreate,
 } from './modelGovernanceRuntime.js'
+import { createProductionReleaseEvidenceFixture } from '../releases/productionReleaseEvidence.fixtures.js'
 
 const actor = { id: 'admin-1', handle: 'ops' }
 
@@ -31,14 +32,24 @@ test('SecretRef parser accepts only metadata references and rejects plaintext ma
 })
 
 test('model promotion parser fixes the environment boundary and rejects extra secret fields', () => {
+  const productionEvidence = createProductionReleaseEvidenceFixture()
   const payload = {
     modelDeploymentId: 'deployment-1', routePolicyId: 'policy-1', routePolicyRevisionId: 'revision-1', providerSecretRefId: 'secret-ref-1', evaluationRunId: 'evaluation-run-1', legalReviewId: 'legal-review-1',
     artifactVersion: 'v2', rollbackVersion: 'v1', summary: 'Promote image route', reasonCode: 'reviewed',
+    ...productionEvidence.binding,
   }
   const parsed = parseModelPromotionRequest(payload, actor)
   assert.equal(parsed.release.sourceEnvironment, 'staging')
   assert.equal(parsed.release.targetEnvironment, 'production')
   assert.equal(parsed.promotion.evaluationRunId, 'evaluation-run-1')
   assert.equal(parsed.promotion.legalReviewId, 'legal-review-1')
+  assert.deepEqual({
+    sourceCommit: parsed.release.sourceCommit,
+    releaseArtifactSha256: parsed.release.releaseArtifactSha256,
+    rollbackArtifactSha256: parsed.release.rollbackArtifactSha256,
+    productionEvidenceReceiptSha256: parsed.release.productionEvidenceReceiptSha256,
+  }, productionEvidence.binding)
   assert.throws(() => parseModelPromotionRequest({ ...payload, token: 'plaintext' }, actor), /unsupported fields/)
+  assert.throws(() => parseModelPromotionRequest({ ...payload, sourceCommit: '' }, actor), /sourceCommit is required/)
+  assert.throws(() => parseModelPromotionRequest({ ...payload, releaseArtifactSha256: payload.rollbackArtifactSha256 }, actor), /must differ/)
 })

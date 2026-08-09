@@ -11,7 +11,7 @@ const securityEventLimit = (source = process.env) => {
 }
 
 const eventDetails = (event) => {
-  const { id, type, severity, source, clientKey, identity, method, pathname, occurredAt, ...details } = event
+  const { id, type, severity, source, clientKey, identity, method, pathname, subjectRef, occurredAt, ...details } = event
   return details
 }
 
@@ -25,6 +25,7 @@ export const recordSecurityEvent = (event, source = process.env) => {
     identity: event.identity ?? null,
     method: event.method ?? null,
     pathname: event.pathname ?? null,
+    subjectRef: /^subject_[a-f0-9]{24}$/.test(String(event.subjectRef ?? '')) ? event.subjectRef : null,
     occurredAt: event.occurredAt ?? new Date().toISOString(),
     details: event.details ?? eventDetails(event),
   }
@@ -56,6 +57,23 @@ export const listSecurityEvents = (options = {}) => {
     limit,
     nextCursor: rows.length > limit && page.length > 0 ? page[page.length - 1].id : null,
   }
+}
+
+export const getSecurityEventsByIds = (ids = []) => {
+  const requested = new Set(ids.map(String))
+  return events.filter((event) => requested.has(event.id))
+}
+
+export const assignSecurityEventsToIncident = (ids, incidentId) => {
+  const requested = new Set(ids.map(String))
+  let assigned = 0
+  for (const event of events) {
+    if (requested.has(event.id) && !event.incidentId) {
+      event.incidentId = incidentId
+      assigned += 1
+    }
+  }
+  return assigned
 }
 
 export const flushSecurityEvents = async () => {

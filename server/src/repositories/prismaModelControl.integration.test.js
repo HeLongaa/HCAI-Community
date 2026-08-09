@@ -58,6 +58,19 @@ test('Prisma model control preserves activated versions, additive pricing, and g
     ids.priceV2 = priceV2.id
     const runtimePrice = await repository.modelControl.findRuntimePricing({ modelVersionId: version.id, modelDeploymentId: deployment.id, now: new Date('2026-07-21T00:00:00.000Z') })
     assert.equal(runtimePrice.id, priceV1.id)
+    const imagePriceRows = await Promise.all([
+      ['image-output-medium', 'image_output_1024x1024_medium', 53000],
+      ['image-input-text', 'input_text_tokens', 5000000],
+      ['image-input-image', 'input_image_tokens', 8000000],
+      ['image-output-token', 'output_image_tokens', 30000000],
+    ].map(([suffix, unit, unitPriceMicros]) => repository.modelControl.createPricing({
+      id: `${runId}-${suffix}`, modelVersionId: version.id, modelDeploymentId: deployment.id, versionKey: suffix,
+      currency: 'USD', unit, unitPriceMicros, status: 'active', effectiveFrom: '2026-07-01T00:00:00.000Z', effectiveTo: null,
+      createdByRef: actorRef, updatedByRef: actorRef,
+    })))
+    const runtimePrices = await repository.modelControl.findRuntimePricings({ modelVersionId: version.id, modelDeploymentId: deployment.id, now: new Date('2026-07-21T00:00:00.000Z') })
+    assert.equal(runtimePrices.find((item) => item.unit === 'image_output_1024x1024_medium').id, imagePriceRows[0].id)
+    assert.equal(runtimePrices.find((item) => item.unit === 'input_image_tokens').unitPriceMicros, 8000000)
 
     const activated = await repository.modelControl.transition('version', version.id, { expectedVersion: 1, status: 'active', reasonCode: 'integration_reviewed', actorRef })
     assert.equal(activated.status, 'active')

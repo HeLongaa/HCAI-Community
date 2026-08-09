@@ -5,10 +5,10 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: release
-      POSTGRES_PASSWORD: release-local-only
+      POSTGRES_PASSWORD: ${RELEASE_POSTGRES_PASSWORD:-release-local-only}
       POSTGRES_DB: newchat_release_rehearsal
     ports:
-      - "${RELEASE_POSTGRES_PORT:-55491}:5432"
+      - "127.0.0.1:${RELEASE_POSTGRES_PORT:-55491}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U release -d newchat_release_rehearsal"]
       interval: 2s
@@ -21,7 +21,7 @@ services:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "always"]
     ports:
-      - "${RELEASE_REDIS_PORT:-56391}:6379"
+      - "127.0.0.1:${RELEASE_REDIS_PORT:-56391}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 2s
@@ -35,9 +35,9 @@ services:
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: release-access
-      MINIO_ROOT_PASSWORD: release-secret-local-only
+      MINIO_ROOT_PASSWORD: ${RELEASE_MINIO_ROOT_PASSWORD:-release-secret-local-only}
     ports:
-      - "${RELEASE_MINIO_PORT:-59091}:9000"
+      - "127.0.0.1:${RELEASE_MINIO_PORT:-59091}:9000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 2s

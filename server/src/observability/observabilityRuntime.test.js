@@ -2,16 +2,64 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   buildHttpTelemetry,
+  buildClientErrorTelemetry,
+  buildFrontendSloSummary,
+  buildGenerationSloSummary,
   buildIncidentMetrics,
   buildObservabilityExport,
   buildSloSummary,
   defaultObservabilitySloControls,
   parseAlertEscalationRequest,
+  parseClientErrorReport,
   parseIncidentReviewRequest,
   parseObservabilityQuery,
   parseSloControlRequest,
   verifyObservabilityExport,
 } from './observabilityRuntime.js'
+
+test('client error telemetry accepts only bounded identifiers and SHA-256 evidence', () => {
+  const now = new Date('2026-07-27T00:00:00.000Z')
+  const report = parseClientErrorReport({
+    eventType: 'unhandled_rejection',
+    errorName: 'TypeError',
+    errorCode: 'CLIENT_RUNTIME_ERROR',
+    route: 'workspace/video',
+    release: 'release-1',
+    messageHash: 'A'.repeat(64),
+    stackHash: 'b'.repeat(64),
+    occurredAt: now.toISOString(),
+    rawMessage: 'secret prompt content',
+  }, { now })
+  const telemetry = buildClientErrorTelemetry({ report, now, environment: 'test' })
+
+  assert.equal(report.messageHash, 'a'.repeat(64))
+  assert.equal(telemetry.log.module, 'frontend')
+  assert.equal(telemetry.log.event, 'client.runtime.error')
+  assert.equal(telemetry.log.attributes.messageHash, 'a'.repeat(64))
+  assert.equal(JSON.stringify(telemetry).includes('secret prompt content'), false)
+  assert.throws(() => parseClientErrorReport({ eventType: 'window_error', messageHash: 'bad', occurredAt: now.toISOString() }, { now }), /SHA-256/)
+  assert.throws(() => parseClientErrorReport({ eventType: 'window_error', occurredAt: '2026-07-19T23:59:59.000Z' }, { now }), /telemetry window/)
+})
+
+test('frontend SLO uses route views as denominator and groups errors by release route and code', () => {
+  const now = new Date('2026-07-27T00:10:00.000Z')
+  const timestamp = new Date(now.getTime() - 60_000)
+  const logs = [
+    ...Array.from({ length: 20 }, () => ({ timestamp, module: 'frontend', event: 'client.route.view', attributes: { release: 'release-2' }, resourceId: 'workspace/video', errorCode: 'NONE' })),
+    { timestamp, module: 'frontend', event: 'client.runtime.error', attributes: { release: 'release-2' }, resourceId: 'workspace/video', errorCode: 'CLIENT_CHUNK_LOAD_FAILED' },
+  ]
+  const summary = buildFrontendSloSummary(logs, now)
+  const slo = summary.slos[0]
+  assert.equal(summary.windows.sixtyMinutes.views, 20)
+  assert.equal(summary.windows.sixtyMinutes.errors, 1)
+  assert.equal(summary.windows.sixtyMinutes.errorFree, 0.95)
+  assert.equal(summary.groups[0].release, 'release-2')
+  assert.equal(summary.groups[0].route, 'workspace/video')
+  assert.equal(summary.groups[0].errorCode, 'CLIENT_CHUNK_LOAD_FAILED')
+  assert.equal(slo.firing, true)
+  assert.deepEqual(slo.affectedReleases, ['release-2'])
+  assert.equal(slo.rollbackRecommendation.automatic, false)
+})
 
 test('observability query parser bounds dates filters and page size', () => {
   const query = parseObservabilityQuery({
@@ -52,6 +100,29 @@ test('SLO summary produces multi-window availability and latency burn alerts', (
   assert.equal(summary.windows.sixtyMinutes.requests, 100)
   const relaxed = buildSloSummary(logs, now, defaultObservabilitySloControls.map((control) => ({ ...control, shortWindowBurnThreshold: 1000, longWindowBurnThreshold: 1000 })))
   assert.equal(relaxed.slos.some((item) => item.firing), false)
+})
+
+test('generation SLO summary measures success first result retry and abandonment without user dimensions', () => {
+  const now = new Date('2026-07-15T00:10:00.000Z')
+  const createdAt = new Date(now.getTime() - 4 * 60_000)
+  const rows = [
+    { id: 'completed', status: 'completed', attemptNumber: 1, retryOfId: null, createdAt, startedAt: createdAt, completedAt: new Date(createdAt.getTime() + 180_000), outputIngestions: [{ completedAt: new Date(createdAt.getTime() + 180_000) }] },
+    { id: 'failed', status: 'failed', attemptNumber: 1, retryOfId: null, createdAt, startedAt: createdAt, failedAt: new Date(createdAt.getTime() + 10_000), outputIngestions: [] },
+    { id: 'retry', status: 'cancelled', attemptNumber: 2, retryOfId: 'failed', createdAt, startedAt: createdAt, outputIngestions: [], mutations: [{ type: 'cancel', status: 'succeeded' }] },
+  ]
+  const summary = buildGenerationSloSummary(rows, now)
+  assert.equal(summary.windows.sixtyMinutes.terminal, 3)
+  assert.equal(summary.windows.sixtyMinutes.success, 1 / 3)
+  assert.equal(summary.windows.sixtyMinutes.firstResultP95Ms, 180_000)
+  assert.equal(summary.windows.sixtyMinutes.retries, 1)
+  assert.equal(summary.windows.sixtyMinutes.cancelled, 1)
+  assert.equal(summary.windows.sixtyMinutes.abandoned, 1)
+  assert.equal(summary.slos.length, 4)
+  assert.equal(summary.slos.every((item) => item.firing), true)
+  assert.equal(JSON.stringify(summary).includes('actor'), false)
+  const empty = buildGenerationSloSummary([], now)
+  assert.equal(empty.slos.some((item) => item.firing), false)
+  assert.equal(empty.slos.every((item) => item.current === null), true)
 })
 
 test('incident response parsers and metrics keep controls reviews and escalation bounded', () => {

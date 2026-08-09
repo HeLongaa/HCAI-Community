@@ -18,6 +18,7 @@ on:
           - env
           - creative-staging
           - infrastructure-rehearsal
+          - application-rehearsal
       environment:
         description: GitHub Environment used for real environment smoke
         required: false
@@ -31,10 +32,10 @@ jobs:
     if: github.event_name != 'workflow_dispatch' || inputs.smoke_profile == 'fixture'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
           cache: npm
@@ -54,6 +55,61 @@ jobs:
       - name: Run deployment fixture gate
         run: npm run check:deploy
 
+  prisma-integration-gate:
+    name: Prisma Integration Gate (${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name != 'workflow_dispatch' || inputs.smoke_profile == 'fixture'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1]
+    services:
+      postgres:
+        image: postgres:16.10-bookworm@sha256:38471f330eb885e04de130b768d6db4e10469e2311879c7e5c699f6d2d8a1c74
+        env:
+          POSTGRES_USER: newchat
+          POSTGRES_PASSWORD: prisma-integration
+          POSTGRES_DB: newchat_template
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U newchat -d newchat_template"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      FOUNDATION_DATABASE_URL: postgresql://newchat:prisma-integration@127.0.0.1:5432/newchat_template?schema=public
+      PRISMA_INTEGRATION_SHARD_INDEX: ${{ matrix.shard }}
+      PRISMA_INTEGRATION_SHARD_TOTAL: 2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm --prefix server ci
+
+      - name: Install PostgreSQL client tools
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Apply every migration to the template database
+        env:
+          DATABASE_URL: ${{ env.FOUNDATION_DATABASE_URL }}
+        run: npm --prefix server run db:migrate:deploy
+
+      - name: Generate Prisma client
+        run: npm --prefix server run db:generate
+
+      - name: Run isolated Prisma integration shard
+        run: npm run test:prisma-integration-gate
+
   deployment-env-smoke:
     name: Deployment Environment Smoke
     runs-on: ubuntu-latest
@@ -61,7 +117,10 @@ jobs:
     environment: ${{ inputs.environment }}
     env:
       NODE_ENV: production
+      DEPLOYMENT_ENV: ${{ vars.DEPLOYMENT_ENV }}
       PORT: ${{ vars.PORT }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SECRET_MANAGER_PROVIDER: ${{ vars.SECRET_MANAGER_PROVIDER }}
       ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
       ACCESS_TOKEN_KEY_ID: ${{ vars.ACCESS_TOKEN_KEY_ID }}
       SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
@@ -77,6 +136,12 @@ jobs:
       STORAGE_ACCESS_KEY_ID: ${{ secrets.STORAGE_ACCESS_KEY_ID }}
       STORAGE_SECRET_ACCESS_KEY: ${{ secrets.STORAGE_SECRET_ACCESS_KEY }}
       STORAGE_SESSION_TOKEN: ${{ secrets.STORAGE_SESSION_TOKEN }}
+      STORAGE_UPLOAD_TTL_SECONDS: ${{ vars.STORAGE_UPLOAD_TTL_SECONDS }}
+      STORAGE_DOWNLOAD_TTL_SECONDS: ${{ vars.STORAGE_DOWNLOAD_TTL_SECONDS }}
+      STORAGE_SCANNER_READ_TTL_SECONDS: ${{ vars.STORAGE_SCANNER_READ_TTL_SECONDS }}
+      STORAGE_PRIVATE_DOWNLOAD_BASE_URL: ${{ vars.STORAGE_PRIVATE_DOWNLOAD_BASE_URL }}
+      STORAGE_PRIVATE_DOWNLOAD_SIGNING_SECRET: ${{ secrets.STORAGE_PRIVATE_DOWNLOAD_SIGNING_SECRET }}
+      STORAGE_PRIVATE_DOWNLOAD_KEY_ID: ${{ vars.STORAGE_PRIVATE_DOWNLOAD_KEY_ID }}
       MEDIA_SCAN_PROVIDER: ${{ vars.MEDIA_SCAN_PROVIDER }}
       MEDIA_SCAN_WEBHOOK_SECRET: ${{ secrets.MEDIA_SCAN_WEBHOOK_SECRET }}
       MEDIA_SCAN_REQUEST_ADAPTER: ${{ vars.MEDIA_SCAN_REQUEST_ADAPTER }}
@@ -92,12 +157,31 @@ jobs:
       MEDIA_SCAN_ALERT_EMAIL_TO: ${{ vars.MEDIA_SCAN_ALERT_EMAIL_TO }}
       MEDIA_SCAN_ALERT_EMAIL_FROM: ${{ vars.MEDIA_SCAN_ALERT_EMAIL_FROM }}
       API_EMBEDDED_WORKERS_ENABLED: ${{ vars.API_EMBEDDED_WORKERS_ENABLED }}
+      DOMAIN_EVENT_WORKER_ENABLED: ${{ vars.DOMAIN_EVENT_WORKER_ENABLED }}
+      SEARCH_INDEX_WORKER_ENABLED: ${{ vars.SEARCH_INDEX_WORKER_ENABLED }}
       MEDIA_SCAN_WORKER_ENABLED: ${{ vars.MEDIA_SCAN_WORKER_ENABLED }}
       MEDIA_SCAN_WORKER_INTERVAL_SECONDS: ${{ vars.MEDIA_SCAN_WORKER_INTERVAL_SECONDS }}
+      MEDIA_STORAGE_CLEANUP_WORKER_ENABLED: ${{ vars.MEDIA_STORAGE_CLEANUP_WORKER_ENABLED }}
+      MEDIA_STORAGE_CLEANUP_WORKER_INTERVAL_SECONDS: ${{ vars.MEDIA_STORAGE_CLEANUP_WORKER_INTERVAL_SECONDS }}
+      MEDIA_STORAGE_CLEANUP_BATCH_SIZE: ${{ vars.MEDIA_STORAGE_CLEANUP_BATCH_SIZE }}
+      MEDIA_STORAGE_CLEANUP_RETENTION_DAYS: ${{ vars.MEDIA_STORAGE_CLEANUP_RETENTION_DAYS }}
       TASK_STALE_SUBMISSION_WORKER_ENABLED: ${{ vars.TASK_STALE_SUBMISSION_WORKER_ENABLED }}
       TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS: ${{ vars.TASK_STALE_SUBMISSION_WORKER_INTERVAL_SECONDS }}
       TASK_STALE_SUBMISSION_OLDER_THAN_HOURS: ${{ vars.TASK_STALE_SUBMISSION_OLDER_THAN_HOURS }}
       TASK_STALE_SUBMISSION_SWEEP_LIMIT: ${{ vars.TASK_STALE_SUBMISSION_SWEEP_LIMIT }}
+      TASK_EXPIRY_WORKER_ENABLED: ${{ vars.TASK_EXPIRY_WORKER_ENABLED }}
+      TASK_EXPIRY_WORKER_INTERVAL_SECONDS: ${{ vars.TASK_EXPIRY_WORKER_INTERVAL_SECONDS }}
+      TASK_EXPIRY_SWEEP_LIMIT: ${{ vars.TASK_EXPIRY_SWEEP_LIMIT }}
+      NOTIFICATION_EMAIL_DELIVERY_ENABLED: ${{ vars.NOTIFICATION_EMAIL_DELIVERY_ENABLED }}
+      NOTIFICATION_EMAIL_WEBHOOK_URL: ${{ vars.NOTIFICATION_EMAIL_WEBHOOK_URL }}
+      NOTIFICATION_EMAIL_WEBHOOK_SECRET: ${{ secrets.NOTIFICATION_EMAIL_WEBHOOK_SECRET }}
+      NOTIFICATION_EMAIL_FROM: ${{ vars.NOTIFICATION_EMAIL_FROM }}
+      NOTIFICATION_EMAIL_REQUIRE_PROVIDER_RECEIPT: ${{ vars.NOTIFICATION_EMAIL_REQUIRE_PROVIDER_RECEIPT }}
+      NOTIFICATION_DELIVERY_WORKER_ENABLED: ${{ vars.NOTIFICATION_DELIVERY_WORKER_ENABLED }}
+      WEBHOOK_SECRET_ENCRYPTION_KEY: ${{ secrets.WEBHOOK_SECRET_ENCRYPTION_KEY }}
+      WEBHOOK_SECRET_ENCRYPTION_KEYS: ${{ secrets.WEBHOOK_SECRET_ENCRYPTION_KEYS }}
+      WEBHOOK_SECRET_ENCRYPTION_ACTIVE_KEY_ID: ${{ vars.WEBHOOK_SECRET_ENCRYPTION_ACTIVE_KEY_ID }}
+      WEBHOOK_DELIVERY_WORKER_ENABLED: ${{ vars.WEBHOOK_DELIVERY_WORKER_ENABLED }}
       WORKER_LEASE_TTL_SECONDS: ${{ vars.WORKER_LEASE_TTL_SECONDS }}
       WORKER_LEASE_RENEW_INTERVAL_SECONDS: ${{ vars.WORKER_LEASE_RENEW_INTERVAL_SECONDS }}
       SECURITY_ALERT_WEBHOOK_URL: ${{ vars.SECURITY_ALERT_WEBHOOK_URL }}
@@ -117,6 +201,7 @@ jobs:
       RATE_LIMIT_AUTH_MAX: ${{ vars.RATE_LIMIT_AUTH_MAX }}
       RATE_LIMIT_UPLOAD_MAX: ${{ vars.RATE_LIMIT_UPLOAD_MAX }}
       RATE_LIMIT_ADMIN_MUTATION_MAX: ${{ vars.RATE_LIMIT_ADMIN_MUTATION_MAX }}
+      RATE_LIMIT_CLIENT_TELEMETRY_MAX: ${{ vars.RATE_LIMIT_CLIENT_TELEMETRY_MAX }}
       METRICS_EXPORTER_ENABLED: ${{ vars.METRICS_EXPORTER_ENABLED }}
       METRICS_EXPORTER_FORMAT: ${{ vars.METRICS_EXPORTER_FORMAT }}
       METRICS_EXPORTER_TOKEN: ${{ secrets.METRICS_EXPORTER_TOKEN }}
@@ -127,6 +212,55 @@ jobs:
       AUTH_FAILURE_IP_ACCOUNT_THRESHOLD: ${{ vars.AUTH_FAILURE_IP_ACCOUNT_THRESHOLD }}
       AUTH_FAILURE_ACCOUNT_IP_THRESHOLD: ${{ vars.AUTH_FAILURE_ACCOUNT_IP_THRESHOLD }}
       SECURITY_EVENT_MAX_ITEMS: ${{ vars.SECURITY_EVENT_MAX_ITEMS }}
+      CHAT_MESSAGE_ENCRYPTION_KEY: ${{ secrets.CHAT_MESSAGE_ENCRYPTION_KEY }}
+      CHAT_MESSAGE_ENCRYPTION_KEYS: ${{ secrets.CHAT_MESSAGE_ENCRYPTION_KEYS }}
+      CHAT_MESSAGE_ENCRYPTION_ACTIVE_KEY_ID: ${{ vars.CHAT_MESSAGE_ENCRYPTION_ACTIVE_KEY_ID }}
+      CHAT_PROVIDER_TYPE: ${{ vars.CHAT_PROVIDER_TYPE }}
+      CHAT_PROVIDER_MODE: ${{ vars.CHAT_PROVIDER_MODE }}
+      CHAT_OPENAI_HTTP_CLIENT_ENABLED: ${{ vars.CHAT_OPENAI_HTTP_CLIENT_ENABLED }}
+      CHAT_OPENAI_NETWORK_CALLS_ENABLED: ${{ vars.CHAT_OPENAI_NETWORK_CALLS_ENABLED }}
+      CHAT_OPENAI_SAFETY_CLASSIFIER_ENABLED: ${{ vars.CHAT_OPENAI_SAFETY_CLASSIFIER_ENABLED }}
+      CHAT_ATTACHMENT_BYTES_ENABLED: ${{ vars.CHAT_ATTACHMENT_BYTES_ENABLED }}
+      CHAT_OPENAI_CONFIRMATION: ${{ vars.CHAT_OPENAI_CONFIRMATION }}
+      CHAT_OPENAI_BASE_URL: ${{ vars.CHAT_OPENAI_BASE_URL }}
+      CHAT_OPENAI_MODEL: ${{ vars.CHAT_OPENAI_MODEL }}
+      CHAT_OPENAI_API_DIALECT: ${{ vars.CHAT_OPENAI_API_DIALECT }}
+      CHAT_OPENAI_SAFETY_RESPONSE_FORMAT: ${{ vars.CHAT_OPENAI_SAFETY_RESPONSE_FORMAT }}
+      CHAT_OPENAI_API_TOKEN: ${{ secrets.CHAT_OPENAI_API_TOKEN }}
+      CHAT_RETENTION_WORKER_ENABLED: ${{ vars.CHAT_RETENTION_WORKER_ENABLED }}
+      CHAT_RETENTION_WORKER_INTERVAL_SECONDS: ${{ vars.CHAT_RETENTION_WORKER_INTERVAL_SECONDS }}
+      CHAT_RETENTION_SWEEP_LIMIT: ${{ vars.CHAT_RETENTION_SWEEP_LIMIT }}
+      DATA_RIGHTS_DELETION_WORKER_ENABLED: ${{ vars.DATA_RIGHTS_DELETION_WORKER_ENABLED }}
+      DATA_RIGHTS_PROVIDER_DELETION_GATEWAY_ENABLED: ${{ vars.DATA_RIGHTS_PROVIDER_DELETION_GATEWAY_ENABLED }}
+      DATA_RIGHTS_PROVIDER_DELETION_GATEWAY_CONFIRMATION: ${{ vars.DATA_RIGHTS_PROVIDER_DELETION_GATEWAY_CONFIRMATION }}
+      DATA_RIGHTS_PROVIDER_DELETION_GATEWAY_URL: ${{ vars.DATA_RIGHTS_PROVIDER_DELETION_GATEWAY_URL }}
+      DATA_RIGHTS_PROVIDER_DELETION_GATEWAY_TOKEN: ${{ secrets.DATA_RIGHTS_PROVIDER_DELETION_GATEWAY_TOKEN }}
+      DATA_RIGHTS_EXPORT_RETENTION_WORKER_ENABLED: ${{ vars.DATA_RIGHTS_EXPORT_RETENTION_WORKER_ENABLED }}
+      OBSERVABILITY_RETENTION_WORKER_ENABLED: ${{ vars.OBSERVABILITY_RETENTION_WORKER_ENABLED }}
+      NOTIFICATION_RETENTION_WORKER_ENABLED: ${{ vars.NOTIFICATION_RETENTION_WORKER_ENABLED }}
+      OPERATION_LEASE_RETENTION_WORKER_ENABLED: ${{ vars.OPERATION_LEASE_RETENTION_WORKER_ENABLED }}
+      PRIVATE_LIBRARY_RETENTION_WORKER_ENABLED: ${{ vars.PRIVATE_LIBRARY_RETENTION_WORKER_ENABLED }}
+      AUTH_CREDENTIAL_RETENTION_WORKER_ENABLED: ${{ vars.AUTH_CREDENTIAL_RETENTION_WORKER_ENABLED }}
+      AUDIT_RETENTION_PRUNE_ENABLED: ${{ vars.AUDIT_RETENTION_PRUNE_ENABLED }}
+      AUDIT_RETENTION_LEGAL_HOLD: ${{ vars.AUDIT_RETENTION_LEGAL_HOLD }}
+      AUDIT_RETENTION_WORKER_ENABLED: ${{ vars.AUDIT_RETENTION_WORKER_ENABLED }}
+      COMMUNITY_RETENTION_WORKER_ENABLED: ${{ vars.COMMUNITY_RETENTION_WORKER_ENABLED }}
+      SECURITY_EVENT_RETENTION_WORKER_ENABLED: ${{ vars.SECURITY_EVENT_RETENTION_WORKER_ENABLED }}
+      RISK_RETENTION_WORKER_ENABLED: ${{ vars.RISK_RETENTION_WORKER_ENABLED }}
+      MODERATION_RETENTION_WORKER_ENABLED: ${{ vars.MODERATION_RETENTION_WORKER_ENABLED }}
+      GENERATION_RETENTION_WORKER_ENABLED: ${{ vars.GENERATION_RETENTION_WORKER_ENABLED }}
+      MEDIA_ASSET_RETENTION_WORKER_ENABLED: ${{ vars.MEDIA_ASSET_RETENTION_WORKER_ENABLED }}
+      PROVIDER_LIFECYCLE_RETENTION_WORKER_ENABLED: ${{ vars.PROVIDER_LIFECYCLE_RETENTION_WORKER_ENABLED }}
+      CONFIGURATION_RETENTION_WORKER_ENABLED: ${{ vars.CONFIGURATION_RETENTION_WORKER_ENABLED }}
+      MARKETPLACE_RETENTION_WORKER_ENABLED: ${{ vars.MARKETPLACE_RETENTION_WORKER_ENABLED }}
+      SUPPORT_RETENTION_WORKER_ENABLED: ${{ vars.SUPPORT_RETENTION_WORKER_ENABLED }}
+      SECRET_MANAGER_LIFECYCLE_GATEWAY_ENABLED: ${{ vars.SECRET_MANAGER_LIFECYCLE_GATEWAY_ENABLED }}
+      SECRET_MANAGER_LIFECYCLE_GATEWAY_CONFIRMATION: ${{ vars.SECRET_MANAGER_LIFECYCLE_GATEWAY_CONFIRMATION }}
+      SECRET_MANAGER_LIFECYCLE_GATEWAY_URL: ${{ vars.SECRET_MANAGER_LIFECYCLE_GATEWAY_URL }}
+      SECRET_MANAGER_LIFECYCLE_GATEWAY_TOKEN: ${{ secrets.SECRET_MANAGER_LIFECYCLE_GATEWAY_TOKEN }}
+      PROVIDER_SECRET_RETENTION_WORKER_ENABLED: ${{ vars.PROVIDER_SECRET_RETENTION_WORKER_ENABLED }}
+      OAUTH_CALLBACK_ORIGIN: ${{ vars.OAUTH_CALLBACK_ORIGIN }}
+      OAUTH_BROWSER_RETURN_ORIGIN: ${{ vars.OAUTH_BROWSER_RETURN_ORIGIN }}
       OAUTH_GOOGLE_CLIENT_ID: ${{ vars.OAUTH_GOOGLE_CLIENT_ID }}
       OAUTH_GOOGLE_CLIENT_SECRET: ${{ secrets.OAUTH_GOOGLE_CLIENT_SECRET }}
       OAUTH_GOOGLE_REDIRECT_URI: ${{ vars.OAUTH_GOOGLE_REDIRECT_URI }}
@@ -141,8 +275,20 @@ jobs:
       OAUTH_APPLE_KEY_ID: ${{ vars.OAUTH_APPLE_KEY_ID }}
       OAUTH_APPLE_PRIVATE_KEY: ${{ secrets.OAUTH_APPLE_PRIVATE_KEY }}
       OAUTH_APPLE_REDIRECT_URI: ${{ vars.OAUTH_APPLE_REDIRECT_URI }}
+      PRODUCTION_RELEASE_PLATFORM_PUBLIC_KEY: ${{ vars.PRODUCTION_RELEASE_PLATFORM_PUBLIC_KEY }}
+      PRODUCTION_RELEASE_SECURITY_PUBLIC_KEY: ${{ vars.PRODUCTION_RELEASE_SECURITY_PUBLIC_KEY }}
+      PRODUCTION_RELEASE_LEGAL_PUBLIC_KEY: ${{ vars.PRODUCTION_RELEASE_LEGAL_PUBLIC_KEY }}
+      PRODUCTION_RELEASE_PROVIDER_GOVERNANCE_PUBLIC_KEY: ${{ vars.PRODUCTION_RELEASE_PROVIDER_GOVERNANCE_PUBLIC_KEY }}
+      PRODUCTION_RELEASE_SUPPLY_CHAIN_PUBLIC_KEY: ${{ vars.PRODUCTION_RELEASE_SUPPLY_CHAIN_PUBLIC_KEY }}
+      PRODUCTION_RELEASE_OPERATIONS_PUBLIC_KEY: ${{ vars.PRODUCTION_RELEASE_OPERATIONS_PUBLIC_KEY }}
       CREATIVE_PROVIDER_RUNTIME_ENV: ${{ vars.CREATIVE_PROVIDER_RUNTIME_ENV }}
       CREATIVE_PROVIDER_MODE: ${{ vars.CREATIVE_PROVIDER_MODE }}
+      CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED: ${{ vars.CREATIVE_PROVIDER_HTTP_CLIENT_ENABLED }}
+      CREATIVE_PROVIDER_CALLBACK_ENABLED: ${{ vars.CREATIVE_PROVIDER_CALLBACK_ENABLED }}
+      CREATIVE_PROVIDER_POLLING_ENABLED: ${{ vars.CREATIVE_PROVIDER_POLLING_ENABLED }}
+      CREATIVE_PROVIDER_POLLING_WORKER_ENABLED: ${{ vars.CREATIVE_PROVIDER_POLLING_WORKER_ENABLED }}
+      CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED: ${{ vars.CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED }}
+      CREATIVE_ROUTER_VIDEO_LIFECYCLE_WORKER_ENABLED: ${{ vars.CREATIVE_ROUTER_VIDEO_LIFECYCLE_WORKER_ENABLED }}
       CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED: ${{ vars.CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLED }}
       CREATIVE_STAGING_IMAGE_PROVIDER: ${{ vars.CREATIVE_STAGING_IMAGE_PROVIDER }}
       CREATIVE_STAGING_PROVIDER_API_TOKEN: ${{ secrets.CREATIVE_STAGING_PROVIDER_API_TOKEN }}
@@ -156,13 +302,19 @@ jobs:
       CREATIVE_OPENAI_IMAGE_PROVIDER_CAP_CONFIRMED: ${{ vars.CREATIVE_OPENAI_IMAGE_PROVIDER_CAP_CONFIRMED }}
       CREATIVE_OPENAI_IMAGE_PROVIDER_CAP_USD: ${{ vars.CREATIVE_OPENAI_IMAGE_PROVIDER_CAP_USD }}
       CREATIVE_OPENAI_IMAGE_PRODUCTION_NO_GO: ${{ vars.CREATIVE_OPENAI_IMAGE_PRODUCTION_NO_GO }}
+      CREATIVE_INPUT_SAFETY_CLASSIFIER_MODE: ${{ vars.CREATIVE_INPUT_SAFETY_CLASSIFIER_MODE }}
+      CREATIVE_INPUT_SAFETY_CLASSIFIER_URL: ${{ vars.CREATIVE_INPUT_SAFETY_CLASSIFIER_URL }}
+      CREATIVE_INPUT_SAFETY_CLASSIFIER_TOKEN: ${{ secrets.CREATIVE_INPUT_SAFETY_CLASSIFIER_TOKEN }}
+      CREATIVE_OUTPUT_SAFETY_CLASSIFIER_MODE: ${{ vars.CREATIVE_OUTPUT_SAFETY_CLASSIFIER_MODE }}
+      CREATIVE_OUTPUT_SAFETY_CLASSIFIER_URL: ${{ vars.CREATIVE_OUTPUT_SAFETY_CLASSIFIER_URL }}
+      CREATIVE_OUTPUT_SAFETY_CLASSIFIER_TOKEN: ${{ secrets.CREATIVE_OUTPUT_SAFETY_CLASSIFIER_TOKEN }}
       CREATIVE_STAGING_SMOKE_MODE: ${{ vars.CREATIVE_STAGING_SMOKE_MODE }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
           cache: npm
@@ -190,40 +342,22 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.smoke_profile == 'infrastructure-rehearsal'
     environment: ${{ inputs.environment }}
     env:
-      RELEASE_REHEARSAL_CONFIRMATION: ${{ vars.RELEASE_REHEARSAL_CONFIRMATION }}
-      RELEASE_REHEARSAL_DATABASE_URL: ${{ secrets.RELEASE_REHEARSAL_DATABASE_URL }}
-      RELEASE_REHEARSAL_RESTORE_DATABASE_URL: ${{ secrets.RELEASE_REHEARSAL_RESTORE_DATABASE_URL }}
-      RELEASE_REHEARSAL_REDIS_URL: ${{ secrets.RELEASE_REHEARSAL_REDIS_URL }}
-      RELEASE_REHEARSAL_REDIS_RECOVERY_COMMAND_JSON: ${{ vars.RELEASE_REHEARSAL_REDIS_RECOVERY_COMMAND_JSON }}
-      STORAGE_ENDPOINT: ${{ vars.STORAGE_ENDPOINT }}
-      STORAGE_REGION: ${{ vars.STORAGE_REGION }}
-      STORAGE_ACCESS_KEY_ID: ${{ secrets.STORAGE_ACCESS_KEY_ID }}
-      STORAGE_SECRET_ACCESS_KEY: ${{ secrets.STORAGE_SECRET_ACCESS_KEY }}
-      STORAGE_SESSION_TOKEN: ${{ secrets.STORAGE_SESSION_TOKEN }}
-      RELEASE_REHEARSAL_PRIMARY_BUCKET: ${{ vars.RELEASE_REHEARSAL_PRIMARY_BUCKET }}
-      RELEASE_REHEARSAL_BACKUP_BUCKET: ${{ vars.RELEASE_REHEARSAL_BACKUP_BUCKET }}
+      RELEASE_REHEARSAL_CONFIRMATION: ${{ secrets.RELEASE_REHEARSAL_CONFIRMATION }}
+      RELEASE_REHEARSAL_SOURCE_SHA: ${{ github.sha }}
+      RELEASE_REHEARSAL_SSH_HOST: ${{ secrets.RELEASE_REHEARSAL_SSH_HOST }}
+      RELEASE_REHEARSAL_SSH_PORT: ${{ secrets.RELEASE_REHEARSAL_SSH_PORT }}
+      RELEASE_REHEARSAL_SSH_USER: ${{ secrets.RELEASE_REHEARSAL_SSH_USER }}
+      RELEASE_REHEARSAL_SSH_INFRASTRUCTURE_COMMAND: ${{ secrets.RELEASE_REHEARSAL_SSH_INFRASTRUCTURE_COMMAND }}
+      RELEASE_REHEARSAL_SSH_PRIVATE_KEY: ${{ secrets.RELEASE_REHEARSAL_SSH_PRIVATE_KEY }}
+      RELEASE_REHEARSAL_SSH_KNOWN_HOSTS: ${{ secrets.RELEASE_REHEARSAL_SSH_KNOWN_HOSTS }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            server/package-lock.json
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Install backend dependencies
-        run: npm --prefix server ci
-
-      - name: Install PostgreSQL client tools
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
-
       - name: Verify isolated rehearsal configuration
         run: npm run release:infrastructure:preflight
 
@@ -232,9 +366,51 @@ jobs:
 
       - name: Upload sanitized rehearsal evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-infrastructure-rehearsal
           path: .artifacts/release-infrastructure/latest.json
+          if-no-files-found: error
+          retention-days: 30
+
+  application-rehearsal:
+    name: Staging Application Release Rehearsal
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.smoke_profile == 'application-rehearsal'
+    environment: ${{ inputs.environment }}
+    env:
+      RELEASE_APPLICATION_REHEARSAL_CONFIRMATION: ${{ secrets.RELEASE_APPLICATION_REHEARSAL_CONFIRMATION }}
+      RELEASE_REHEARSAL_TARGET_ORIGIN: ${{ secrets.RELEASE_REHEARSAL_TARGET_ORIGIN }}
+      RELEASE_CANDIDATE_ARTIFACT_SHA256: ${{ secrets.RELEASE_CANDIDATE_ARTIFACT_SHA256 }}
+      RELEASE_PREVIOUS_ARTIFACT_SHA256: ${{ secrets.RELEASE_PREVIOUS_ARTIFACT_SHA256 }}
+      RELEASE_REHEARSAL_DEPLOY_COMMAND_JSON: ${{ secrets.RELEASE_REHEARSAL_DEPLOY_COMMAND_JSON }}
+      RELEASE_REHEARSAL_ROLLBACK_COMMAND_JSON: ${{ secrets.RELEASE_REHEARSAL_ROLLBACK_COMMAND_JSON }}
+      RELEASE_REHEARSAL_SSH_HOST: ${{ secrets.RELEASE_REHEARSAL_SSH_HOST }}
+      RELEASE_REHEARSAL_SSH_PORT: ${{ secrets.RELEASE_REHEARSAL_SSH_PORT }}
+      RELEASE_REHEARSAL_SSH_USER: ${{ secrets.RELEASE_REHEARSAL_SSH_USER }}
+      RELEASE_REHEARSAL_SSH_DEPLOY_COMMAND: ${{ secrets.RELEASE_REHEARSAL_SSH_DEPLOY_COMMAND }}
+      RELEASE_REHEARSAL_SSH_PRIVATE_KEY: ${{ secrets.RELEASE_REHEARSAL_SSH_PRIVATE_KEY }}
+      RELEASE_REHEARSAL_SSH_KNOWN_HOSTS: ${{ secrets.RELEASE_REHEARSAL_SSH_KNOWN_HOSTS }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+
+      - name: Verify application release rehearsal configuration
+        run: npm run release:application:preflight
+
+      - name: Deploy candidate, smoke, rollback, and smoke previous release
+        run: npm run release:application:rehearse:env
+
+      - name: Upload sanitized application release evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-application-rehearsal
+          path: .artifacts/release-application/latest.json
           if-no-files-found: error
           retention-days: 30

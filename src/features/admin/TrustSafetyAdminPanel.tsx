@@ -5,9 +5,10 @@ import { SectionHeader } from '../../components/ui/SectionHeader'
 import type { Permission } from '../../domain/types'
 import type { ModerationCaseDto, ModerationCaseMetrics, ModerationCasePriority, ModerationCaseStatus, ModerationDecisionOutcome, ModerationReportCategory, ModerationTargetType } from '../../services/contracts'
 import { trustService } from '../../services/trustService'
-import { TrustSafetyOperationsPanel } from './TrustSafetyOperationsPanel'
+import { AdminActionFeedback, type AdminActionFeedbackMessage } from './AdminActionFeedback'
+import { downloadJsonArtifact } from './downloadAdminArtifact'
 
-type Props = { hasPermission: (permission: Permission) => boolean; isZh: boolean; notify: (message: string) => void }
+type Props = { view: 'cases' | 'evidence'; hasPermission: (permission: Permission) => boolean; isZh: boolean }
 const statuses: ModerationCaseStatus[] = ['open', 'resolved', 'appealed', 'closed']
 const priorities: ModerationCasePriority[] = ['normal', 'high', 'critical']
 const targetTypes: ModerationTargetType[] = ['user', 'post', 'comment', 'media_asset', 'creative_generation']
@@ -15,12 +16,10 @@ const categories: ModerationReportCategory[] = ['harassment', 'hate', 'sexual', 
 const originalOutcomes: ModerationDecisionOutcome[] = ['no_action', 'warn', 'restrict_content', 'remove_content', 'suspend_account']
 const appealOutcomes: ModerationDecisionOutcome[] = ['uphold', 'overturn', 'partially_overturn']
 
-export function TrustSafetyAdminPanel({ hasPermission, isZh, notify }: Props) {
+export function TrustSafetyAdminPanel({ view, hasPermission, isZh }: Props) {
   const canRead = hasPermission('admin:trust:read')
   const canReview = hasPermission('admin:trust:review')
   const canExport = hasPermission('admin:trust:export')
-  const canOperate = hasPermission('admin:trust:operate')
-  const canManageRules = hasPermission('admin:trust:rules')
   const [items, setItems] = useState<ModerationCaseDto[]>([])
   const [metrics, setMetrics] = useState<ModerationCaseMetrics | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -41,6 +40,7 @@ export function TrustSafetyAdminPanel({ hasPermission, isZh, notify }: Props) {
   const [referenceType, setReferenceType] = useState('internal_record')
   const [referenceId, setReferenceId] = useState('')
   const [contentHash, setContentHash] = useState('')
+  const [feedback, setFeedback] = useState<AdminActionFeedbackMessage | null>(null)
 
   const query = useCallback(() => ({ status: status || null, priority: priority || null, targetType: targetType || null, category: category || null, search: search.trim() || null, limit: 20, sort: 'createdAt' as const, order: 'desc' as const }), [category, priority, search, status, targetType])
 
@@ -92,6 +92,7 @@ export function TrustSafetyAdminPanel({ hasPermission, isZh, notify }: Props) {
     const stage = selected.status === 'appealed' ? 'appeal' : 'original'
     setActing(true)
     setError(null)
+    setFeedback(null)
     try {
       const validOutcomes = stage === 'appeal' ? appealOutcomes : originalOutcomes
       const selectedOutcome = validOutcomes.includes(outcome) ? outcome : validOutcomes[0]
@@ -100,7 +101,7 @@ export function TrustSafetyAdminPanel({ hasPermission, isZh, notify }: Props) {
       setItems((current) => current.map((item) => item.id === updated.id ? updated : item))
       setMetrics(await trustService.adminMetrics())
       setNote('')
-      notify(isZh ? '审核决定已追加。' : 'Moderation decision appended.')
+      setFeedback({ kind: 'success', text: isZh ? '审核决定已追加。' : 'Moderation decision appended.' })
     } catch (actionError) { setError(actionError instanceof Error ? actionError.message : 'Decision failed.') } finally { setActing(false) }
   }
 
@@ -108,40 +109,42 @@ export function TrustSafetyAdminPanel({ hasPermission, isZh, notify }: Props) {
     if (!selected || !canReview) return
     setActing(true)
     setError(null)
+    setFeedback(null)
     try {
       const result = await trustService.addEvidence(selected.id, { evidenceType, referenceType, referenceId, contentHash, reasonCode: 'operator_evidence_added' })
       setSelected(result.item)
       setReferenceId('')
       setContentHash('')
-      notify(isZh ? (result.duplicate ? '证据已存在。' : '证据已追加。') : result.duplicate ? 'Evidence already exists.' : 'Evidence appended.')
+      setFeedback({ kind: 'success', text: isZh ? (result.duplicate ? '证据已存在。' : '证据已追加。') : result.duplicate ? 'Evidence already exists.' : 'Evidence appended.' })
     } catch (actionError) { setError(actionError instanceof Error ? actionError.message : 'Evidence failed.') } finally { setActing(false) }
   }
 
   const exportJson = async () => {
+    setError(null)
+    setFeedback(null)
     try {
       const document = await trustService.adminExport(query())
-      const url = URL.createObjectURL(new Blob([JSON.stringify(document, null, 2)], { type: 'application/json' }))
-      const link = window.document.createElement('a')
-      link.href = url
-      link.download = `moderation-cases-${new Date().toISOString().slice(0, 10)}.json`
-      link.click()
-      URL.revokeObjectURL(url)
+      downloadJsonArtifact({
+        value: document,
+        fileName: `moderation-cases-${new Date().toISOString().slice(0, 10)}.json`,
+        mimeType: 'application/json',
+      })
+      setFeedback({ kind: 'success', text: isZh ? '审核案件证据已导出。' : 'Moderation case evidence exported.' })
     } catch (exportError) { setError(exportError instanceof Error ? exportError.message : 'Export failed.') }
   }
 
-  if (!canRead) return <section className="panel trust-admin-panel" data-testid="trust-admin-panel"><SectionHeader eyebrow="Trust & Safety" title={isZh ? '举报与申诉案件' : 'Reports and appeals'} /><div className="empty-state"><strong>{isZh ? '无访问权限' : 'Access denied'}</strong></div></section>
+  if (!canRead) return <section className="trust-workspace-surface trust-admin-panel" data-testid="trust-admin-panel"><SectionHeader eyebrow="Trust & Safety" title={isZh ? '举报与申诉案件' : 'Reports and appeals'} /><div className="empty-state"><strong>{isZh ? '无访问权限' : 'Access denied'}</strong></div></section>
 
   const stage = selected?.status === 'appealed' ? 'appeal' : 'original'
   const outcomes = stage === 'appeal' ? appealOutcomes : originalOutcomes
   const decisionAllowed = selected && ['open', 'appealed'].includes(selected.status)
 
   return (
-    <section className="panel trust-admin-panel" data-testid="trust-admin-panel">
-      <SectionHeader eyebrow="Trust & Safety" title={isZh ? '举报、决定与申诉' : 'Reports, decisions and appeals'} action={<div className="button-row"><button className="icon-button" type="button" onClick={() => void load(false)} title={isZh ? '刷新' : 'Refresh'}><RefreshCw size={17} /></button><button className="ghost-button" type="button" onClick={() => void exportJson()} disabled={!canExport}><Download size={16} />{isZh ? '导出' : 'Export'}</button></div>} />
-      <TrustSafetyOperationsPanel canOperate={canOperate} canManageRules={canManageRules} isZh={isZh} notify={notify} />
-      <div className="admin-metric-strip">
+    <section className="trust-workspace-surface trust-admin-panel" data-view={view} data-testid="trust-admin-panel">
+      <SectionHeader eyebrow={view === 'cases' ? (isZh ? '审核案件' : 'Moderation cases') : (isZh ? '案件证据' : 'Case evidence')} title={view === 'cases' ? (isZh ? '举报、决定与申诉' : 'Reports, decisions and appeals') : (isZh ? '事实链与可验证引用' : 'Fact chains and verifiable references')} action={<div className="button-row"><button className="icon-button" type="button" onClick={() => void load(false)} title={isZh ? '刷新' : 'Refresh'}><RefreshCw size={17} /></button>{view === 'evidence' && <button className="ghost-button" type="button" onClick={() => void exportJson()} disabled={!canExport}><Download size={16} />{isZh ? '导出' : 'Export'}</button>}</div>} />
+      {view === 'cases' && <div className="admin-metric-strip">
         {metrics && Object.entries(metrics).map(([key, value]) => <div key={key}><span>{key}</span><strong>{value}</strong></div>)}
-      </div>
+      </div>}
       <div className="trust-admin-filters">
         <label><span>{isZh ? '搜索' : 'Search'}</span><div><Search size={15} /><input aria-label={isZh ? '案件搜索' : 'Case search'} value={search} onChange={(event) => setSearch(event.target.value)} /></div></label>
         <label><span>{isZh ? '状态' : 'Status'}</span><select value={status} onChange={(event) => setStatus(event.target.value as ModerationCaseStatus | '')}><option value="">All</option>{statuses.map((value) => <option key={value}>{value}</option>)}</select></label>
@@ -151,6 +154,7 @@ export function TrustSafetyAdminPanel({ hasPermission, isZh, notify }: Props) {
         <button className="ghost-button" type="button" onClick={() => void load(false)} disabled={loading}><Search size={16} />{isZh ? '查询' : 'Apply'}</button>
       </div>
       {error && <div className="inline-alert error" role="alert">{error}</div>}
+      <AdminActionFeedback message={feedback} />
       <div className="trust-admin-layout">
         <div className="admin-table trust-case-list">
           {items.map((item) => <button className={`admin-row compact ${selectedId === item.id ? 'active' : ''}`} type="button" key={item.id} onClick={() => void choose(item.id)}><div><strong>{item.report?.subject ?? item.id}</strong><small>{item.targetType}:{item.targetId}</small></div><span className={`status-badge ${item.priority === 'critical' ? 'danger' : item.priority === 'high' ? 'warning' : ''}`}>{item.status} · {item.priority}</span></button>)}
@@ -161,9 +165,9 @@ export function TrustSafetyAdminPanel({ hasPermission, isZh, notify }: Props) {
           <div className="trust-case-heading"><div><strong>{selected.report?.subject}</strong><small>{selected.id} · v{selected.version}</small></div><span className="status-badge">{selected.status}</span></div>
           <dl className="delivery-facts"><div><dt>Target</dt><dd>{selected.targetType}:{selected.targetId}</dd></div><div><dt>Category</dt><dd>{selected.report?.category}</dd></div><div><dt>Affected</dt><dd>{selected.affectedUser?.handle ?? selected.affectedUser?.id ?? '-'}</dd></div><div><dt>Reporter</dt><dd>{selected.report?.reporter?.handle ?? '-'}</dd></div></dl>
           <div className="trust-statement"><strong>{isZh ? '举报陈述' : 'Report statement'}</strong><p>{selected.report?.statement}</p></div>
-          <div className="trust-fact-list"><strong>{isZh ? '事实链' : 'Fact chain'}</strong>{selected.evidence.map((item) => <div key={item.id}><FileCheck2 size={15} /><span>{item.evidenceType} · {item.referenceType}:{item.referenceId}</span><code>{item.contentHash.slice(0, 12)}</code></div>)}{selected.decisions.map((item) => <div key={item.id}><Scale size={15} /><span>{item.stage} · {item.outcome} · {item.reasonCode}</span><small>@{item.reviewer?.handle ?? '-'}</small></div>)}{selected.appeals.map((item) => <div key={item.id}><Scale size={15} /><span>appeal · {item.reasonCode}</span><small>@{item.appellant?.handle ?? '-'}</small></div>)}{selected.communityActions.map((item) => <div key={item.id}><Scale size={15} /><span>{item.action} · {item.fromState} → {item.toState}</span><small>{item.targetType}:{item.targetId}</small></div>)}</div>
-          {decisionAllowed && <div className="trust-action-grid"><label><span>Outcome</span><select aria-label="Moderation outcome" value={outcomes.includes(outcome) ? outcome : outcomes[0]} onChange={(event) => setOutcome(event.target.value as ModerationDecisionOutcome)}>{outcomes.map((value) => <option key={value}>{value}</option>)}</select></label><label><span>Reason code</span><input aria-label="Moderation reason code" value={reasonCode} onChange={(event) => setReasonCode(event.target.value)} /></label><label className="wide"><span>Review note</span><textarea aria-label="Moderation review note" value={note} onChange={(event) => setNote(event.target.value)} /></label><button className="primary-button" type="button" onClick={() => void decide()} disabled={!canReview || acting || !note.trim()}><Scale size={16} />{stage === 'appeal' ? (isZh ? '追加申诉裁决' : 'Append appeal decision') : (isZh ? '追加原审决定' : 'Append decision')}</button></div>}
-          <div className="trust-action-grid"><label><span>Evidence type</span><input value={evidenceType} onChange={(event) => setEvidenceType(event.target.value)} /></label><label><span>Reference type</span><input value={referenceType} onChange={(event) => setReferenceType(event.target.value)} /></label><label><span>Reference ID</span><input aria-label="Evidence reference ID" value={referenceId} onChange={(event) => setReferenceId(event.target.value)} /></label><label className="wide"><span>SHA-256</span><input aria-label="Evidence content hash" value={contentHash} onChange={(event) => setContentHash(event.target.value)} /></label><button className="ghost-button" type="button" onClick={() => void addEvidence()} disabled={!canReview || acting || !referenceId || !/^[a-f0-9]{64}$/.test(contentHash)}><FileCheck2 size={16} />{isZh ? '追加证据' : 'Append evidence'}</button></div>
+          <div className="trust-fact-list"><strong>{view === 'cases' ? (isZh ? '案件活动' : 'Case activity') : (isZh ? '事实链' : 'Fact chain')}</strong>{selected.evidence.map((item) => <div key={item.id}><FileCheck2 size={15} /><span>{item.evidenceType} · {item.referenceType}:{item.referenceId}</span><code>{item.contentHash.slice(0, 12)}</code></div>)}{selected.decisions.map((item) => <div key={item.id}><Scale size={15} /><span>{item.stage} · {item.outcome} · {item.reasonCode}</span><small>@{item.reviewer?.handle ?? '-'}</small></div>)}{selected.appeals.map((item) => <div key={item.id}><Scale size={15} /><span>appeal · {item.reasonCode}</span><small>@{item.appellant?.handle ?? '-'}</small></div>)}{selected.communityActions.map((item) => <div key={item.id}><Scale size={15} /><span>{item.action} · {item.fromState} → {item.toState}</span><small>{item.targetType}:{item.targetId}</small></div>)}</div>
+          {view === 'cases' && decisionAllowed && <div className="trust-action-grid"><label><span>Outcome</span><select aria-label="Moderation outcome" value={outcomes.includes(outcome) ? outcome : outcomes[0]} onChange={(event) => setOutcome(event.target.value as ModerationDecisionOutcome)}>{outcomes.map((value) => <option key={value}>{value}</option>)}</select></label><label><span>Reason code</span><input aria-label="Moderation reason code" value={reasonCode} onChange={(event) => setReasonCode(event.target.value)} /></label><label className="wide"><span>Review note</span><textarea aria-label="Moderation review note" value={note} onChange={(event) => setNote(event.target.value)} /></label><button className="primary-button" type="button" onClick={() => void decide()} disabled={!canReview || acting || !note.trim()}><Scale size={16} />{stage === 'appeal' ? (isZh ? '追加申诉裁决' : 'Append appeal decision') : (isZh ? '追加原审决定' : 'Append decision')}</button></div>}
+          {view === 'evidence' && <div className="trust-action-grid"><label><span>Evidence type</span><input value={evidenceType} onChange={(event) => setEvidenceType(event.target.value)} /></label><label><span>Reference type</span><input value={referenceType} onChange={(event) => setReferenceType(event.target.value)} /></label><label><span>Reference ID</span><input aria-label="Evidence reference ID" value={referenceId} onChange={(event) => setReferenceId(event.target.value)} /></label><label className="wide"><span>SHA-256</span><input aria-label="Evidence content hash" value={contentHash} onChange={(event) => setContentHash(event.target.value)} /></label><button className="ghost-button" type="button" onClick={() => void addEvidence()} disabled={!canReview || acting || !referenceId || !/^[a-f0-9]{64}$/.test(contentHash)}><FileCheck2 size={16} />{isZh ? '追加证据' : 'Append evidence'}</button></div>}
         </div>}
       </div>
     </section>

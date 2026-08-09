@@ -8,6 +8,10 @@ import {
   parseRiskAppealRequest,
   parseRiskCaseTransition,
   parseRiskPolicyUpdate,
+  isRiskCaseRetentionEligible,
+  riskCaseTerminalAt,
+  riskRetentionCutoff,
+  riskRetentionSweepLimit,
   riskBlockForCapability,
 } from './riskOperations.js'
 
@@ -17,6 +21,26 @@ test('risk policy and transition parsers enforce bounded versioned state changes
   const transition = parseRiskCaseTransition({ toStatus: 'recovered', disposition: 'cleared', riskLevel: 'low', reasonCode: 'appeal_approved', expectedVersion: 2, appealDecision: 'approved' })
   assert.doesNotThrow(() => assertRiskTransition({ status: 'appealed', disposition: 'generation_blocked' }, transition))
   assert.throws(() => assertRiskTransition({ status: 'closed', disposition: 'cleared' }, transition), { code: 'RISK_STATE_TRANSITION_INVALID' })
+})
+
+test('risk retention requires a terminal case with both subject links and a complete 365-day window', () => {
+  const now = new Date('2027-07-28T00:00:00.000Z')
+  const cutoff = riskRetentionCutoff(now)
+  const recovered = {
+    status: 'recovered',
+    userId: 'user-1',
+    subjectRef: 'subject_123456789012345678901234',
+    recoveredAt: cutoff,
+    closedAt: null,
+    retentionRedactedAt: null,
+  }
+  assert.equal(riskCaseTerminalAt(recovered).toISOString(), cutoff.toISOString())
+  assert.equal(isRiskCaseRetentionEligible(recovered, cutoff), true)
+  assert.equal(isRiskCaseRetentionEligible({ ...recovered, status: 'restricted' }, cutoff), false)
+  assert.equal(isRiskCaseRetentionEligible({ ...recovered, userId: null }, cutoff), false)
+  assert.equal(isRiskCaseRetentionEligible({ ...recovered, retentionRedactedAt: now }, cutoff), false)
+  assert.equal(riskRetentionSweepLimit('bad'), 250)
+  assert.equal(riskRetentionSweepLimit(50_000), 1000)
 })
 
 test('risk appeals persist only a hash and bounded preview', () => {

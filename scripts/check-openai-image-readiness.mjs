@@ -12,6 +12,12 @@ const fixtureSource = Object.freeze({
   CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED: 'true',
   CREATIVE_OPENAI_IMAGE_CONFIRMATION: 'staging-only',
   CREATIVE_OPENAI_IMAGE_API_TOKEN: 'openai-image-readiness-fixture-token',
+  CREATIVE_INPUT_SAFETY_CLASSIFIER_MODE: 'external',
+  CREATIVE_INPUT_SAFETY_CLASSIFIER_URL: 'https://safety.example.com/v1/input',
+  CREATIVE_INPUT_SAFETY_CLASSIFIER_TOKEN: 'input-safety-fixture-token',
+  CREATIVE_OUTPUT_SAFETY_CLASSIFIER_MODE: 'external',
+  CREATIVE_OUTPUT_SAFETY_CLASSIFIER_URL: 'https://safety.example.com/v1/output',
+  CREATIVE_OUTPUT_SAFETY_CLASSIFIER_TOKEN: 'output-safety-fixture-token',
 })
 
 if (!['env', 'fixture'].includes(profile) || !['preflight', 'acceptance'].includes(mode)) {
@@ -34,6 +40,8 @@ const runtime = {
   networkCallsEnabled: enabled('CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED'),
   stagingConfirmed: value('CREATIVE_OPENAI_IMAGE_CONFIRMATION').toLowerCase() === 'staging-only',
   credentialConfigured: Boolean(value('CREATIVE_OPENAI_IMAGE_API_TOKEN')),
+  inputSafetyConfigured: value('CREATIVE_INPUT_SAFETY_CLASSIFIER_MODE').toLowerCase() === 'external' && Boolean(value('CREATIVE_INPUT_SAFETY_CLASSIFIER_URL')) && Boolean(value('CREATIVE_INPUT_SAFETY_CLASSIFIER_TOKEN')),
+  outputSafetyConfigured: value('CREATIVE_OUTPUT_SAFETY_CLASSIFIER_MODE').toLowerCase() === 'external' && Boolean(value('CREATIVE_OUTPUT_SAFETY_CLASSIFIER_URL')) && Boolean(value('CREATIVE_OUTPUT_SAFETY_CLASSIFIER_TOKEN')),
 }
 const summary = {
   schemaVersion: 'openai-image-readiness-v1',
@@ -52,6 +60,8 @@ check('HTTP client gate is enabled', runtime.clientEnabled, 'clientEnabled=true'
 check('network call gate is enabled', runtime.networkCallsEnabled, 'networkCallsEnabled=true')
 check('staging-only confirmation is present', runtime.stagingConfirmed, 'confirmation=staging-only')
 check('credential is present without exposing its value', runtime.credentialConfigured, 'credentialConfigured=true')
+check('multimodal input safety classifier is configured', runtime.inputSafetyConfigured, 'inputSafetyConfigured=true')
+check('output safety classifier is configured', runtime.outputSafetyConfigured, 'outputSafetyConfigured=true')
 check('production enablement remains denied', runtime.runtimeEnv === 'staging', 'productionNoGo=true')
 
 if (mode === 'acceptance') {
@@ -103,8 +113,8 @@ if (mode === 'acceptance') {
     }
     check('exactly two Provider calls completed', acceptance.providerCalls === 2, `providerCalls=${acceptance.providerCalls}`)
     check('generation and edit completed', acceptance.textToImageCompleted && acceptance.imageToImageCompleted, 'generation=true edit=true')
-    check('moderation storage and lineage passed', acceptance.inputModerationPassed && acceptance.outputScanPassed && acceptance.lineageVerified, 'governance=true')
-    check('credit quota and Provider costs closed', acceptance.creditSettled && acceptance.quotaCommitted && ['settled', 'reconciliation_required'].includes(acceptance.textCostStatus) && ['settled', 'reconciliation_required'].includes(acceptance.editCostStatus), 'accounting=true')
+    check('moderation storage and lineage passed', acceptance.inputModerationPassed && acceptance.inputAssetSafetyPassed && acceptance.outputSafetyPassed && acceptance.outputScanPassed && acceptance.lineageVerified, 'governance=true')
+    check('credit quota and Provider costs settled', acceptance.creditSettled && acceptance.quotaCommitted && acceptance.textCostStatus === 'settled' && acceptance.editCostStatus === 'settled', 'accounting=settled')
   } catch (error) {
     summary.acceptance = {
       failed: true,
@@ -115,7 +125,7 @@ if (mode === 'acceptance') {
 }
 
 const serialized = JSON.stringify(summary)
-const secrets = [value('CREATIVE_OPENAI_IMAGE_API_TOKEN'), value('ACCESS_TOKEN_SECRET')]
+const secrets = [value('CREATIVE_OPENAI_IMAGE_API_TOKEN'), value('CREATIVE_INPUT_SAFETY_CLASSIFIER_TOKEN'), value('CREATIVE_OUTPUT_SAFETY_CLASSIFIER_TOKEN'), value('ACCESS_TOKEN_SECRET')]
   .filter((candidate) => candidate.length >= 8)
 const safeSummary = !secrets.some((secret) => serialized.includes(secret)) &&
   !/\bBearer\s+|\bsk-[A-Za-z0-9_-]{8,}|b64_json|prompt|responseBody/i.test(serialized)

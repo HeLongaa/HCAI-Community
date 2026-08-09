@@ -2,7 +2,7 @@ import { HttpError, notFound } from '../../common/errors/httpError.js'
 import { requirePermission } from '../../common/http/auth.js'
 import { readJsonBody } from '../../common/http/request.js'
 import { ok, text } from '../../common/http/responses.js'
-import { parseAlertAction, parseAlertEscalationRequest, parseIncidentReviewRequest, parseObservabilityQuery, parseSloControlRequest } from '../../observability/observabilityRuntime.js'
+import { buildClientErrorTelemetry, parseAlertAction, parseAlertEscalationRequest, parseClientErrorReport, parseIncidentReviewRequest, parseObservabilityQuery, parseSloControlRequest } from '../../observability/observabilityRuntime.js'
 import { repositories } from '../../repositories/index.js'
 
 const traceIdPattern = /^[a-f0-9]{32}$/
@@ -17,6 +17,13 @@ const recordAccess = (repository, actor, action, resourceType, resourceId, metad
 
 export const registerObservabilityRoutes = (router, options = {}) => {
   const routeRepositories = options.repositories ?? repositories
+
+  router.add('POST', '/api/observability/client-errors', async (request, response, context) => {
+    const report = parseClientErrorReport((await readJsonBody(request, 4_096)) ?? {})
+    const telemetry = buildClientErrorTelemetry({ report, correlation: context.correlation })
+    await routeRepositories.observability.record(telemetry)
+    ok(response, { accepted: true })
+  })
 
   router.add('GET', '/api/admin/observability/logs', async (_request, response, context) => {
     const actor = requirePermission(context, 'admin:observability:read')

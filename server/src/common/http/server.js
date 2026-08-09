@@ -6,6 +6,7 @@ import { handleCors } from './origin.js'
 import { enforceRateLimit } from './rateLimit.js'
 import { fail } from './responses.js'
 import { recordSecurityEvent } from '../../security/securityEvents.js'
+import { dataRightsSafeSubjectRef } from '../../dataRights/dataRightsLifecycle.js'
 import { createCorrelationContext } from '../../observability/structuredLogging.js'
 import { applyVersionedApiHeaders, parseVersionedApiPath, versionedApiMeta } from './apiVersion.js'
 
@@ -83,6 +84,7 @@ export const createServer = (router, context = {}) => {
             type: 'request.body_rejected',
             severity: 'warning',
             source: 'body_size',
+            subjectRef: requestContext.user?.id ? dataRightsSafeSubjectRef(requestContext.user.id) : null,
             details: event,
           })
           try {

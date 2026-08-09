@@ -61,6 +61,8 @@ test('OpenAI Image staging acceptance covers generation edit moderation storage 
       source,
       fetchImpl,
       now: new Date('2026-07-20T00:00:00.000Z'),
+      inputSafetyClassifier: openAIImageStagingAcceptanceFixture.inputSafetyClassifier,
+      outputSafetyClassifier: openAIImageStagingAcceptanceFixture.outputSafetyClassifier,
     })
   } finally {
     if (previousScanProvider == null) delete process.env.MEDIA_SCAN_PROVIDER
@@ -75,6 +77,8 @@ test('OpenAI Image staging acceptance covers generation edit moderation storage 
     textToImageCompleted: true,
     imageToImageCompleted: true,
     inputModerationPassed: true,
+    inputAssetSafetyPassed: true,
+    outputSafetyPassed: true,
     outputScanPassed: true,
     persistedOutputCount: 2,
     lineageVerified: true,

@@ -100,10 +100,26 @@ test('generation center filters, paginates, inspects, and cancels owner tasks', 
 
   await page.goto('/')
   await page.getByTestId('nav-generations').click()
-  await expect(page.getByRole('heading', { name: 'Generations' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Your creative runs' })).toBeVisible()
   await expect(page.getByTestId('generation-task-center-running-image')).toBeVisible()
   await expect(page.getByLabel('Generation summary').getByText('3', { exact: true })).toBeVisible()
   await expect(page.getByText('private-provider-id')).toHaveCount(0)
+
+  await page.getByTestId('generation-task-center-completed-music').click()
+  const useOutput = page.getByTestId('use-creative-asset-center-music-asset').getByRole('button', { name: 'Use output' })
+  await expect(useOutput).toBeVisible()
+  expect(await useOutput.evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    const row = element.closest('.generation-output-row')?.getBoundingClientRect()
+    const utilities = element.closest('.generation-output-row')?.querySelector('.generation-output-utility-actions')?.getBoundingClientRect()
+    return rect.width >= 120
+      && rect.height >= 32
+      && rect.height < 44
+      && Boolean(row && utilities)
+      && Boolean(utilities && Math.abs(rect.top - utilities.top) < 4)
+      && Boolean(utilities && utilities.right <= rect.left)
+      && Boolean(row && rect.right <= row.right)
+  })).toBe(true)
 
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Export generation history' }).click()
@@ -117,14 +133,15 @@ test('generation center filters, paginates, inspects, and cancels owner tasks', 
   await page.getByRole('button', { name: 'Cancel', exact: true }).click()
   await expect(page.getByText('cancelled', { exact: true }).first()).toBeVisible()
   await expect(page.getByTestId('generation-task-center-running-image').getByText('cancelled', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0)
 
-  await page.getByLabel('Workspace filter').selectOption('chat')
+  await page.getByRole('tab', { name: 'Chat', exact: true }).click()
   await expect(page.getByTestId('generation-task-center-chat')).toBeVisible()
   await expect(page.getByText('Protected task content')).toBeVisible()
   await expect(page.getByText('The response timed out.')).toBeVisible()
   await expect(page.getByText('chat generation task')).toHaveCount(0)
 
+  await page.getByRole('button', { name: 'Filters' }).click()
   await page.getByLabel('Start date').fill('2026-07-01')
   await page.getByLabel('End date').fill('2026-07-13')
   await page.getByLabel('Generation sort').selectOption('status')

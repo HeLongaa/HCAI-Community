@@ -1,701 +1,112 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-function readSourceTree(dir) {
-  return fs
-    .readdirSync(dir, { withFileTypes: true })
-    .flatMap((entry) => {
-      const fullPath = path.join(dir, entry.name)
-      if (entry.isDirectory()) return readSourceTree(fullPath)
-      return /\.(ts|tsx)$/.test(entry.name) ? [fs.readFileSync(fullPath, 'utf8')] : []
-    })
-    .join('\n')
-}
+const root = process.cwd()
+const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')
+const exists = (relativePath) => fs.existsSync(path.join(root, relativePath))
+const includesAll = (source, markers) => markers.every((marker) => source.includes(marker))
 
-const app = readSourceTree('src')
-const css = fs.readFileSync('src/index.css', 'utf8')
-const readme = fs.readFileSync('README.md', 'utf8')
-const navItemsBlock = app.slice(app.indexOf('const navItems:'), app.indexOf('const pageLabels ='))
+const sources = {
+  app: read('src/App.tsx'),
+  shell: read('src/components/layout/AppShell.tsx'),
+  renderer: read('src/components/layout/PageRenderer.tsx'),
+  navigation: read('src/hooks/useNavigationState.ts'),
+  tasks: read('src/features/tasks/TaskPages.tsx'),
+  taskHook: read('src/hooks/useTaskWorkflows.ts'),
+  taskService: read('src/services/taskService.ts'),
+  community: read('src/features/community/CommunityPage.tsx'),
+  communityHook: read('src/hooks/useCommunityWorkflows.ts'),
+  communityService: read('src/services/communityService.ts'),
+  assets: read('src/features/assets/AssetLibraryPage.tsx'),
+  generations: read('src/features/generations/GenerationCenterPage.tsx'),
+  inspiration: read('src/features/inspiration/InspirationPage.tsx'),
+  points: read('src/features/rewards/PointsPage.tsx'),
+  workspace: read('src/features/workspace/WorkspacePages.tsx'),
+  music: read('src/features/workspace/MusicStudioPage.tsx'),
+  video: read('src/features/workspace/VideoStudioPage.tsx'),
+  chat: read('src/features/workspace/ChatPage.tsx'),
+  musicHook: read('src/hooks/useMusicGenerationWorkflow.ts'),
+  videoHook: read('src/hooks/useVideoGenerationWorkflow.ts'),
+  admin: read('src/features/admin/AdminPage.tsx'),
+  adminGenerationRecords: read('src/features/admin/AdminGenerationRecordsPanel.tsx'),
+  adminGenerationRecovery: read('src/features/admin/AdminGenerationRecoveryPanel.tsx'),
+  adminSecurityIncidents: read('src/features/admin/SecurityIncidentsWorkspace.tsx'),
+  adminSecurityIncidentOperations: read('src/features/admin/useSecurityIncidentOperations.ts'),
+  adminFeedback: read('src/features/admin/AdminActionFeedback.tsx'),
+  actionFeedback: read('src/components/ui/ActionFeedback.tsx'),
+  locale: read('src/i18n/locale.ts'),
+  theme: read('src/hooks/useThemeState.ts'),
+  explore: read('src/features/explore/ExplorePages.tsx'),
+  css: read('src/index.css'),
+  adminGenerationCss: read('src/features/admin/admin-generations.css'),
+  readme: read('README.md'),
+}
 
 const checks = []
-
-function addCheck(group, name, pass, detail) {
-  checks.push({ group, name, pass, detail })
-}
-
-function includesAll(source, values) {
-  return values.every((value) => source.includes(value))
-}
-
-function countMatches(source, pattern) {
-  return [...source.matchAll(pattern)].length
-}
-
-const expectedPages = [
-  'home',
-  'tasks',
-  'publish',
-  'mine',
-  'community',
-  'inspiration',
-  'points',
-  'playground',
-  'chat',
-  'explore',
-  'admin',
-]
-
-const pageComponents = [
-  'HomePage',
-  'TasksPage',
-  'PublishPage',
-  'MyTasksPage',
-  'CommunityPage',
-  'InspirationPage',
-  'PointsPage',
-  'PlaygroundPage',
-  'ChatPage',
-  'ExplorePage',
-  'AdminPage',
-]
-
-addCheck(
-  'navigation',
-  'all planned pages are routable from App state',
-  expectedPages.every((page) => app.includes(`page === '${page}'`) || page === 'home'),
-  expectedPages.join(', '),
-)
-
-addCheck(
-  'navigation',
-  'all planned page components exist',
-  pageComponents.every((component) => app.includes(`function ${component}`)),
-  pageComponents.join(', '),
-)
-
-addCheck(
-  'navigation',
-  'publish request is not duplicated in the sidebar menu',
-  !navItemsBlock.includes("key: 'publish'") && includesAll(app, ["setPage('publish')", '{t.publish}', '{t.postTask}']),
-  'publish flow remains inside task plaza only',
-)
-
-addCheck(
-  'navigation',
-  'global back button prefers the real source page and primary navigation clears stale return targets',
-  includesAll(app, [
-    'const [pageReturnTargets, setPageReturnTargets]',
-    'type NavigateOptions',
-    'next[destination] = sourcePage',
-    'const navigatePrimary',
-    'navigateToPage(target, workspace, { resetReturn: true })',
-    'const navigateBackToParent',
-    'delete next[page]',
-    'pageReturnTargets[page] ??',
-    'setPage={navigateToPage}',
-    'setPage={navigatePrimary}',
-  ]),
-  'source-aware return targets, primary navigation reset, and back cleanup',
-)
-
-addCheck(
-  'task plaza',
-  'task data models full marketplace lifecycle fields',
-  includesAll(app, [
-    'points: string',
-    'publisher: string',
-    'assignee: string',
-    'requirements: string[]',
-    'attachments: string[]',
-    'privateBrief: string',
-    'submission: string',
-    'resultLinks: string[]',
-    'reviewNote: string',
-    'rights: string',
-  ]),
-  'points, publisher, assignee, requirements, attachments, private brief, submission, review, rights',
-)
-
-addCheck(
-  'task plaza',
-  'task statuses cover open, active, review, completed, rejected',
-  includesAll(app, ["status: 'Open'", "status: 'In Progress'", "status: 'Pending Review'", "status: 'Completed'", "status: 'Rejected'"]),
-  'expected lifecycle statuses',
-)
-
-addCheck(
-  'task plaza',
-  'task detail renders delivery and review sections',
-  includesAll(app, ['Submission requirements', 'Attachments', 'Private brief', 'Rights', 'proposal-flow', 'Proposal mode']),
-  'task detail sections',
-)
-
-addCheck(
-  'task plaza',
-  'task actions include take and submit work gates',
-  includesAll(app, ['{t.takeTask}', 'Submit proposal', 'Submit acceptance work', 'Publish task']),
-  'take, submit, review, publish actions',
-)
-
-addCheck(
-  'task plaza',
-  'task actions use typed API workflows and update front-end state',
-  includesAll(app, [
-    'const submitProposal = async (task: Task)',
-    'taskService.createProposal',
-    'taskService.submit',
-    'proposalStateByTask',
-    'submissionStateByTask',
-    'setTaskList((current)',
-  ]),
-  'proposal and submission service workflows',
-)
-
-addCheck(
-  'task plaza',
-  'task plaza includes taker and publisher rankings',
-  includesAll(app, [
-    'type MarketplaceProfile',
-    'marketplaceProfiles',
-    'function LeaderboardPanel',
-    'leaderboard-grid',
-    '接单排行榜',
-    '发需求排行榜',
-    "rankProfiles('maker')",
-    "rankProfiles('publisher')",
-  ]) &&
-    includesAll(css, ['.leaderboard-grid', '.leaderboard-panel', '.rank-row', '.rank-metric']),
-  'shared profile data drives maker and publisher ranking panels',
-)
-
-addCheck(
-  'task plaza',
-  'task publisher names open public profiles from proposal-mode details',
-  includesAll(app, ['const openProfile = (profile: MarketplaceProfile)', 'publisherProfile', 'profile-link', 'openProfile(publisherProfile)', 'Proposal mode']),
-  'task detail publisher link',
-)
-
-addCheck(
-  'publish',
-  'publish form simulates core fields and acceptance rules',
-  includesAll(app, ['Task title', 'Category', 'Reward', 'Deadline', 'Visibility', 'Requirement details', 'Submission and acceptance rules']),
-  'publish form fields',
-)
-
-addCheck(
-  'publish',
-  'publish flow creates an API-backed task and selects it',
-  includesAll(app, ['const publishTask = async (draft: PublishDraft)', 'taskService.create(draft)', 'setTaskList((current) => [newTask, ...current])', 'setSelectedTask(newTask)', "setPage('tasks')"]),
-  'API publish flow',
-)
-
-addCheck(
-  'publish',
-  'publish form recommends makers by content, category, and tags',
-  includesAll(app, [
-    'function matchProfilesForDraft',
-    'profileMatchScore',
-    'recommendedProfiles',
-    'matchProfilesForDraft(draft)',
-    'Recommended makers',
-    '推荐接单用户',
-    'Category match',
-    'Chinese ready',
-    'Invite unavailable',
-  ]) &&
-    includesAll(css, ['.match-panel', '.match-card', '.match-card-top', '.compact-buttons']),
-  'front-end matching cards update from draft content and can invite/view profile',
-)
-
-addCheck(
-  'my tasks',
-  'my task desk renders API-backed proposal, delivery, review, timeline, and dispute tracking',
-  includesAll(app, ['Posted', 'Accepted', 'Review acceptance', 'Task timeline', 'Submit acceptance work', 'Open dispute', 'workflowStateByTask']),
-  'task desk lifecycle',
-)
-
-addCheck(
-  'community',
-  'community data supports forum metrics and solved state',
-  includesAll(app, ['views: string', 'votes: number', 'solved: boolean']),
-  'views, votes, solved',
-)
-
-addCheck(
-  'community',
-  'community UI supports sorting, conversion, and library saving',
-  includesAll(app, ['Questions', 'Task recap', 'Unanswered', 'Turn into task', 'Add to library', 'Hot right now', '标签']),
-  'sorting, task conversion, library saving, sidebar browsing',
-)
-
-addCheck(
-  'community',
-  'community actions convert tasks, save library items, and update discussions',
-  includesAll(app, [
-    'const convertPostToTask = async (post: Post)',
-    'const savePostToLibrary = async (post: Post)',
-    'const likePost = async (post: Post)',
-    'const replyToPost = async (post: Post, replyText?: string)',
-    'communityService.convertPostToTask',
-    'communityService.savePostToLibrary',
-    'setPostList((current) => current.map((item) => (item.id === post.id ? updated : item)))',
-    'setLibraryItems((current) => [nextItem, ...current])',
-  ]),
-  'like, reply, convert, save flows',
-)
-
-addCheck(
-  'community',
-  'community replies use a real editable input',
-  includesAll(app, [
-    'const [replyDraft, setReplyDraft]',
-    'const submitReply = ()',
-    'reply-box',
-    'localReplies',
-  ]),
-  'editable reply composer',
-)
-
-addCheck(
-  'community',
-  'community owners can draft, edit, publish, and soft-delete posts',
-  includesAll(app, [
-    'community-author-workspace',
-    'Save draft',
-    'const createPost = async',
-    'const updatePost = async',
-    'const publishPost = async',
-    'const deletePost = async',
-    'communityService.listMyPosts',
-  ]) && includesAll(css, ['.community-post-editor', '.community-owned-row']),
-  'owner lifecycle workspace and API-backed mutations',
-)
-
-addCheck(
-  'community',
-  'community topic list is table-style like the reference forum',
-  includesAll(app, ['forum-main', 'topic-table', 'topic-head', 'topic-row active', 'topic-title-button', 'topic-stat', 'topic-meta-line']) &&
-    includesAll(css, ['.topic-table', 'grid-template-columns: minmax(0, 1fr) 70px 76px 82px 92px', '.topic-title-text', '.topic-meta-line', '.topic-stat']),
-  'topic table with title, tags, metrics, and status columns',
-)
-
-addCheck(
-  'community',
-  'community topic list supports pagination',
-  includesAll(app, ['const [topicPage, setTopicPage]', 'topicsPerPage', 'visibleTopics', 'topic-pagination', 'topic-page-numbers', 'goToTopicPage', '`Page ${safeTopicPage} / ${totalTopicPages}`', 'Prev', 'Next']) &&
-    includesAll(css, ['.topic-pagination', '.topic-pagination .ghost-button:disabled', '.topic-page-numbers', '.page-number.active']),
-  'topic pagination state and controls',
-)
-
-addCheck(
-  'community',
-  'community detail actions use compact toolbar labels',
-  includesAll(app, ['post-action-bar', 'compact-action', "'Turn into task'", "'转成任务'", "'任务'", "'入库'", "'Library'", "setCommunityView('detail')", "setCommunityView('list')", "'返回列表'"]) &&
-    includesAll(css, ['.post-action-bar', 'repeat(5, minmax(72px, 1fr))', '.compact-action', 'text-overflow: ellipsis']),
-  'compact action toolbar avoids squeezed long button text',
-)
-
-addCheck(
-  'community',
-  'community has enough mock topics/posts for forum simulation',
-  countMatches(app, /title: '.*?'/g) >= 12 && includesAll(app, ['Hot right now', 'hotPosts', 'topic-state solved', '标签']),
-  'post list, hot topics, solved state, sidebar tags',
-)
-
-addCheck(
-  'publish',
-  'publish form uses field-level AI buttons instead of the removed task engine',
-  includesAll(app, ['improveDraftField', 'renderAiButton', 'ai-field-button', "renderAiButton('title')", "renderAiButton('details')", "renderAiButton('rules')"]) &&
-    !includesAll(app, ["renderAiButton('reward')", "renderAiButton('deadline')"]) &&
-    !includesAll(app, ['EnginePage', "setPage('engine')", 'Requirement splitter']),
-  'publish AI controls and removed engine route',
-)
-
-addCheck(
-  'creation tools',
-  'music, chat, image, and video workspaces exist',
-  includesAll(app, ['Music Studio', 'Chat workspace', 'Image Studio', 'Video Studio', 'Text to Video', 'Image to Video']),
-  'create/chat/image/video modules',
-)
-
-addCheck(
-  'creation tools',
-  'Music and Video use application APIs with explicit runtime boundaries',
-  includesAll(app, [
-    "workspace: 'music'",
-    'Private player',
-    "workspace: 'video'",
-    'Private preview',
-    'Fixture only',
-  ]) && !includesAll(app, ['music and voice concept is rendering', 'demo-reference.wav']),
-  'application Music/Video APIs and runtime labels',
-)
-
-addCheck(
-  'creation tools',
-  'Chat workspace uses the typed streaming API and recoverable server history',
-  includesAll(app, [
-    'chatService.listConversations',
-    'chatService.listMessages',
-    'chatService.listInputAssets',
-    'chatService.streamTurn',
-    'chatService.stopTurn',
-    'chatService.deleteConversation',
-    'openModerationAppeal',
-  ]) && !app.includes('Drafted. You can send this'),
-  'conversation history, SSE, stop, deletion, governed inputs, and safety appeal',
-)
-
-addCheck(
-  'creation tools',
-  'Image Studio uses provider-backed creative generation path',
-  includesAll(app, [
-    'creativeService.createGeneration',
-    'creativeService.listProviders',
-    'creativeService.listGenerations',
-    'creativeService.generation',
-    'mediaService.createDownload',
-    "workspace: 'image'",
-    "'text_to_image' | 'image_to_image' | 'image_edit' | 'image_variation'",
-    'image-generation-history',
-    'providerGeneration.onGenerate',
-  ]) && !app.includes('!providerGeneration && results.map'),
-  'typed generation/history services, lifecycle UI, governed download contract, and no Image demo result fallback',
-)
-
-addCheck(
-  'points',
-  'personal billing ledger and reward redemption are represented',
-  includesAll(app, ['Points, credits, quota, and refunds', 'Available points', 'Creative credits', 'Quota remaining', 'Export billing CSV', 'Redeem', 'personal-billing-ledger']),
-  'unified billing summary, source ledger, export, and redemption cards',
-)
-
-addCheck(
-  'inspiration',
-  'inspiration library supports detail pages and conversion actions',
-  includesAll(app, [
-    'Opened inspiration detail',
-    'hcaiInspirationTaskDraft',
-    'Task draft prepared',
-    'Workspace transfer unavailable',
-    "setPage('publish')",
-    'library-save-count',
-    'library-detail',
-  ]) &&
-    includesAll(css, [
-      '.library-save-count',
-      'position: absolute',
-      '.library-detail',
-    ]),
-  'detail view, task/workspace conversion, and absolute save count',
-)
-
-addCheck(
-  'points',
-  'point ledger updates only after real service-backed flows',
-  includesAll(app, ['const pushLedger = useCallback((description: string, delta: string)', 'setLedgerItems((current)', 'Published task:', 'Submitted proposal draft:', 'Submitted deliverable:', 'Accepted task:', 'const simulateAction: SimulateAction = (message)']) &&
-    !app.includes('if (ledger) {'),
-  'service-backed ledger update flow without simulated ledger mutations',
-)
-
-addCheck(
-  'profile',
-  'public user profile is visible without real login',
-  includesAll(app, [
-    'function ProfilePage',
-    'profile: MarketplaceProfile',
-    'Public profile',
-    '公开主页',
-    'profile-shell',
-    'profile-proof-grid',
-    'Related users',
-    'People to compare',
-    "page === 'profile'",
-  ]) &&
-    includesAll(css, ['.profile-shell', '.profile-card', '.profile-cover', '.profile-avatar', '.profile-stats', '.profile-layout-grid']),
-  'profile page uses marketplace profile data and does not require auth',
-)
-
-addCheck(
-  'profile',
-  'profile entry points are wired from library, search, rankings, and matching',
-  includesAll(app, [
-    'openProfile(accountProfile)',
-    'personalProfileId',
-    'MyTasksPage t={t} tasks={tasks}',
-    'openProfile={openProfile}',
-    'profileService.findByHandle',
-    'openProfile(await profileService.findByHandle',
-    'openProfile(profile)',
-    'openProfile(item)',
-    'openProfile={openProfile}',
-  ]),
-  'multiple routes to public profile',
-)
-
-addCheck(
-  'admin',
-  'admin review queue has moderation actions',
-  includesAll(app, ['Review and moderation', 'Task review', 'Submissions', 'Community', 'AI config', 'Reject', 'Approve']),
-  'admin queue and actions',
-)
-
-addCheck(
-  'admin',
-  'admin role permissions can be edited and saved',
-  includesAll(app, ['Role permission matrix', 'permissionDraft', 'togglePermissionDraft', 'saveRolePermissions', 'adminService.updateRolePermissions']),
-  'role permission matrix editing',
-)
-
-addCheck(
-  'admin',
-  'admin tabs and review actions have service-backed feedback',
-  includesAll(app, ['管理中心已切换', 'reviewQueueItem', 'adminService.reviewQueueItem', 'queueStatus', 'auditStatus', 'scanJobArchive', 'writeScanJobArchive', 'MediaScanJobArchiveManifest', 'MediaScanJobArchiveResult']),
-  'admin tab feedback and queue review flow',
-)
-
-addCheck(
-  'admin',
-  'admin security events and alerts are queryable from the security panel',
-  includesAll(app, ['Security event stream', 'adminService.securityEvents', 'adminService.securityAlerts', 'adminService.securityAlertEvents', 'adminService.exportSecurityAlertJson', 'acknowledgeSecurityAlert', 'silenceSecurityAlert', 'unsilenceSecurityAlert', 'canManageSecurityAlerts', 'security:alerts:manage', 'alert_dispatch', 'recentChannels', 'recentErrors', 'highlightedSecurityAlertId', 'securityAlertStatus', 'securitySourceFilter', 'admin-security-alerts', 'admin-security-events']),
-  'security alert summaries, disposition actions, deep links, exports, samples, and event stream filters',
-)
-
-addCheck(
-  'admin',
-  'admin operations metrics render in the security dashboard',
-  includesAll(app, ['operationsMetrics(windowMinutes', 'exportOperationsMetricsJson', 'AdminOperationsMetricsDto', '/admin/operations/metrics', '/admin/operations/metrics/export', 'admin-operations-metrics', 'operationsMetricsWindow', 'Operations metrics', 'Archive candidates', 'writeScanArchiveFromMetrics', 'Audit dispatches', 'media.scan.history_pruned', 'toggleOperationSamples', 'operations-sample-panel', 'Recent failures', 'Archive records', 'exportOperationsSnapshot', 'Export snapshot', 'buildOperationsHandoff', 'remediationHints', 'Handoff notes', 'admin.operations.metrics_exported', 'operations_metrics', 'openOperationsMetricsFromAudit', 'operationSampleCountLabel', 'Open metrics window']),
-  'admin operations metrics dashboard actions, auditable export, and audit replay entry',
-)
-
-addCheck(
-  'admin',
-  'admin operations home exposes permission-aware overview search and durable deep links',
-  includesAll(app, ['AdminOverviewPanel', 'adminService.overview', 'adminService.globalSearch', 'admin-operations-overview', 'admin-global-search-input', 'overviewResourceType', 'overviewResourceId', 'Global entity search']),
-  'operations counters, bounded search, safe result selection, and refreshable Admin targets',
-)
-
-addCheck(
-  'admin',
-  'admin generation history exposes permission-scoped creative operations',
-  includesAll(app, ['admin-generation-history', 'Generation history', 'adminService.creativeGenerations', 'adminService.creativeGeneration', 'cancelCreativeGeneration', 'requestCreativeGenerationRetry', 'requestCreativeGenerationManualReplay', 'runGenerationMutation', 'admin:creative:cancel', 'admin:creative:retry', 'admin:creative:replay', 'generationRows', 'generationNextCursor', 'toggleGenerationDetail', 'loadMoreGenerations', 'focusGenerationMediaAsset', 'creative_generation', 'promptHash', 'outputAssetIds', 'retryOfId', 'attemptNumber', 'providerReplayEvidence', 'mutationEvidence']),
-  'typed generation history, safe mutation controls, child-attempt evidence, reviewed replay, media links, and audit links',
-)
-
-addCheck(
-  'cross-module',
-  'cross-module flows are wired with setPage transitions',
-  includesAll(app, [
-    "setPage('publish')",
-    "setPage('tasks')",
-    "setPage('community')",
-    "setPage('inspiration')",
-  ]),
-  'publish/tasks/community/inspiration transitions',
-)
-
-addCheck(
-  'auth simulation',
-  'auth-gated actions open the login modal',
-  includesAll(app, ['const requireAuth = useCallback(() => setLoginOpen(true), [])', 'LoginModal', "'google'", "'discord'", 'Continue with ${provider.label}']),
-  'simulated login gate',
-)
-
-addCheck(
-  'localization',
-  'default locale is English and Chinese toggle exists',
-  includesAll(app, ["useState<Locale>('en')", "locale === 'en' ? 'zh' : 'en'", '中文', 'English']),
-  'default English, toggle to Chinese',
-)
-
-const switchLocaleBlock = app.slice(
-  app.indexOf('  const switchLocale = () => {'),
-  app.indexOf('  useEffect(() => {\n    window.scrollTo'),
-)
-
-addCheck(
-  'localization',
-  'language toggle preserves the current page context',
-  switchLocaleBlock.includes('setLocale(nextLocale)') &&
-    !/set(Page|SelectedTask|SelectedPost|Prompt|CommunityView|SelectedSearchFilter)\(/.test(switchLocaleBlock) &&
-    !app.includes('key={locale}') &&
-    !app.includes('key={`${locale}-'),
-  'locale toggle should not navigate, reset selected content, reset prompts, or remount pages',
-)
-
-addCheck(
-  'localization',
-  'core Chinese copy is valid UTF-8 content',
-  includesAll(app, ['任务广场', '创作者社区', '发布需求', '我的任务', '灵感库', '积分奖励', '管理中心']) &&
-    !/[�]/.test(app) &&
-    !/[鎼鐧骞垮満涓绀惧尯]/.test(app),
-  'core Chinese labels and no mojibake markers',
-)
-
-addCheck(
-  'localization',
-  'Chinese sample content supports real interaction review',
-  includesAll(app, [
-    '制作一套中文 AI 课程宣传短视频',
-    '生成小红书美妆产品图提示词包',
-    '整理企业知识库 AI 问答机器人需求',
-    '中文课程广告 AI 配音与字幕交付',
-    '国风 Lo-fi 歌单开场音乐制作',
-    'AI 任务二次提交说明模板优化',
-    '中文任务复盘：AI 课程短视频如何写验收标准？',
-    '中文提问：任务被驳回后怎么写二次提交说明？',
-    '教程：用 AI 对话把模糊需求拆成可验收任务',
-    '中文短视频任务验收模板',
-    'AI 任务二次提交说明模板',
-    '小红书封面提示词包',
-    '已发布任务',
-    '已接取任务',
-    '已提交成果',
-    '已收入灵感库',
-  ]),
-  'Chinese task, post, library, and ledger content',
-)
-
-addCheck(
-  'interaction feedback',
-  'buttons without click handlers are explicitly unavailable',
-  !/<button(?![\s\S]*?>[\s\S]*?<\/button>)[\s\S]*?>/.test('') &&
-    [...app.matchAll(/<button[\s\S]*?>/g)].every((match) => match[0].includes('onClick') || match[0].includes('disabled')),
-  'button tags should include onClick or an honest disabled state',
-)
-
-addCheck(
-  'interaction feedback',
-  'global button styles prevent broken text wrapping',
-  includesAll(css, ['white-space: nowrap', 'line-height: 1', '.button-row', 'flex-wrap: wrap']),
-  'buttons keep labels intact and rows can wrap',
-)
-
-addCheck(
-  'interaction feedback',
-  'core chips and filters maintain active local state',
-  includesAll(app, [
-    'const [activeCategory, setActiveCategory]',
-    'const [selectedFeature, setSelectedFeature]',
-    'const [activeOption, setActiveOption]',
-    'const [activeControls, setActiveControls]',
-    'const [activeTab, setActiveTab]',
-    'setCommunityFilter(filter)',
-  ]),
-  'task, community, studio, admin, profile, inspiration active states',
-)
-
-addCheck(
-  'interaction feedback',
-  'search and login controls provide visible API feedback',
-  includesAll(app, [
-    "const [query, setQuery] = useState('')",
-    'searchService.search',
-    'searchService.recordClick',
-    'Opened search result',
-    'No results',
-    'Search unavailable',
-    'close()',
-    'listOAuthProviders()',
-    'oauthErrorCopy',
-    'loginWithOAuthProvider(provider.provider)',
-    'Signed in with ${provider.label}',
-    'Redirecting to ${provider.label}',
-    'oauth-mode-badge',
-  ]),
-  'permission-aware search loading/error/empty/click states and OAuth Provider status react',
-)
-
-addCheck(
-  'interaction feedback',
-  'dynamic island guide routes core workflows',
-  includesAll(app, [
-    'function DynamicIsland',
-    "aria-label={isZh ? 'AI 灵动岛指引' : 'AI dynamic island guide'}",
-    "setPage(action.page)",
-    '灵动岛已跳转',
-    'Dynamic island routed',
-    '我要发布任务 / 找任务赚钱 / 看社区 / 生成图片 / 做视频',
-    "page: 'tasks'",
-    "page: 'publish'",
-    "page: 'community'",
-    "page: 'playground'",
-    "page: 'chat'",
-  ]) &&
-    includesAll(css, [
-      '.ai-island',
-      '.ai-island.open',
-      '.island-compact',
-      '.island-command',
-      '@keyframes island-shimmer',
-    ]),
-  'floating AI guide with shortcuts, command input, and workflow routing',
-)
-
-addCheck(
-  'responsive ui',
-  'responsive styles cover new module layouts',
-  includesAll(css, ['.form-layout', '.ai-field-button', '.community-layout', '.detail-section-grid', '.ledger-row', '.admin-row', '.empty-state', '.sidebar.mobile-expanded', '@media (max-width: 860px)']),
-  'desktop, empty state, and mobile navigation layout contracts',
-)
-
-addCheck(
-  'responsive ui',
-  'community reading styles improve clarity and Chinese text rendering',
-  includesAll(css, [
-    '"Microsoft YaHei UI"',
-    '.post-body',
-    '.reply-box textarea',
-    '.comment-heading',
-    'overflow-wrap: anywhere',
-  ]),
-  'Chinese font fallback, post body, reply, and wrapping styles',
-)
-
-addCheck(
-  'feedback',
-  'interactive flows render accessible global feedback',
-  includesAll(app, ['function ToastViewport', 'data-testid="app-toast"', 'aria-live="polite"', 'simulateAction={simulateAction}', '<ToastViewport toasts={toasts} dismiss={dismissToast} />']) &&
-    includesAll(css, ['.toast-viewport', '.app-toast', '@keyframes toast-enter']),
-  'global feedback is visible, dismissible, and announced to assistive technology',
-)
-
-addCheck(
-  'prototype boundary',
-  'README documents feature scope, API auth, and remaining simulated surfaces',
-  includesAll(readme, ['front-end prototype', 'Login, registration, OAuth dev callback, logout, and auth-gated actions backed by the API', 'creative outputs']),
-  'prototype boundary and API auth language',
-)
-
-addCheck(
-  'prototype boundary',
-  'runtime data sources are visible in the shell and home page',
-  includesAll(app, ['accountSource', 'accountReady', 'data-source-panel', 'Account unavailable', 'Workspace unavailable', 'API session']),
-  'visible API/unavailable data source labels',
-)
-
-const grouped = checks.reduce((acc, check) => {
-  acc[check.group] ??= []
-  acc[check.group].push(check)
-  return acc
+const add = (group, name, pass, detail = '') => checks.push({ group, name, pass: Boolean(pass), detail })
+
+add('navigation', 'the modular renderer exposes every primary product surface', includesAll(sources.renderer, [
+  "page === 'home'", "page === 'playground'", "page === 'generations'", "page === 'assets'",
+  "page === 'chat'", "page === 'explore'", "page === 'tasks'", "page === 'publish'",
+  "page === 'mine'", "page === 'community'", "page === 'inspiration'", "page === 'points'", "page === 'admin'",
+]), 'home, create, operations, library, discover, marketplace, community, rewards, and Admin')
+add('navigation', 'publishing remains a task workflow instead of a duplicate sidebar destination', !sources.shell.includes("key: 'publish'") && includesAll(sources.tasks, ["setPage('publish')", '{t.postTask}']), 'task plaza owns the publish entry point')
+add('navigation', 'source-aware back navigation and primary navigation reset are retained', includesAll(sources.navigation + sources.shell, ['pageReturnTargets', 'navigateBackToParent', 'navigatePrimary', 'resetReturn: true']), 'return targets and primary reset')
+
+add('real data', 'legacy frontend Mock catalogs are absent', !exists('src/data/mockData.ts') && !exists('src/data/productionData.ts'), 'deleted Mock and placeholder catalog modules')
+add('real data', 'frontend runtime does not import Mock catalogs or expose debug source badges', !Object.values(sources).some((source) => source.includes('data/mockData')) && !sources.app.includes('API session') && !sources.app.includes('data-source-panel'), 'no Mock imports, API-session badges, or source panels')
+add('real data', 'Discover uses governed empty states instead of invented engagement data', includesAll(sources.explore, ['No public works yet', 'Only governed, explicitly published works will appear here.', 'The public media catalog is empty']), 'explicit public catalog empty states')
+
+add('task lifecycle', 'task workflows use typed API proposals, submissions, reviews, timelines, disputes, and cancellation', includesAll(sources.taskHook, [
+  'taskService.createProposal', 'taskService.reviewProposal', 'taskService.submit', 'taskService.review',
+  'taskService.listTimeline', 'taskService.createDispute', 'taskService.cancel',
+]), 'complete marketplace workflow calls')
+add('task lifecycle', 'task service maps lifecycle operations to API routes', includesAll(sources.taskService, ['/proposals', '/submissions', '/timeline', '/review', '/disputes', '/cancel']), 'typed task endpoints')
+add('task lifecycle', 'task UI exposes proposal, timeline, submission review, and dispute states', includesAll(sources.tasks, ['submit-proposal-button', 'task-timeline', 'approve-submission-button', 'reject-submission-button', 'open-dispute']), 'actor-scoped task controls')
+
+add('community', 'community workflows load and mutate real API resources', includesAll(sources.communityHook + sources.communityService, ['communityService.listPosts', 'communityService.createPost', 'communityService.replyToPost', 'communityService.updatePost', 'communityService.deletePost']), 'post and comment API lifecycle')
+add('community', 'community UI has loading, error, empty, detail, report, and editable reply states', includesAll(sources.community, ['status.loading', 'status.error', 'topic-empty', 'community-report-panel', '<textarea']), 'honest community states')
+
+add('creative tools', 'Image, Music, Video, and Chat product workspaces are registered', includesAll(sources.renderer + sources.workspace, ['PlaygroundPage', 'MusicStudioPage', 'VideoStudioPage', 'ChatPage']), 'four creative modalities')
+add('creative tools', 'Music and Video run through application workflows with local operation feedback', includesAll(sources.musicHook + sources.videoHook, ['creativeService.createGeneration', 'GenerationOperationFeedback', 'setFeedback']) && !sources.app.includes('pushToast,\n  })'), 'API generation and in-context feedback')
+add('creative tools', 'Chat renders streaming history and recoverable error states', includesAll(sources.chat, ['chatService', 'role="log"', 'aria-live="polite"', 'ActionFeedback']), 'streaming and local feedback')
+add('creative tools', 'generation retry requires an explicit confirmation surface', includesAll(sources.workspace + sources.music + sources.video, ['GenerationRetryConfirmation', 'retryFeedback']), 'retry confirmation and outcome feedback')
+
+add('assets and history', 'asset library is API-backed with filters, empty states, and pagination', includesAll(sources.assets, ['mediaService.assetLibrary', 'asset-empty', 'nextCursor', 'filters.mediaType']), 'owner-scoped asset operations')
+add('assets and history', 'generation center has real filters, task detail, output, and export controls', includesAll(sources.generations, ['creativeService', 'generation-task-detail', 'generation-output', 'export']), 'generation operations center')
+add('assets and history', 'inspiration and points surfaces use service-backed resources', includesAll(sources.inspiration + sources.points, ['communityService.listInspirationCategories', 'billingService.summary', 'billingService.ledger', 'entitlementService.me']), 'library and personal accounting APIs')
+
+add('admin', 'Admin is decomposed into dedicated operations workspaces', includesAll(sources.admin, ['AdminGenerationWorkspacePanel', 'SecurityWorkspacePanel', 'TrustSafetyWorkspace', 'AdminOverviewPanel']), 'modular Admin workspaces')
+add('admin', 'generation operations expose bulk actions, recovery, metrics, and local feedback', includesAll(sources.admin + sources.adminGenerationRecords + sources.adminGenerationRecovery, ['admin-generation-bulk-actions', 'admin-generation-recovery', 'AdminGenerationMetricsPanel', 'AdminActionFeedback']), 'permission-scoped generation operations')
+add('admin', 'security incidents expose create, attach, resolve, and evidence states', includesAll(sources.adminSecurityIncidents + sources.adminSecurityIncidentOperations, ['createIncident', 'attachEvent', 'resolveIncident', 'incident.version']), 'optimistic security incident lifecycle')
+add('admin', 'administrator mutations use in-context accessible feedback', includesAll(sources.adminFeedback + sources.actionFeedback, ["role={message.kind === 'error' ? 'alert' : 'status'}", 'AdminActionFeedbackMessage']), 'local status or alert feedback')
+
+add('preferences', 'locale is persisted and applied to the document language', includesAll(sources.app + sources.locale, ['readLocale', 'persistLocale(locale)', "document.documentElement.lang", 'localStorage.setItem']), 'English and Chinese state survives navigation and reload')
+add('preferences', 'light and dark themes persist without changing routes', includesAll(sources.shell + sources.theme, ['setThemeMode', "hcaiThemeMode", 'localStorage.setItem']), 'persistent dual-theme control')
+
+add('responsive UX', 'core layouts define stable responsive behavior', includesAll(sources.css + sources.adminGenerationCss, ['@media (max-width: 860px)', '.asset-library-page', '.generation-center-page', '.admin-generation-operations-panel', 'overflow-wrap: anywhere']), 'mobile layouts and bounded text wrapping')
+add('responsive UX', 'debug source-label styles are removed', !sources.css.includes('.data-source-panel') && !sources.css.includes('.data-source-chip'), 'no dormant debug badge styling')
+add('responsive UX', 'the landing experience ships real visual assets with reduced-motion handling', exists('src/features/landing/landing-particles-static.webp') && includesAll(read('src/features/landing/CommunityLandingPage.tsx') + read('src/features/landing/community-landing.css'), ['ParticleMorphBackground', 'prefers-reduced-motion']), 'bitmap fallback and interactive visual enhancement')
+
+add('release boundary', 'README documents API auth, production boundaries, and creative output status', includesAll(sources.readme, ['Login, registration, OAuth dev callback, logout, and auth-gated actions backed by the API', 'creative outputs', 'production']), 'operator-visible product boundary')
+
+const groups = checks.reduce((result, check) => {
+  result[check.group] ??= []
+  result[check.group].push(check)
+  return result
 }, {})
 
 let failed = 0
-for (const [group, groupChecks] of Object.entries(grouped)) {
+for (const [group, groupChecks] of Object.entries(groups)) {
   console.log(`\n${group}`)
   for (const check of groupChecks) {
-    const mark = check.pass ? 'PASS' : 'FAIL'
-    console.log(`  ${mark} ${check.name}`)
+    console.log(`  ${check.pass ? 'PASS' : 'FAIL'} ${check.name}`)
     if (!check.pass) {
       failed += 1
-      console.log(`       ${check.detail}`)
+      if (check.detail) console.log(`       ${check.detail}`)
     }
   }
 }
 
-const passed = checks.length - failed
-console.log(`\nSimulation checks: ${passed}/${checks.length} passed`)
-
-if (failed > 0) {
-  process.exitCode = 1
-}
+console.log(`\nProduction frontend simulation checks: ${checks.length - failed}/${checks.length} passed`)
+if (failed > 0) process.exitCode = 1

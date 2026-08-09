@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { apiBaseUrl, apiData, authHeaders, login, signInPage } from './helpers'
+import { apiBaseUrl, apiData, authHeaders, login, selectAdminSection, selectTrustSafetyWorkspace, signInPage } from './helpers'
 
 type ModerationCase = {
   id: string
@@ -19,7 +19,8 @@ const openTrustPanel = async (page: Page, mobile = false) => {
   await page.goto('/')
   if (mobile) await page.getByRole('button', { name: 'Toggle navigation' }).click()
   await page.getByTestId('nav-admin').click()
-  await page.getByRole('button', { name: 'Trust & Safety', exact: true }).click()
+  await selectAdminSection(page, 'Trust & Safety')
+  await selectTrustSafetyWorkspace(page, 'cases')
   const panel = page.getByTestId('trust-admin-panel')
   await expect(panel).toBeVisible()
   return panel
@@ -88,6 +89,8 @@ test('report, original decision, affected-user appeal, and independent appeal de
     expect((await decisionResponse).status()).toBe(201)
     await expect(reviewerPanel.locator('.trust-case-detail')).toContainText('resolved')
     await expect(reviewerPanel.locator('.trust-fact-list')).toContainText('original · restrict_content · privacy_confirmed')
+    await expect(reviewerPanel.locator('.admin-action-feedback')).toContainText('Moderation decision appended.')
+    await expect(reviewerPage.getByTestId('app-toast')).toHaveCount(0)
 
     await signInPage(affectedPage, request, 'opsplus')
     await openSupportCenter(affectedPage)
@@ -172,6 +175,7 @@ test('Trust operations manages rule rollout, signal queue SLA, and confirmed bul
 
   await signInPage(page, request, 'opsplus')
   await openTrustPanel(page)
+  await selectTrustSafetyWorkspace(page, 'operations')
   const operations = page.getByTestId('trust-safety-operations')
   await expect(operations).toContainText(subject)
   const queueRow = operations.getByTestId(`trust-queue-${report.item.id}`)
@@ -186,10 +190,12 @@ test('Trust operations manages rule rollout, signal queue SLA, and confirmed bul
   const bulkResponse = page.waitForResponse((response) => response.url().endsWith('/api/admin/trust/queue/bulk') && response.request().method() === 'POST')
   await operations.getByRole('button', { name: 'Execute', exact: true }).click()
   expect((await bulkResponse).status()).toBe(201)
+  await expect(operations.locator('.admin-action-feedback')).toContainText('Bulk queue operation completed.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
 
-  await operations.getByRole('button', { name: 'Rules', exact: true }).click()
-  await expect(operations.getByTestId(`trust-rule-${rule.id}`)).toContainText('active')
-  await operations.getByRole('button', { name: 'Signals', exact: true }).click()
-  await expect(operations).toContainText('spam_score · 96')
+  await selectTrustSafetyWorkspace(page, 'policies')
+  await expect(page.getByTestId('trust-safety-operations').getByTestId(`trust-rule-${rule.id}`)).toContainText('active')
+  await selectTrustSafetyWorkspace(page, 'evidence')
+  await expect(page.getByTestId('trust-safety-operations')).toContainText('spam_score · 96')
   await expectBounded(page, '[data-testid="trust-safety-operations"]')
 })

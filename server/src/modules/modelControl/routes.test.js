@@ -7,6 +7,7 @@ import { createSeedRepository } from '../../repositories/seedRepository.js'
 import { registerModelControlRoutes } from './routes.js'
 import { applyReleaseChange, approveReleaseChange, requestReleaseChange, rollbackReleaseChange } from '../../releases/releaseControl.js'
 import { buildProviderControlScopes, createProviderCapEvidence, providerCircuitScope } from '../../creative/providerControlContract.js'
+import { createProductionReleaseEvidenceFixture } from '../../releases/productionReleaseEvidence.fixtures.js'
 
 const admin = 'demo-access.opsplus'
 const moderator = 'demo-access.legalpixel'
@@ -289,6 +290,7 @@ test('model routing policies are revisioned, permission scoped, concurrency safe
 })
 
 test('route decisions and SecretRefs are append-only safe facts and approved promotion controls production traffic', async () => {
+  const productionEvidence = createProductionReleaseEvidenceFixture()
   const { repository, server } = await createServer()
   try {
     const provider = await repository.modelControl.createProvider({ id: 'promotion-provider', key: 'promotion-provider', name: 'Promotion Provider', websiteUrl: 'https://provider.example/legal-source-must-not-leak', regions: ['us'], dataProcessingRegions: ['us'], createdByRef: 'ops', updatedByRef: 'ops' })
@@ -401,7 +403,7 @@ test('route decisions and SecretRefs are append-only safe facts and approved pro
 
     const blockedWithoutEvaluation = await requestJson(server.url, '/api/admin/model-control/promotions', {
       token: admin,
-      body: { modelDeploymentId: deployment.id, routePolicyId: policyActive.payload.data.id, routePolicyRevisionId: revisions[0].id, providerSecretRefId: rotatedSecret.payload.data.id, artifactVersion: 'v1', rollbackVersion: 'promotion-model-v0', summary: 'Missing evaluation', reasonCode: 'provider_enablement' },
+      body: { modelDeploymentId: deployment.id, routePolicyId: policyActive.payload.data.id, routePolicyRevisionId: revisions[0].id, providerSecretRefId: rotatedSecret.payload.data.id, artifactVersion: 'v1', rollbackVersion: 'promotion-model-v0', summary: 'Missing evaluation', reasonCode: 'provider_enablement', ...productionEvidence.binding },
     })
     assert.equal(blockedWithoutEvaluation.status, 400)
     const promotionResponse = await requestJson(server.url, '/api/admin/model-control/promotions', {
@@ -417,6 +419,7 @@ test('route decisions and SecretRefs are append-only safe facts and approved pro
         rollbackVersion: 'promotion-model-v0',
         summary: 'Promote production image route',
         reasonCode: 'provider_enablement',
+        ...productionEvidence.binding,
       },
     })
     assert.equal(promotionResponse.status, 201)
@@ -431,9 +434,11 @@ test('route decisions and SecretRefs are append-only safe facts and approved pro
     })
     const deployed = await applyReleaseChange({
       change: approved,
-      payload: { outcome: 'deployed', deploymentId: deployment.id, evidenceUrl: 'https://ci.example/model-promotion', reasonCode: 'promotion_applied', note: '' },
+      payload: { outcome: 'deployed', deploymentId: deployment.id, evidenceUrl: 'https://ci.example/model-promotion', evidenceBundle: productionEvidence.bundle, reasonCode: 'promotion_applied', note: '' },
       actor: { id: 'admin-1', handle: 'opsplus' },
       repository: repository.releaseChanges,
+      source: productionEvidence.environment,
+      now: productionEvidence.now,
     })
     assert.equal(deployed.status, 'deployed')
     assert.equal((await repository.modelControl.find('deployment', deployment.id)).trafficEligible, true)
@@ -460,15 +465,15 @@ test('route decisions and SecretRefs are append-only safe facts and approved pro
       legalReviewId: legalResponse.payload.data.id,
     }
     const staleRequest = await requestReleaseChange({
-      payload: { changeType: 'promotion', sourceEnvironment: 'staging', targetEnvironment: 'production', artifactVersion: 'v1', rollbackVersion: 'v0', secretRef: null, secretVersion: null, summary: 'Stale route promotion', reasonCode: 'provider_enablement', modelPromotion: stalePromotion },
+      payload: { changeType: 'promotion', sourceEnvironment: 'staging', targetEnvironment: 'production', artifactVersion: 'v1', rollbackVersion: 'v0', secretRef: null, secretVersion: null, summary: 'Stale route promotion', reasonCode: 'provider_enablement', modelPromotion: stalePromotion, ...productionEvidence.binding },
       actor: { handle: 'opsplus' }, repository: repository.releaseChanges,
     })
     const staleApproval = await approveReleaseChange({ change: staleRequest, payload: { reasonCode: 'independent_review', note: '' }, actor: { handle: 'independent-approver' }, repository: repository.releaseChanges })
     await repository.modelRouting.transition(policyActive.payload.data.id, { expectedVersion: policyActive.payload.data.version, status: 'disabled', reasonCode: 'operator_pause', actorRef: 'opsplus' })
     await assert.rejects(applyReleaseChange({
       change: staleApproval,
-      payload: { outcome: 'deployed', deploymentId: deployment.id, evidenceUrl: 'https://ci.example/stale-promotion', reasonCode: 'promotion_applied', note: '' },
-      actor: { handle: 'opsplus' }, repository: repository.releaseChanges,
+      payload: { outcome: 'deployed', deploymentId: deployment.id, evidenceUrl: 'https://ci.example/stale-promotion', evidenceBundle: productionEvidence.bundle, reasonCode: 'promotion_applied', note: '' },
+      actor: { handle: 'opsplus' }, repository: repository.releaseChanges, source: productionEvidence.environment, now: productionEvidence.now,
     }), /active/)
     assert.equal((await repository.modelControl.find('deployment', deployment.id)).trafficEligible, false)
   } finally {

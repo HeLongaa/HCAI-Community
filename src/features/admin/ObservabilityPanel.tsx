@@ -3,6 +3,8 @@ import { Activity, BellRing, Download, RefreshCw, Save, Search, ShieldAlert } fr
 
 import type { Permission } from '../../domain/types'
 import { adminService } from '../../services/adminService'
+import { AdminActionFeedback, type AdminActionFeedbackMessage } from './AdminActionFeedback'
+import { downloadTextArtifact } from './downloadAdminArtifact'
 import type {
   AdminObservabilityAlertDto,
   AdminObservabilityAlertDetailDto,
@@ -25,19 +27,16 @@ const asIso = (value: string) => value ? new Date(value).toISOString() : null
 const oneHourFromNow = () => new Date(Date.now() + 60 * 60 * 1000).toISOString()
 
 const downloadJson = (json: string) => {
-  const blob = new Blob([json], { type: 'application/json;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `observability-logs-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
-  link.click()
-  URL.revokeObjectURL(url)
+  downloadTextArtifact({
+    content: json,
+    fileName: `observability-logs-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
+    mimeType: 'application/json;charset=utf-8',
+  })
 }
 
-export function ObservabilityPanel({ hasPermission, isZh, notify, initialAlertId = null, onInitialAlertHandled }: {
+export function ObservabilityPanel({ hasPermission, isZh, initialAlertId = null, onInitialAlertHandled }: {
   hasPermission: (permission: Permission) => boolean
   isZh: boolean
-  notify: (message: string) => void
   initialAlertId?: string | null
   onInitialAlertHandled?: () => void
 }) {
@@ -64,6 +63,7 @@ export function ObservabilityPanel({ hasPermission, isZh, notify, initialAlertId
   const [sloError, setSloError] = useState<string | null>(null)
   const [mutating, setMutating] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [feedback, setFeedback] = useState<AdminActionFeedbackMessage | null>(null)
 
   const readLogs = useCallback(async (cursor: string | null, filters = query) => {
     if (!canRead) return
@@ -155,9 +155,10 @@ export function ObservabilityPanel({ hasPermission, isZh, notify, initialAlertId
   const exportLogs = async () => {
     setExporting(true)
     setError(null)
+    setFeedback(null)
     try {
       downloadJson(await adminService.exportObservabilityLogs(query))
-      notify(isZh ? '可观测性日志导出已生成。' : 'Observability log export generated.')
+      setFeedback({ kind: 'success', text: isZh ? '可观测性日志导出已生成。' : 'Observability log export generated.' })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -168,6 +169,7 @@ export function ObservabilityPanel({ hasPermission, isZh, notify, initialAlertId
   const evaluateSlos = async () => {
     setSloLoading(true)
     setSloError(null)
+    setFeedback(null)
     try {
       const summary = await adminService.evaluateObservabilitySlos()
       setSlos(summary)
@@ -177,7 +179,7 @@ export function ObservabilityPanel({ hasPermission, isZh, notify, initialAlertId
       ])
       setAlerts(nextAlerts)
       setIncidentMetrics(nextMetrics)
-      notify(isZh ? 'SLO 评估已完成。' : 'SLO evaluation completed.')
+      setFeedback({ kind: 'success', text: isZh ? 'SLO 评估已完成。' : 'SLO evaluation completed.' })
     } catch (cause) {
       setSloError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -188,6 +190,7 @@ export function ObservabilityPanel({ hasPermission, isZh, notify, initialAlertId
   const transitionAlert = async (alert: AdminObservabilityAlertDto, action: 'acknowledge' | 'silence' | 'resolve') => {
     setMutating(alert.id)
     setSloError(null)
+    setFeedback(null)
     try {
       const until = action === 'silence' ? oneHourFromNow() : undefined
       const changed = await adminService.transitionObservabilityAlert(alert.id, action, {
@@ -197,7 +200,7 @@ export function ObservabilityPanel({ hasPermission, isZh, notify, initialAlertId
       })
       setAlerts((current) => current.map((item) => item.id === changed.id ? changed : item))
       if (selectedAlert?.id === changed.id) setSelectedAlert(await adminService.observabilityAlert(changed.id))
-      notify(isZh ? `告警已${action === 'acknowledge' ? '确认' : action === 'silence' ? '静默一小时' : '解决'}。` : `Alert ${action}d.`)
+      setFeedback({ kind: 'success', text: isZh ? `告警已${action === 'acknowledge' ? '确认' : action === 'silence' ? '静默一小时' : '解决'}。` : `Alert ${action}d.` })
     } catch (cause) {
       setSloError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -221,12 +224,13 @@ export function ObservabilityPanel({ hasPermission, isZh, notify, initialAlertId
   const escalateAlert = async (alert: AdminObservabilityAlertDto) => {
     setMutating(alert.id)
     setSloError(null)
+    setFeedback(null)
     try {
       const changed = await adminService.escalateObservabilityAlert(alert.id, { expectedVersion: alert.version, reasonCode: 'operator_escalation' })
       setAlerts((current) => current.map((item) => item.id === changed.id ? changed : item))
       setSelectedAlert(await adminService.observabilityAlert(changed.id))
       setIncidentMetrics(await adminService.observabilityIncidentMetrics())
-      notify(isZh ? '告警已升级到二线值班。' : 'Alert escalated to secondary on-call.')
+      setFeedback({ kind: 'success', text: isZh ? '告警已升级到二线值班。' : 'Alert escalated to secondary on-call.' })
     } catch (cause) {
       setSloError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -237,10 +241,11 @@ export function ObservabilityPanel({ hasPermission, isZh, notify, initialAlertId
   const saveControl = async (control: AdminObservabilitySloControlDto) => {
     setMutating(control.id)
     setSloError(null)
+    setFeedback(null)
     try {
       const changed = await adminService.updateObservabilitySloControl(control.sloId, { ...control, expectedVersion: control.version, reasonCode: 'operator_control_update' })
       setControls((current) => current.map((item) => item.sloId === changed.sloId ? changed : item))
-      notify(isZh ? 'SLO 与值班配置已更新。' : 'SLO and on-call control updated.')
+      setFeedback({ kind: 'success', text: isZh ? 'SLO 与值班配置已更新。' : 'SLO and on-call control updated.' })
     } catch (cause) {
       setSloError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -252,6 +257,7 @@ export function ObservabilityPanel({ hasPermission, isZh, notify, initialAlertId
     if (!selectedAlert) return
     setMutating(selectedAlert.id)
     setSloError(null)
+    setFeedback(null)
     try {
       const result = await adminService.reviewObservabilityIncident(selectedAlert.id, {
         expectedVersion: selectedAlert.version,
@@ -264,7 +270,7 @@ export function ObservabilityPanel({ hasPermission, isZh, notify, initialAlertId
       setAlerts((current) => current.map((item) => item.id === result.alert.id ? result.alert : item))
       setSelectedAlert(await adminService.observabilityAlert(result.alert.id))
       setIncidentMetrics(await adminService.observabilityIncidentMetrics())
-      notify(isZh ? '事故复盘证据已归档。' : 'Incident review evidence archived.')
+      setFeedback({ kind: 'success', text: isZh ? '事故复盘证据已归档。' : 'Incident review evidence archived.' })
     } catch (cause) {
       setSloError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -290,6 +296,7 @@ export function ObservabilityPanel({ hasPermission, isZh, notify, initialAlertId
           <button className="icon-button" type="button" title={isZh ? '导出 JSON' : 'Export JSON'} onClick={() => void exportLogs()} disabled={!canExport || exporting}><Download size={17} /></button>
         </div>
       </header>
+      <AdminActionFeedback message={feedback} />
 
       <form className="observability-filters" onSubmit={(event) => { event.preventDefault(); applyFilters() }}>
         <select aria-label={isZh ? '日志级别' : 'Log level'} value={draft.level ?? ''} onChange={(event) => setDraft({ ...draft, level: event.target.value as AdminObservabilityLevel || null })}><option value="">{isZh ? '全部级别' : 'All levels'}</option>{levels.map((item) => <option value={item} key={item}>{item}</option>)}</select>

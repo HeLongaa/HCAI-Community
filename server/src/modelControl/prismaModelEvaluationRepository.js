@@ -52,10 +52,8 @@ export const createPrismaModelEvaluationRepository = (client) => ({
     try {
       return policyDto(await client.$transaction(async (tx) => {
         await tx.$queryRawUnsafe('SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext($1))', `ai-evaluation-policy:${input.policyKey}`)
-        const [suite, current] = await Promise.all([
-          tx.aiEvaluationSuite.findUnique({ where: { id: input.suiteId }, include: suiteInclude }),
-          tx.aiEvaluationPolicy.findFirst({ where: { policyKey: input.policyKey }, orderBy: { version: 'desc' } }),
-        ])
+        const suite = await tx.aiEvaluationSuite.findUnique({ where: { id: input.suiteId }, include: suiteInclude })
+        const current = await tx.aiEvaluationPolicy.findFirst({ where: { policyKey: input.policyKey }, orderBy: { version: 'desc' } })
         if (!suite) throw new HttpError(422, 'EVALUATION_SUITE_NOT_FOUND', 'evaluation policy suite does not exist')
         if (suite.modality !== input.modality || suite.operation !== input.operation) throw new HttpError(422, 'EVALUATION_POLICY_SUITE_MISMATCH', 'evaluation policy modality and operation must match its suite')
         if (input.version !== (current?.version ?? 0) + 1) throw new HttpError(409, 'EVALUATION_POLICY_VERSION_CONFLICT', 'evaluation policy versions must be appended sequentially')
@@ -74,22 +72,27 @@ export const createPrismaModelEvaluationRepository = (client) => ({
   },
   createRun: async (input) => {
     try {
-      return runDto(await client.$transaction(async (tx) => {
+      const row = await client.$transaction(async (tx) => {
         await tx.$queryRawUnsafe('SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext($1))', `ai-evaluation-run:${input.run.sourceKey}`)
-        const [suite, policy, modelVersion, deployment, baseline] = await Promise.all([
-          tx.aiEvaluationSuite.findUnique({ where: { id: input.run.suiteId }, include: suiteInclude }),
-          tx.aiEvaluationPolicy.findUnique({ where: { id: input.run.policyId }, include: policyInclude }),
-          tx.modelVersion.findUnique({ where: { id: input.run.modelVersionId }, include: { capabilities: true } }),
-          input.run.modelDeploymentId ? tx.modelDeployment.findUnique({ where: { id: input.run.modelDeploymentId } }) : null,
-          input.run.baselineRunId ? tx.aiEvaluationRun.findUnique({ where: { id: input.run.baselineRunId } }) : null,
-        ])
+        const suiteRow = await tx.aiEvaluationSuite.findUnique({ where: { id: input.run.suiteId } })
+        const suiteCases = suiteRow ? await tx.aiEvaluationCase.findMany({ where: { suiteId: suiteRow.id }, orderBy: [{ category: 'asc' }, { caseKey: 'asc' }] }) : []
+        const suite = suiteRow ? { ...suiteRow, cases: suiteCases } : null
+        const policyRow = await tx.aiEvaluationPolicy.findUnique({ where: { id: input.run.policyId } })
+        const policy = policyRow ? { ...policyRow, suite } : null
+        const modelVersion = await tx.modelVersion.findUnique({ where: { id: input.run.modelVersionId }, include: { capabilities: true } })
+        const deployment = input.run.modelDeploymentId
+          ? await tx.modelDeployment.findUnique({ where: { id: input.run.modelDeploymentId } })
+          : null
+        const baseline = input.run.baselineRunId
+          ? await tx.aiEvaluationRun.findUnique({ where: { id: input.run.baselineRunId } })
+          : null
         if (!suite || !policy || !modelVersion || (input.run.modelDeploymentId && !deployment)) throw new HttpError(422, 'EVALUATION_REFERENCE_NOT_FOUND', 'evaluation run references must all exist')
         if (deployment && deployment.modelVersionId !== modelVersion.id) throw new HttpError(422, 'EVALUATION_DEPLOYMENT_MISMATCH', 'evaluation deployment does not use the selected model version')
         if (deployment && deployment.environment !== policy.environment) throw new HttpError(422, 'EVALUATION_ENVIRONMENT_MISMATCH', 'evaluation deployment environment does not match the threshold policy')
         if (!modelVersion.capabilities.some((item) => item.modality === suite.modality && item.operations.includes(suite.operation))) throw new HttpError(422, 'EVALUATION_CAPABILITY_MISMATCH', 'model version does not declare the evaluated modality and operation')
         if (baseline && (baseline.suiteId !== suite.id || baseline.policyId !== policy.id)) throw new HttpError(422, 'EVALUATION_BASELINE_MISMATCH', 'baseline must use the same suite and threshold policy')
         const evidence = buildEvaluationEvidence({ input, suite: suiteDto(suite), policy: policyDto(policy), baseline })
-        const duplicate = await tx.aiEvaluationRun.findUnique({ where: { sourceKey: evidence.run.sourceKey }, include: runInclude })
+        const duplicate = await tx.aiEvaluationRun.findUnique({ where: { sourceKey: evidence.run.sourceKey } })
         if (duplicate) {
           if (duplicate.reportHash !== evidence.run.reportHash) throw new HttpError(409, 'EVALUATION_SOURCE_CONFLICT', 'evaluation source key already records different evidence')
           return duplicate
@@ -99,9 +102,15 @@ export const createPrismaModelEvaluationRepository = (client) => ({
             ...evidence.run,
             startedAt: new Date(evidence.run.startedAt), completedAt: new Date(evidence.run.completedAt), expiresAt: new Date(evidence.run.expiresAt),
             results: { create: evidence.results },
-          }, include: runInclude,
+          },
         })
-      }, { isolationLevel: 'Serializable' }))
+      }, { isolationLevel: 'Serializable' })
+      const suite = await client.aiEvaluationSuite.findUnique({ where: { id: row.suiteId }, include: suiteInclude })
+      const policy = await client.aiEvaluationPolicy.findUnique({ where: { id: row.policyId } })
+      const policySuite = policy ? await client.aiEvaluationSuite.findUnique({ where: { id: policy.suiteId }, include: suiteInclude }) : null
+      const results = await client.aiEvaluationCaseResult.findMany({ where: { runId: row.id }, orderBy: { createdAt: 'asc' } })
+      const baselineRun = row.baselineRunId ? await client.aiEvaluationRun.findUnique({ where: { id: row.baselineRunId } }) : null
+      return runDto({ ...row, suite, policy: policy ? { ...policy, suite: policySuite } : null, results, baselineRun })
     } catch (error) { return conflict(error) }
   },
   findRun: async (id) => runDto(await client.aiEvaluationRun.findUnique({ where: { id: String(id) }, include: runInclude })),

@@ -23,6 +23,8 @@ export const isApiClientError = (error: unknown): error is ApiClientError => err
 const defaultBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim() || '/api'
 const accessTokenKey = 'hcaiAccessToken'
 const csrfTokenKey = 'hcaiCsrfToken'
+export const sessionInvalidatedEvent = 'hcai:session-invalidated'
+let refreshPromise: Promise<string | null> | null = null
 
 const trimSlash = (value: string) => value.replace(/\/+$/, '')
 
@@ -89,25 +91,72 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return payload.data
 }
 
+const refreshExcludedPaths = new Set(['/auth/login', '/auth/register', '/auth/refresh', '/auth/logout'])
+
+const isRefreshExcludedPath = (path: string) => refreshExcludedPaths.has(path.split('?')[0])
+
+const invalidateSession = () => {
+  setStoredAccessToken(null)
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(sessionInvalidatedEvent))
+}
+
+const refreshAccessToken = async () => {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const headers = new Headers({ accept: 'application/json', 'content-type': 'application/json' })
+      const csrfToken = getCookieValue(csrfTokenKey)
+      if (csrfToken) headers.set('x-csrf-token', csrfToken)
+      const response = await fetch(buildUrl('/auth/refresh'), {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: '{}',
+      })
+      if (!response.ok) return null
+      const payload = (await response.json()) as ApiEnvelope<{ accessToken?: string }>
+      const accessToken = payload.data?.accessToken?.trim() || null
+      if (accessToken) setStoredAccessToken(accessToken)
+      return accessToken
+    })().catch(() => null).finally(() => {
+      refreshPromise = null
+    })
+  }
+  return refreshPromise
+}
+
 async function request(path: string, options: RequestOptions = {}) {
-  const headers = new Headers(options.headers)
-  headers.set('accept', 'application/json')
-  if (!headers.has('content-type') && options.body && !(options.body instanceof FormData)) {
-    headers.set('content-type', 'application/json')
+  const execute = (token: string | null) => {
+    const headers = new Headers(options.headers)
+    headers.set('accept', 'application/json')
+    if (!headers.has('content-type') && options.body && !(options.body instanceof FormData)) {
+      headers.set('content-type', 'application/json')
+    }
+    if (token) headers.set('authorization', `Bearer ${token}`)
+    const csrfToken = getCookieValue(csrfTokenKey)
+    if (csrfToken && isUnsafeMethod(options.method)) headers.set('x-csrf-token', csrfToken)
+    return fetch(buildUrl(path), {
+      credentials: 'include',
+      ...options,
+      headers,
+    })
   }
+
   const token = options.token === undefined ? getStoredAccessToken() : options.token
-  if (token) {
-    headers.set('authorization', `Bearer ${token}`)
+  let response = await execute(token)
+  if (response.status === 401 && token && options.token === undefined && !isRefreshExcludedPath(path)) {
+    const currentToken = getStoredAccessToken()
+    if (currentToken && currentToken !== token) {
+      response = await execute(currentToken)
+    } else {
+      const refreshedToken = await refreshAccessToken()
+      if (refreshedToken) {
+        response = await execute(refreshedToken)
+      } else {
+        invalidateSession()
+      }
+    }
   }
-  const csrfToken = getCookieValue(csrfTokenKey)
-  if (csrfToken && isUnsafeMethod(options.method)) {
-    headers.set('x-csrf-token', csrfToken)
-  }
-  return fetch(buildUrl(path), {
-    credentials: 'include',
-    ...options,
-    headers,
-  })
+  return response
 }
 
 export const apiStream = (path: string, options: RequestOptions = {}) => request(path, options)

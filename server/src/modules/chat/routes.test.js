@@ -34,6 +34,37 @@ const streamTurn = async (server, conversationId, body, token = ownerToken) => {
   return { status: response.status, contentType: response.headers.get('content-type'), events: parseEvents(await response.text()) }
 }
 
+test('Chat runtime route is authenticated and reports the effective fallback runtime without secrets', async () => {
+  const repository = createSeedRepository()
+  const server = await createRouteTestServer((router) => registerChatRoutes(router, {
+    repositories: repository,
+    source,
+    runtimeReadinessResolver: async () => ({
+      checkedAt: '2026-08-09T01:00:00.000Z',
+      ready: false,
+      reasonCode: 'no_active_route_policy',
+      attempts: [],
+      checks: null,
+    }),
+  }))
+  try {
+    const unauthorized = await requestJson(server.url, '/api/chat/runtime', { method: 'GET' })
+    assert.equal(unauthorized.status, 401)
+
+    const response = await requestJson(server.url, '/api/chat/runtime', { method: 'GET', token: ownerToken })
+    assert.equal(response.status, 200)
+    assert.deepEqual(response.payload.data, {
+      availability: 'demo',
+      reasonCode: 'mock_runtime',
+      checkedAt: '2026-08-09T01:00:00.000Z',
+      runtime: { id: 'mock-chat', label: 'Mock Chat Runtime', kind: 'demo' },
+    })
+    assert.equal(JSON.stringify(response.payload).includes('CHAT_MESSAGE_ENCRYPTION_KEY'), false)
+  } finally {
+    await server.close()
+  }
+})
+
 test('Chat routes create, stream, recover, and delete owner-scoped conversations', async () => {
   const repository = createSeedRepository()
   const server = await createRouteTestServer((router) => registerChatRoutes(router, { repositories: repository, source }))

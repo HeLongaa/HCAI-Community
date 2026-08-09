@@ -3,11 +3,14 @@ import { createSign, generateKeyPairSync } from 'node:crypto'
 import test from 'node:test'
 
 import {
+  buildOAuthBrowserReturnUrl,
   createAppleClientSecret,
   createDevOAuthCode,
   createOAuthPkce,
   createOAuthState,
   exchangeOAuthCodeForProfile,
+  getOAuthBrowserReturnOrigin,
+  getOAuthCallbackOrigin,
   getOAuthAuthorizationUrl,
   getOAuthProviderMetadata,
   isAllowedOAuthProviderSecretReference,
@@ -19,6 +22,12 @@ import {
 } from './oauth.js'
 
 const encodeJson = (value) => Buffer.from(JSON.stringify(value)).toString('base64url')
+const productionOAuthOrigins = {
+  NODE_ENV: 'production',
+  OAUTH_CALLBACK_ORIGIN: 'https://api.example.com',
+  OAUTH_BROWSER_RETURN_ORIGIN: 'https://app.example.com',
+  AUTH_TRUSTED_ORIGINS: 'https://app.example.com',
+}
 
 const createRs256Jwt = ({ claims, kid, privateKey }) => {
   const header = encodeJson({ alg: 'RS256', kid, typ: 'JWT' })
@@ -88,7 +97,7 @@ test('listOAuthProviderMetadata returns public provider mode without secrets', (
 
 test('Admin SecretRefs resolve only the provider allowlisted deployment variable', () => {
   const source = {
-    NODE_ENV: 'production',
+    ...productionOAuthOrigins,
     OAUTH_GOOGLE_CLIENT_SECRET: 'google-secret',
     OAUTH_GITHUB_CLIENT_SECRET: 'github-secret',
     DATABASE_URL: 'must-never-resolve',
@@ -111,6 +120,7 @@ test('Admin SecretRefs resolve only the provider allowlisted deployment variable
 
 test('deployment smoke exposes configured OAuth providers without secret material', () => {
   const providers = listOAuthProviderMetadata({
+    ...productionOAuthOrigins,
     OAUTH_GOOGLE_CLIENT_ID: 'google-client',
     OAUTH_GOOGLE_CLIENT_SECRET: 'google-secret',
     OAUTH_GOOGLE_REDIRECT_URI: 'https://api.example.com/api/auth/oauth/google/callback',
@@ -348,13 +358,73 @@ test('production OAuth metadata fails closed when credentials are absent or redi
   assert.equal(absent.every((provider) => provider.authorizationUrl === null), true)
 
   const unsafe = listOAuthProviderMetadata({
-    NODE_ENV: 'production',
+    ...productionOAuthOrigins,
     OAUTH_GOOGLE_CLIENT_ID: 'google-client',
     OAUTH_GOOGLE_CLIENT_SECRET: 'google-secret',
     OAUTH_GOOGLE_REDIRECT_URI: 'http://app.example.com/api/auth/oauth/google/callback',
   }).find((provider) => provider.provider === 'google')
   assert.equal(unsafe.mode, 'unavailable')
   assert.equal(unsafe.configured, false)
+})
+
+test('managed production OAuth requires exact callback and trusted browser return origins', () => {
+  const credentials = {
+    DEPLOYMENT_ENV: 'production',
+    OAUTH_GOOGLE_CLIENT_ID: 'google-client',
+    OAUTH_GOOGLE_CLIENT_SECRET: 'google-secret',
+    OAUTH_GOOGLE_REDIRECT_URI: 'https://api.example.com/api/auth/oauth/google/callback',
+  }
+  assert.equal(getOAuthProviderMetadata('google', credentials).mode, 'unavailable')
+  assert.equal(getOAuthProviderMetadata('google', {
+    ...credentials,
+    OAUTH_CALLBACK_ORIGIN: 'https://other-api.example.com',
+    OAUTH_BROWSER_RETURN_ORIGIN: 'https://app.example.com',
+    AUTH_TRUSTED_ORIGINS: 'https://app.example.com',
+  }).mode, 'unavailable')
+  assert.equal(getOAuthProviderMetadata('google', {
+    ...credentials,
+    OAUTH_CALLBACK_ORIGIN: 'https://api.example.com',
+    OAUTH_BROWSER_RETURN_ORIGIN: 'https://app.example.com',
+    AUTH_TRUSTED_ORIGINS: 'https://admin.example.com',
+  }).mode, 'unavailable')
+
+  const complete = { ...credentials, ...productionOAuthOrigins }
+  assert.equal(getOAuthProviderMetadata('google', complete).mode, 'external')
+  assert.equal(getOAuthCallbackOrigin(complete), 'https://api.example.com')
+  assert.equal(getOAuthBrowserReturnOrigin(complete), 'https://app.example.com')
+  assert.equal(buildOAuthBrowserReturnUrl('/profile?tab=security', complete), 'https://app.example.com/#profile?tab=security')
+  assert.equal(getOAuthProviderMetadata('google', { ...complete, OAUTH_GOOGLE_CLIENT_ID: '   ' }).mode, 'unavailable')
+})
+
+test('managed production never falls back to dev OAuth or PKCE-less exchange', async () => {
+  const providers = listOAuthProviderMetadata({ DEPLOYMENT_ENV: 'production', OAUTH_DEV_MODE: 'enabled' })
+  assert.equal(providers.every((provider) => provider.mode === 'unavailable'), true)
+
+  const state = createOAuthState({ provider: 'google' })
+  const authorization = getOAuthAuthorizationUrl({
+    provider: 'google',
+    state: `${state}tampered`,
+    origin: 'https://api.example.com',
+    source: {
+      ...productionOAuthOrigins,
+      OAUTH_GOOGLE_CLIENT_ID: 'google-client',
+      OAUTH_GOOGLE_CLIENT_SECRET: 'google-secret',
+      OAUTH_GOOGLE_REDIRECT_URI: 'https://api.example.com/api/auth/oauth/google/callback',
+    },
+  })
+  assert.deepEqual(authorization, { mode: 'unavailable', authorizationUrl: null })
+
+  let dispatched = false
+  const profile = await exchangeOAuthCodeForProfile('google', 'code', {
+    source: {
+      OAUTH_GOOGLE_CLIENT_ID: 'google-client',
+      OAUTH_GOOGLE_CLIENT_SECRET: 'google-secret',
+      OAUTH_GOOGLE_REDIRECT_URI: 'https://api.example.com/api/auth/oauth/google/callback',
+    },
+    fetchImpl: async () => { dispatched = true },
+  })
+  assert.equal(profile, null)
+  assert.equal(dispatched, false)
 })
 
 test('OAuth provider failures and timeouts return a closed verification result', async () => {

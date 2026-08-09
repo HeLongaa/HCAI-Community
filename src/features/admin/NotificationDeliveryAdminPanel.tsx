@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Download, History, RefreshCw, RotateCcw, Save, XCircle } from 'lucide-react'
 import { adminService } from '../../services/adminService'
 import type { NotificationChannelConfig, NotificationChannelConfigRevision, NotificationDelivery, NotificationDeliveryMetrics, NotificationDeliveryStatus } from '../../services/contracts'
+import { downloadTextArtifact } from './downloadAdminArtifact'
+import { AdminActionFeedback, type AdminActionFeedbackMessage } from './AdminActionFeedback'
 
 const statuses: NotificationDeliveryStatus[] = ['queued', 'processing', 'retry_scheduled', 'sent', 'suppressed', 'dead_lettered', 'cancelled']
 const dateValue = (date: Date) => date.toISOString().slice(0, 10)
@@ -25,10 +27,9 @@ const draftFor = (config: NotificationChannelConfig): ConfigDraft => ({
   retryBackoffSeconds: config.retryBackoffSeconds,
 })
 
-export function NotificationDeliveryAdminPanel({ canManage, isZh, notify }: {
+export function NotificationDeliveryAdminPanel({ canManage, isZh }: {
   canManage: boolean
   isZh: boolean
-  notify: (message: string) => void
 }) {
   const text = (en: string, zh: string) => isZh ? zh : en
   const [view, setView] = useState<'queue' | 'metrics' | 'channels'>('queue')
@@ -49,6 +50,7 @@ export function NotificationDeliveryAdminPanel({ canManage, isZh, notify }: {
   const [reasonCode, setReasonCode] = useState('operator_requested')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<AdminActionFeedbackMessage | null>(null)
 
   const load = useCallback(async (append = false) => {
     setBusy(true)
@@ -86,26 +88,28 @@ export function NotificationDeliveryAdminPanel({ canManage, isZh, notify }: {
   const mutate = async (operation: () => Promise<NotificationDelivery>, message: string) => {
     setBusy(true)
     setError(null)
+    setFeedback(null)
     try {
       setSelected(await operation())
       await load(false)
-      notify(message)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
+      setFeedback({ kind: 'success', text: message })
+    } catch (reason) { setFeedback({ kind: 'error', text: reason instanceof Error ? reason.message : String(reason) }) }
     finally { setBusy(false) }
   }
 
   const download = async (kind: 'inventory' | 'metrics') => {
+    setFeedback(null)
     try {
       const body = kind === 'inventory'
         ? await adminService.exportNotificationDeliveries({ status: status || null, channel: channel || null, search: search.trim() || null })
         : await adminService.exportNotificationDeliveryMetrics(metricQuery(dateFrom, dateTo, metricChannel, notificationType))
-      const url = URL.createObjectURL(new Blob([body], { type: 'text/csv;charset=utf-8' }))
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = `notification-${kind}-${dateValue(new Date())}.csv`
-      anchor.click()
-      URL.revokeObjectURL(url)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
+      downloadTextArtifact({
+        content: body,
+        fileName: `notification-${kind}-${dateValue(new Date())}.csv`,
+        mimeType: 'text/csv;charset=utf-8',
+      })
+      setFeedback({ kind: 'success', text: kind === 'inventory' ? text('Notification inventory export generated.', '通知清单导出已生成。') : text('Notification metrics export generated.', '通知指标导出已生成。') })
+    } catch (reason) { setFeedback({ kind: 'error', text: reason instanceof Error ? reason.message : String(reason) }) }
   }
 
   const saveConfig = async (config: NotificationChannelConfig) => {
@@ -113,14 +117,15 @@ export function NotificationDeliveryAdminPanel({ canManage, isZh, notify }: {
     if (!draft) return
     setBusy(true)
     setError(null)
+    setFeedback(null)
     try {
       const updated = await adminService.updateNotificationChannelConfig(config.channel, { ...draft, expectedVersion: config.version, reasonCode })
       setConfigs((current) => current.map((item) => item.channel === updated.channel ? updated : item))
       setDrafts((current) => ({ ...current, [updated.channel]: draftFor(updated) }))
       setHistory((current) => ({ ...current, [updated.channel]: [] }))
       await load(false)
-      notify(text('Channel configuration saved.', '渠道配置已保存。'))
-    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
+      setFeedback({ kind: 'success', text: text('Channel configuration saved.', '渠道配置已保存。') })
+    } catch (reason) { setFeedback({ kind: 'error', text: reason instanceof Error ? reason.message : String(reason) }) }
     finally { setBusy(false) }
   }
 
@@ -135,14 +140,15 @@ export function NotificationDeliveryAdminPanel({ canManage, isZh, notify }: {
   const rollback = async (config: NotificationChannelConfig, revisionNumber: number) => {
     setBusy(true)
     setError(null)
+    setFeedback(null)
     try {
       const updated = await adminService.rollbackNotificationChannelConfig(config.channel, { revisionNumber, expectedVersion: config.version, reasonCode: 'operator_rollback' })
       setConfigs((current) => current.map((item) => item.channel === updated.channel ? updated : item))
       setDrafts((current) => ({ ...current, [updated.channel]: draftFor(updated) }))
       await loadHistory(updated)
       await load(false)
-      notify(text('Channel configuration rolled back.', '渠道配置已回滚。'))
-    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
+      setFeedback({ kind: 'success', text: text('Channel configuration rolled back.', '渠道配置已回滚。') })
+    } catch (reason) { setFeedback({ kind: 'error', text: reason instanceof Error ? reason.message : String(reason) }) }
     finally { setBusy(false) }
   }
 
@@ -160,6 +166,7 @@ export function NotificationDeliveryAdminPanel({ canManage, isZh, notify }: {
         {(['queue', 'metrics', 'channels'] as const).map((value) => <button className={view === value ? 'active' : ''} type="button" key={value} onClick={() => setView(value)}>{value === 'queue' ? text('Queue', '队列') : value === 'metrics' ? text('Metrics', '指标') : text('Channels', '渠道')}</button>)}
       </div>
       {error && <div className="inline-error" role="alert">{error}</div>}
+      <AdminActionFeedback message={feedback} />
 
       {view === 'queue' && <>
         <div className="notification-admin-filters delivery-filters">

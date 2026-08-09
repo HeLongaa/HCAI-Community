@@ -1,0 +1,35 @@
+import fs from 'node:fs'
+import path from 'node:path'
+
+const root = process.cwd()
+const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')
+const contract = JSON.parse(read('config/oauth-staging-contract.json'))
+const rehearsal = read(contract.rehearsalScript)
+const verifier = read(contract.evidenceVerifier)
+const evidenceLibrary = read('scripts/lib/oauth-staging-evidence.mjs')
+const docs = read(contract.documentation)
+const packageJson = JSON.parse(read('package.json'))
+const checks = []
+const add = (name, pass, evidence) => checks.push({ name, pass: Boolean(pass), evidence })
+
+add('contract has stable schemas and an explicit Provider allowlist', contract.schemaVersion === 'oauth-staging-contract-v1' && contract.evidenceSchemaVersion === 'oauth-staging-evidence-v1' && contract.providers.join(',') === 'google,github', contract.schemaVersion)
+add('rehearsal requires exact staging confirmation', rehearsal.includes('OAUTH_STAGING_CONFIRMATION') && rehearsal.includes('confirmation === contract.confirmation'), contract.confirmation)
+add('rehearsal binds a clean source and release artifact', ["['rev-parse', 'HEAD']", "git', ['status', '--porcelain']", 'RELEASE_ARTIFACT_SHA256', "id: 'source_clean'"].every((marker) => rehearsal.includes(marker)), 'source/artifact binding')
+add('rehearsal requires exact HTTPS API and browser origins', rehearsal.includes('exactHttpsOrigin') && rehearsal.includes("id: 'api_origin_https_exact'") && rehearsal.includes("id: 'browser_origin_https_exact'"), 'dual-origin boundary')
+add('rehearsal verifies the effective public Provider configuration', ['external_provider_ready', 'callback_origin_exact', 'browser_return_origin_exact'].every((marker) => rehearsal.includes(marker)), 'public status checks')
+add('rehearsal proves credentialed CORS for the browser origin', rehearsal.includes("id: 'trusted_browser_cors'") && rehearsal.includes("response.headers.get('access-control-allow-credentials')"), 'trusted browser CORS')
+add('rehearsal uses an ephemeral interactive browser profile', rehearsal.includes('chromium.launchPersistentContext') && rehearsal.includes("fs.mkdtempSync(path.join(os.tmpdir(), 'hcai-oauth-staging-'))") && rehearsal.includes('fs.rmSync(profileDir'), 'interactive browser cleanup')
+add('rehearsal sanitizes browser navigation failures', rehearsal.includes('OAuth Provider authorization page could not be opened') && rehearsal.includes('OAuth browser did not return to the configured product origin'), 'no state/code URL in errors')
+add('rehearsal proves required browser and session controls', contract.requiredChecks.every((name) => rehearsal.includes(`id: '${name}'`)) && rehearsal.includes('logoutClearedCookies') && rehearsal.includes("rotatedCsrf !== initialCsrf"), contract.requiredChecks.join(', '))
+add('rehearsal emits hash-only deployment identity', ['apiOriginSha256', 'browserOriginSha256', 'providerHostSha256'].every((marker) => rehearsal.includes(marker)) && !rehearsal.includes('authorizationUrl: authorizationUrl'), 'hashed deployment evidence')
+add('rehearsal preserves acceptance limitations', Object.keys(contract.requiredLimitations).every((name) => rehearsal.includes(`${name}: false`)), Object.keys(contract.requiredLimitations).join(', '))
+add('evidence rejects credential- and identity-shaped fields', evidenceLibrary.includes('findUnsafeOAuthEvidencePaths') && evidenceLibrary.includes("failures.push('forbidden_fields')"), 'recursive evidence guard')
+add('evidence has an independent verifier', verifier.includes('verifyEvidence') && verifier.includes('JSON.parse'), contract.evidenceVerifier)
+add('runbook requires manual MFA without stored credentials', docs.includes('manual MFA') && docs.includes('does not store Provider passwords'), contract.documentation)
+add('runbook states the exact unproven scenarios', ['does not prove account linking', 'account conflict', 'unlink', 'cancellation', 'production approval'].every((marker) => docs.includes(marker)), contract.documentation)
+add('package exposes focused, preflight, and execute commands', packageJson.scripts?.['test:oauth-staging']?.includes('verify-oauth-staging.mjs') && packageJson.scripts?.['oauth-staging:preflight']?.includes('--mode=preflight') && packageJson.scripts?.['oauth-staging:rehearse']?.includes('--mode=execute'), 'package scripts')
+
+for (const check of checks) console.log(`${check.pass ? 'PASS' : 'FAIL'} ${check.name}: ${check.evidence ?? ''}`)
+const failed = checks.filter((check) => !check.pass)
+console.log(`OAuth staging contract: ${checks.length - failed.length}/${checks.length} checks passed`)
+if (failed.length) process.exit(1)

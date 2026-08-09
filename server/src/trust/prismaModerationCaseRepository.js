@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { HttpError } from '../common/errors/httpError.js'
+import { dataRightsSafeSubjectRef } from '../dataRights/dataRightsLifecycle.js'
 import { moderationAppealWindowMs, moderationCaseVersion, moderationSourceKey, serializeModerationCase } from './moderationCases.js'
 
 const includeCase = {
@@ -36,21 +37,29 @@ export const createPrismaModerationCaseRepository = (client, {
     if (!model) return null
     const row = await db[model].findUnique({ where: { id: targetId }, ...(targetType === 'comment' ? { include: { post: true } } : {}) })
     if (!row) return null
-    const ownerId = row.authorId ?? row.userId ?? row.ownerId ?? null
+    const ownerId = row.authorId ?? row.userId ?? row.ownerId ?? row.actorId ?? null
     if (targetType === 'post' && ownerId !== actor.id && (row.status !== 'published' || row.moderationState === 'hidden')) return null
     if (targetType === 'comment' && ownerId !== actor.id && (row.moderationState === 'hidden' || row.post?.status !== 'published' || row.post?.moderationState === 'hidden')) return null
     return { affectedUserId: ownerId, contentHash: createHash('sha256').update(`${targetType}:${targetId}:${row.updatedAt?.toISOString?.() ?? row.createdAt?.toISOString?.() ?? ''}`).digest('hex') }
   }
 
   const load = (db, id) => db.moderationCase.findUnique({ where: { id: String(id) }, include: includeCase })
+  const lockCase = (db, id) => db.$queryRawUnsafe('SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext($1))', `moderation-case:${id}`)
   const assertVersion = (record, expectedVersion) => {
     if (moderationCaseVersion(record) !== expectedVersion) throw new HttpError(409, 'STATE_CONFLICT', 'Moderation case was modified concurrently')
+  }
+  const assertRetentionMutable = (record) => {
+    if (record?.retentionRedactedAt) throw new HttpError(409, 'MODERATION_CASE_RETENTION_REDACTED', 'Retention-redacted moderation cases cannot accept new facts')
   }
 
   return {
     createReport: async (payload, actor) => client.$transaction(async (transaction) => {
       const reporter = await resolveActor(transaction, actor)
       if (!reporter) throw new HttpError(404, 'USER_NOT_FOUND', 'Reporter not found')
+      await transaction.$queryRawUnsafe(
+        'SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext($1))',
+        `moderation-target:${payload.targetType}:${payload.targetId}`,
+      )
       const target = await resolveTarget(transaction, payload.targetType, payload.targetId, reporter)
       if (!target) throw new HttpError(404, 'MODERATION_TARGET_NOT_FOUND', 'Moderation target not found')
       const sourceKey = moderationSourceKey({ actorId: reporter.id, ...payload })
@@ -64,7 +73,13 @@ export const createPrismaModerationCaseRepository = (client, {
       const reportId = `report-${randomUUID()}`
       const row = await transaction.moderationCase.create({
         data: {
-          id: caseId, targetType: payload.targetType, targetId: payload.targetId, affectedUserId: target.affectedUserId, priority: payload.priority,
+          id: caseId,
+          targetType: payload.targetType,
+          targetId: payload.targetId,
+          affectedUserId: target.affectedUserId,
+          affectedSubjectRef: target.affectedUserId ? dataRightsSafeSubjectRef(target.affectedUserId) : null,
+          reporterSubjectRef: dataRightsSafeSubjectRef(reporter.id),
+          priority: payload.priority,
           report: { create: { id: reportId, reporterId: reporter.id, category: payload.category, subject: payload.subject, statement: payload.statement, locale: payload.locale, sourceKey } },
           evidence: { create: { id: `evidence-${randomUUID()}`, submittedById: reporter.id, evidenceType: 'target_snapshot', referenceType: payload.targetType, referenceId: payload.targetId, contentHash: target.contentHash, reasonCode: 'report_submitted' } },
         },
@@ -73,6 +88,22 @@ export const createPrismaModerationCaseRepository = (client, {
       await recordAudit({ actor: reporter, action: 'trust.report.created', resourceType: 'moderation_case', resourceId: row.id, metadata: { reportId, targetType: payload.targetType, category: payload.category, priority: payload.priority } }, transaction)
       await onReportCreated(transaction, row, reporter)
       return { duplicate: false, item: serializeModerationCase(row, { includeStatement: true }) }
+    }, { isolationLevel: 'Serializable' }),
+    recordAutomatedDecision: async (id, payload) => client.$transaction(async (transaction) => {
+      await lockCase(transaction, id)
+      let record = await load(transaction, id)
+      if (!record) return null
+      assertRetentionMutable(record)
+      if (record.targetType !== 'creative_generation') throw new HttpError(409, 'AUTOMATED_DECISION_TARGET_INVALID', 'Automated decisions are limited to creative generations')
+      const existing = record.decisions.find((item) => item.stage === 'original')
+      if (existing) {
+        if (existing.reviewerId !== null || existing.outcome !== payload.outcome || existing.reasonCode !== payload.reasonCode) throw new HttpError(409, 'MODERATION_DECISION_EXISTS', 'Original decision already exists')
+        return serializeModerationCase(record, { includeStatement: true })
+      }
+      const decision = await transaction.moderationDecision.create({ data: { id: `decision-${randomUUID()}`, caseId: record.id, reviewerId: null, stage: 'original', outcome: payload.outcome, reasonCode: payload.reasonCode, note: payload.note } })
+      await recordAudit({ actor: null, action: 'trust.automated_decision.created', resourceType: 'moderation_decision', resourceId: decision.id, metadata: { caseId: record.id, outcome: decision.outcome, reasonCode: decision.reasonCode } }, transaction)
+      record = await load(transaction, id)
+      return serializeModerationCase(record, { includeStatement: true })
     }, { isolationLevel: 'Serializable' }),
     findForUser: async (id, actor) => {
       const user = await resolveActor(client, actor)
@@ -90,9 +121,11 @@ export const createPrismaModerationCaseRepository = (client, {
       return { items: page.map((row) => serializeModerationCase(row)), nextCursor: filtered.length > start + query.limit ? page.at(-1)?.id ?? null : null, limit: query.limit }
     },
     appeal: async (id, payload, actor) => client.$transaction(async (transaction) => {
+      await lockCase(transaction, id)
       const appellant = await resolveActor(transaction, actor)
       const record = await load(transaction, id)
       if (!record) return null
+      assertRetentionMutable(record)
       if (record.affectedUserId !== appellant?.id) throw new HttpError(403, 'MODERATION_APPEAL_FORBIDDEN', 'Only the affected account may appeal this decision')
       assertVersion(record, payload.expectedVersion)
       const original = record.decisions.find((item) => item.stage === 'original')
@@ -105,8 +138,11 @@ export const createPrismaModerationCaseRepository = (client, {
       return serializeModerationCase(await load(transaction, id), { includeStatement: true })
     }, { isolationLevel: 'Serializable' }),
     addEvidence: async (id, payload, actor) => client.$transaction(async (transaction) => {
+      await lockCase(transaction, id)
       const submitter = await resolveActor(transaction, actor)
-      if (!await transaction.moderationCase.findUnique({ where: { id: String(id) }, select: { id: true } })) return null
+      const record = await load(transaction, id)
+      if (!record) return null
+      assertRetentionMutable(record)
       const existing = await transaction.moderationEvidence.findFirst({ where: { caseId: String(id), evidenceType: payload.evidenceType, referenceType: payload.referenceType, referenceId: payload.referenceId, contentHash: payload.contentHash } })
       if (!existing) {
         await transaction.moderationEvidence.create({ data: { id: `evidence-${randomUUID()}`, caseId: String(id), submittedById: submitter?.id ?? null, ...payload } })
@@ -115,9 +151,11 @@ export const createPrismaModerationCaseRepository = (client, {
       return { duplicate: Boolean(existing), item: serializeModerationCase(await load(transaction, id), { includeStatement: true }) }
     }, { isolationLevel: 'Serializable' }),
     decide: async (id, payload, actor) => client.$transaction(async (transaction) => {
+      await lockCase(transaction, id)
       const reviewer = await resolveActor(transaction, actor)
       const record = await load(transaction, id)
       if (!record || !reviewer) return null
+      assertRetentionMutable(record)
       assertVersion(record, payload.expectedVersion)
       const original = record.decisions.find((item) => item.stage === 'original')
       const appeal = record.appeals[0] ?? null

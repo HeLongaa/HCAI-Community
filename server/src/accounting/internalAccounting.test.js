@@ -2,12 +2,28 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  accountingActorRef,
+  accountingAvailableAccountRef,
   accountingOperationKey,
   accountingPayloadHash,
+  accountingSubjectRef,
   accountingUnitIsInternal,
   reconcilePointLedgerRows,
   validateMovementGroup,
 } from './internalAccounting.js'
+
+test('accounting subject references are stable and exclude direct identity values', () => {
+  const subjectRef = accountingSubjectRef('user-123')
+  assert.match(subjectRef, /^subject_[a-f0-9]{24}$/)
+  assert.equal(accountingSubjectRef('user-123'), subjectRef)
+  assert.equal(accountingAvailableAccountRef('user-123', 'points'), `${subjectRef}:points:available`)
+  assert.equal(accountingActorRef({ id: 'user-123', handle: 'public-handle' }), subjectRef)
+  assert.equal(accountingActorRef(null), 'system')
+  assert.equal(accountingAvailableAccountRef('user-123', 'points').includes('user-123'), false)
+  assert.equal(accountingActorRef({ id: 'user-123' }).includes('user-123'), false)
+  assert.throws(() => accountingSubjectRef(''), /subject id is required/)
+  assert.throws(() => accountingAvailableAccountRef('user-123', 'unsupported'), /unit is invalid/)
+})
 
 test('accounting operation identity and payload hashes are stable', () => {
   assert.equal(accountingOperationKey({

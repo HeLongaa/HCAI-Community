@@ -90,11 +90,18 @@ test('Prisma OpenAI Image acceptance persists governed outputs and accounting', 
         },
       },
     })
-    const summary = await runOpenAIImageStagingAcceptance({ source, fetchImpl, now, repositories })
+    const summary = await runOpenAIImageStagingAcceptance({
+      source,
+      fetchImpl,
+      now,
+      repositories,
+      inputSafetyClassifier: openAIImageStagingAcceptanceFixture.inputSafetyClassifier,
+      outputSafetyClassifier: openAIImageStagingAcceptanceFixture.outputSafetyClassifier,
+    })
     assert.equal(summary.providerCalls, 2)
 
     const generations = await client.creativeGeneration.findMany({
-      where: { actorId, providerId: 'openai-gpt-image-2' },
+      where: { actorId, providerId: 'openai-gpt-image-2', status: 'completed' },
       orderBy: { createdAt: 'asc' },
     })
     assert.equal(generations.length, 2)
@@ -102,6 +109,11 @@ test('Prisma OpenAI Image acceptance persists governed outputs and accounting', 
     assert.deepEqual(generations.map((generation) => generation.outputAssetIds.length), [1, 1])
     assert.equal(JSON.stringify(generations).includes(token), false)
     assert.equal(JSON.stringify(generations).includes(output), false)
+    const blockedGeneration = await client.creativeGeneration.findFirst({
+      where: { actorId, providerId: 'openai-gpt-image-2', status: 'review_required' },
+    })
+    assert.ok(blockedGeneration)
+    assert.deepEqual(blockedGeneration.outputAssetIds, [])
 
     const generationIds = generations.map((generation) => generation.id)
     const assets = await client.mediaAsset.findMany({ where: { id: { in: generations.flatMap((generation) => generation.outputAssetIds) } } })

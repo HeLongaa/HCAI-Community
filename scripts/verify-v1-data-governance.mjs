@@ -24,6 +24,73 @@ const providerEnvSource = read('server/src/config/env.js')
 const generationServiceSource = read('server/src/creative/generationService.js')
 const providerPollingWorkerSource = read('server/src/creative/providerPollingWorker.js')
 const providerStatusClientRegistrySource = read('server/src/creative/providerStatusClientRegistry.js')
+const providerDeletionGatewaySource = read('server/src/dataRights/providerDeletionGateway.js')
+const exportArtifactRetentionSource = read('server/src/dataRights/exportArtifactRetention.js')
+const prismaDataRightsSource = read('server/src/dataRights/prismaDataRightsRepository.js')
+const dataRightsRoutesSource = read('server/src/modules/dataRights/routes.js')
+const workerJobsSource = read('server/src/operations/workerJobs.js')
+const observabilityRetentionSource = read('server/src/observability/observabilityRetention.js')
+const prismaObservabilitySource = read('server/src/observability/prismaObservabilityRepository.js')
+const seedObservabilitySource = read('server/src/observability/seedObservabilityRepository.js')
+const observabilityRetentionMigration = read('server/prisma/migrations/0102_observability_bounded_retention/migration.sql')
+const notificationRetentionSource = read('server/src/notifications/notificationRetention.js')
+const prismaRepositorySource = read('server/src/repositories/prismaRepository.js')
+const seedRepositorySource = read('server/src/repositories/seedRepository.js')
+const internalAccountingSource = read('server/src/accounting/internalAccounting.js')
+const notificationRetentionMigration = read('server/prisma/migrations/0103_notification_retention/migration.sql')
+const providerAlertRetentionMigration = read('server/prisma/migrations/0120_provider_alert_retention/migration.sql')
+const notificationEmailProviderEventMigration = read('server/prisma/migrations/0122_notification_email_provider_events/migration.sql')
+const operationLeaseRetentionSource = read('server/src/operations/operationLeaseRetention.js')
+const operationLeaseRetentionMigration = read('server/prisma/migrations/0104_operation_lease_retention/migration.sql')
+const privateLibraryRetentionSource = read('server/src/library/libraryRetention.js')
+const privateLibraryRetentionMigration = read('server/prisma/migrations/0105_private_library_retention/migration.sql')
+const authCredentialRetentionSource = read('server/src/auth/authCredentialRetention.js')
+const authCredentialRetentionMigration = read('server/prisma/migrations/0106_auth_credential_retention/migration.sql')
+const communityRetentionSource = read('server/src/community/communityRetention.js')
+const prismaCommunityRetentionSource = read('server/src/community/prismaCommunityRetentionRepository.js')
+const communityRetentionMigration = read('server/prisma/migrations/0107_community_content_retention/migration.sql')
+const securityRetentionSource = read('server/src/security/securityRetention.js')
+const prismaSecurityRetentionSource = read('server/src/security/prismaSecurityRetentionRepository.js')
+const securityRetentionMigration = read('server/prisma/migrations/0108_security_event_retention/migration.sql')
+const riskRetentionSource = read('server/src/risk/riskOperations.js')
+const prismaRiskRetentionSource = read('server/src/risk/prismaRiskRetentionRepository.js')
+const riskRetentionMigration = read('server/prisma/migrations/0109_risk_record_retention/migration.sql')
+const moderationRetentionSource = read('server/src/trust/moderationRetention.js')
+const prismaModerationRetentionSource = read('server/src/trust/prismaModerationRetentionRepository.js')
+const moderationRetentionMigration = read('server/prisma/migrations/0110_moderation_case_retention/migration.sql')
+const moderationOperationalRetentionSource = read('server/src/trust/moderationOperationalRetention.js')
+const prismaModerationOperationalRetentionSource = read('server/src/trust/prismaModerationOperationalRetentionRepository.js')
+const moderationOperationalRetentionMigration = read('server/prisma/migrations/0111_moderation_operational_retention/migration.sql')
+const generationRetentionSource = read('server/src/creative/generationRetention.js')
+const prismaGenerationRetentionSource = read('server/src/creative/prismaGenerationRetentionRepository.js')
+const generationRetentionMigration = read('server/prisma/migrations/0112_generation_retention/migration.sql')
+const providerLifecycleRetentionSource = read('server/src/creative/providerLifecycleRetention.js')
+const prismaProviderLifecycleRetentionSource = read('server/src/creative/prismaProviderLifecycleRetentionRepository.js')
+const providerLifecycleRetentionMigration = read('server/prisma/migrations/0116_provider_lifecycle_retention/migration.sql')
+const configurationRetentionSource = read('server/src/config/configurationRetention.js')
+const prismaConfigurationRetentionSource = read('server/src/config/prismaConfigurationRetentionRepository.js')
+const configurationRetentionMigration = read('server/prisma/migrations/0117_configuration_revision_retention/migration.sql')
+const mediaAssetRetentionSource = read('server/src/media/mediaAssetRetention.js')
+const prismaMediaAssetRetentionSource = read('server/src/media/prismaMediaAssetRetentionRepository.js')
+const mediaAssetRetentionMigration = read('server/prisma/migrations/0118_media_asset_retention/migration.sql')
+const marketplaceRetentionSource = read('server/src/tasks/marketplaceRetention.js')
+const prismaMarketplaceRetentionSource = read('server/src/tasks/prismaMarketplaceRetentionRepository.js')
+const marketplaceRetentionMigration = read('server/prisma/migrations/0113_marketplace_retention/migration.sql')
+const providerSecretRetentionSource = read('server/src/modelControl/providerSecretRetention.js')
+const prismaModelGovernanceSource = read('server/src/modelControl/prismaModelGovernanceRepository.js')
+const providerSecretRetentionMigration = read('server/prisma/migrations/0114_provider_secret_retention/migration.sql')
+const supportRetentionSource = read('server/src/support/supportRetention.js')
+const prismaSupportRetentionSource = read('server/src/support/prismaSupportRetentionRepository.js')
+const prismaSupportSource = read('server/src/support/prismaSupportRepository.js')
+const supportRetentionMigration = read('server/prisma/migrations/0115_support_ticket_retention/migration.sql')
+const prismaSafetyOperationsSource = read('server/src/trust/prismaSafetyOperationsRepository.js')
+const adminRoutesSource = read('server/src/modules/admin/routes.js')
+const auditRetentionWorkerSource = read('server/src/audit/auditRetentionWorker.js')
+const auditRetentionSource = read('server/src/audit/auditRetention.js')
+const archiveWriterSource = read('server/src/storage/archiveWriter.js')
+const structuredLoggingSource = read('server/src/observability/structuredLogging.js')
+const releaseInfrastructureContract = JSON.parse(read('config/release-infrastructure-rehearsal-contract.json'))
+const releaseInfrastructureRunnerSource = read('scripts/rehearse-release-infrastructure.mjs')
 
 const expectedClassifications = ['confidential', 'internal', 'public', 'restricted', 'secret']
 const expectedPurposes = [
@@ -175,7 +242,7 @@ addCheck(
     governance.runtimeStatus.retentionAutomationComplete === false &&
     governance.runtimeStatus.accountExportImplemented === true &&
     governance.runtimeStatus.accountDeletionImplemented === true &&
-    governance.runtimeStatus.providerDeletionAutomationImplemented === false &&
+    governance.runtimeStatus.providerDeletionAutomationImplemented === true &&
     governance.runtimeStatus.backupDeletionRehearsed === false,
   JSON.stringify(governance.runtimeStatus),
 )
@@ -257,8 +324,14 @@ for (const purpose of governance.purposes) {
 
 const retentionIds = governance.retentionPolicies.map((policy) => policy.id)
 const retentionById = new Map(governance.retentionPolicies.map((policy) => [policy.id, policy]))
+const retentionAutomationInventory = governance.retentionAutomationInventory ?? {}
 addCheck('retention policy ids are unique', unique(retentionIds), `${retentionIds.length} policies`)
 addCheck('retention policy set is comprehensive', governance.retentionPolicies.length >= 20, `${governance.retentionPolicies.length} policies`)
+addCheck(
+  'retention automation inventory covers every policy exactly once',
+  sameMembers(Object.keys(retentionAutomationInventory), retentionIds),
+  `${Object.keys(retentionAutomationInventory).length}/${retentionIds.length} statuses`,
+)
 for (const policy of governance.retentionPolicies) {
   addCheck(
     `${policy.id} has a bounded trigger and action`,
@@ -275,7 +348,113 @@ for (const policy of governance.retentionPolicies) {
       Array.isArray(policy.exceptions),
     `${Object.keys(policy.fieldOverrides ?? {}).length}/${policy.exceptions?.length ?? 0}`,
   )
+  addCheck(
+    `${policy.id} has an explicit runtime automation status`,
+    typeof retentionAutomationInventory[policy.id] === 'string' && retentionAutomationInventory[policy.id].length > 0,
+    retentionAutomationInventory[policy.id],
+  )
 }
+
+addCheck(
+  'known retention policy conflicts and pending target acceptance remain explicit without claiming global completion',
+  retentionAutomationInventory.provider_lifecycle_terminal_180d === 'implemented_pending_target_environment_acceptance' &&
+    retentionAutomationInventory.configuration_superseded_plus_365d === 'implemented_pending_target_environment_acceptance' &&
+    retentionAutomationInventory.media_asset_delete_plus_30d === 'implemented_pending_target_environment_acceptance' &&
+    retentionAutomationInventory.support_close_plus_730d === 'implemented_pending_target_environment_acceptance' &&
+    retentionAutomationInventory.private_library_delete_plus_30d === 'implemented_pending_target_environment_acceptance' &&
+    retentionAutomationInventory.community_delete_plus_30d === 'implemented_pending_target_environment_acceptance' &&
+    retentionAutomationInventory.marketplace_close_plus_730d === 'partial_mutable_task_redaction_implemented_immutable_lifecycle_event_ledger_and_asset_evidence_contract_required' &&
+    retentionAutomationInventory.internal_ledger_plus_730d === 'partial_new_writes_pseudonymized_historical_immutable_fact_anonymization_contract_pending' &&
+    retentionAutomationInventory.security_event_365d === 'implemented_pending_target_environment_acceptance' &&
+    retentionAutomationInventory.moderation_close_plus_730d === 'implemented_pending_target_environment_acceptance' &&
+    retentionAutomationInventory.retired_secret_30d === 'implemented_pending_target_environment_acceptance' &&
+    governance.runtimeStatus.retentionAutomationComplete === false,
+  JSON.stringify({
+    providerLifecycle: retentionAutomationInventory.provider_lifecycle_terminal_180d,
+    configurationHistory: retentionAutomationInventory.configuration_superseded_plus_365d,
+    mediaAsset: retentionAutomationInventory.media_asset_delete_plus_30d,
+    supportTicket: retentionAutomationInventory.support_close_plus_730d,
+    privateLibrary: retentionAutomationInventory.private_library_delete_plus_30d,
+    community: retentionAutomationInventory.community_delete_plus_30d,
+    marketplace: retentionAutomationInventory.marketplace_close_plus_730d,
+    internalLedger: retentionAutomationInventory.internal_ledger_plus_730d,
+    securityEvent: retentionAutomationInventory.security_event_365d,
+    moderation: retentionAutomationInventory.moderation_close_plus_730d,
+    providerSecret: retentionAutomationInventory.retired_secret_30d,
+    complete: governance.runtimeStatus.retentionAutomationComplete,
+  }),
+)
+
+addCheck(
+  'runtime media asset retention minimizes governed relations and creates an irreversible structural tombstone',
+  retentionAutomationInventory.media_asset_delete_plus_30d === 'implemented_pending_target_environment_acceptance' &&
+    mediaAssetRetentionSource.includes("policyId: 'media_asset_delete_plus_30d'") &&
+    mediaAssetRetentionSource.includes('deletedRetentionDays: 30') &&
+    mediaAssetRetentionSource.includes('abandonedPendingRetentionDays: 1') &&
+    mediaAssetRetentionSource.includes("legalHoldScopeDomains: Object.freeze(['media', 'audit', 'safety'])") &&
+    prismaMediaAssetRetentionSource.includes("storage_row.state = 'deleted'") &&
+    prismaMediaAssetRetentionSource.includes("scope_domain IN ('media', 'audit', 'safety')") &&
+    prismaDataRightsSource.includes("['media', 'audit', 'safety'].includes(payload.scopeDomain)") &&
+    prismaMediaAssetRetentionSource.includes('profilePortfolioAsset.updateMany') &&
+    prismaMediaAssetRetentionSource.includes('taskSubmissionAsset.updateMany') &&
+    prismaMediaAssetRetentionSource.includes('libraryItem.deleteMany') &&
+    prismaMediaAssetRetentionSource.includes('creativeGenerationAsset.updateMany') &&
+    prismaMediaAssetRetentionSource.includes('chatTurnInputAsset.updateMany') &&
+    prismaMediaAssetRetentionSource.includes('mediaAssetRelation.updateMany') &&
+    prismaMediaAssetRetentionSource.includes('mediaScanJob.updateMany') &&
+    prismaMediaAssetRetentionSource.includes('ownerId: null') &&
+    prismaMediaAssetRetentionSource.includes('array_remove(input_asset_ids, $1)') &&
+    prismaMediaAssetRetentionSource.includes('array_remove(asset_ids, $1)') &&
+    prismaMediaAssetRetentionSource.includes("set_config('app.media_asset_retention_maintenance', 'on', true)") &&
+    workerJobsSource.includes("id: 'media-asset-retention-sweep'") &&
+    workerJobsSource.includes("lease: lease('media-asset-retention-sweep')") &&
+    providerEnvSource.includes("mediaAssetRetentionWorkerEnabled: boolFlag(source, 'MEDIA_ASSET_RETENTION_WORKER_ENABLED', false)") &&
+    mediaAssetRetentionMigration.includes('MEDIA_ASSET_RETENTION_REDACTED') &&
+    mediaAssetRetentionMigration.includes('media_asset_relations_media_guard') &&
+    mediaAssetRetentionMigration.includes('library_items_media_guard'),
+  'object-first eligibility, media/audit/safety holds, bounded leased worker, governed relation minimization, legacy array cleanup, shared database locks, and irreversible tombstones',
+)
+
+addCheck(
+  'runtime configuration retention irreversibly minimizes superseded values after 365 days',
+  retentionAutomationInventory.configuration_superseded_plus_365d === 'implemented_pending_target_environment_acceptance' &&
+    retentionById.get('configuration_superseded_plus_365d').maximumDaysAfterTrigger === 365 &&
+    retentionById.get('configuration_superseded_plus_365d').exceptions.includes('active_configuration') &&
+    retentionById.get('configuration_superseded_plus_365d').exceptions.includes('pending_or_approved_rollback_target') &&
+    configurationRetentionSource.includes('maximumPaths = 128') &&
+    configurationRetentionSource.includes('maximumDepth = 8') &&
+    configurationRetentionSource.includes("createHash('sha256')") &&
+    prismaConfigurationRetentionSource.includes('configuration-system-setting') &&
+    prismaConfigurationRetentionSource.includes('configuration-resource') &&
+    prismaConfigurationRetentionSource.includes("status IN ('pending_approval', 'approved')") &&
+    prismaConfigurationRetentionSource.includes("set_config('app.configuration_retention_maintenance', 'on', true)") &&
+    workerJobsSource.includes("id: 'configuration-retention-sweep'") &&
+    workerJobsSource.includes("lease: lease('configuration-retention-sweep')") &&
+    workerJobsSource.includes('maxAttempts: 3') &&
+    providerEnvSource.includes("configurationRetentionWorkerEnabled: boolFlag(source, 'CONFIGURATION_RETENTION_WORKER_ENABLED', false)") &&
+    configurationRetentionMigration.includes('configuration_retention_summary_valid') &&
+    configurationRetentionMigration.includes('retention-minimized system setting revision is immutable') &&
+    configurationRetentionMigration.includes('retention-minimized config resource revision is immutable'),
+  '365-day successor cutoff, current and rollback-target exclusions, bounded SHA-256-only summaries, shared publication locks, irreversible database guards, and default-disabled leased worker',
+)
+
+addCheck(
+  'runtime Provider lifecycle retention minimizes terminal evidence after reconciliation, review, and legal-hold closeout',
+  retentionAutomationInventory.provider_lifecycle_terminal_180d === 'implemented_pending_target_environment_acceptance' &&
+    providerLifecycleRetentionSource.includes("policyId: 'provider_lifecycle_terminal_180d'") &&
+    providerLifecycleRetentionSource.includes('retentionDays: 180') &&
+    prismaProviderLifecycleRetentionSource.includes("row.status IN ('open', 'repair_pending')") &&
+    prismaProviderLifecycleRetentionSource.includes("scope_domain IN ('audit', 'safety')") &&
+    prismaProviderLifecycleRetentionSource.includes("SET LOCAL app.provider_lifecycle_retention_maintenance = 'on'") &&
+    prismaProviderLifecycleRetentionSource.includes('providerJobId: null') &&
+    prismaProviderLifecycleRetentionSource.includes('mediaAssetId: null') &&
+    prismaProviderLifecycleRetentionSource.includes('requestedById: null') &&
+    workerJobsSource.includes("id: 'provider-lifecycle-retention-sweep'") &&
+    workerJobsSource.includes("lease: lease('provider-lifecycle-retention-sweep')") &&
+    providerLifecycleRetentionMigration.includes("'creative-generation:' || NEW.generation_id") &&
+    providerLifecycleRetentionMigration.includes('PROVIDER_LIFECYCLE_RETENTION_REDACTED'),
+  '180-day terminal-only minimization, reconciliation/review/legal-hold blockers, deterministic evidence hashes, shared generation locks, irreversible triggers, indexes, and leased worker',
+)
 
 addCheck(
   'account deletion is bounded to 30 days with immediate access removal',
@@ -322,6 +501,18 @@ addCheck(
     retentionById.get('export_package_7d').maximumDaysAfterTrigger === 7 &&
     retentionById.get('export_package_7d').fieldOverrides.private_signed_download === 1,
   'backup=35d export=7d link=1d',
+)
+addCheck(
+  'backup expiry has local restore-negative evidence without claiming target schedule or KMS acceptance',
+  retentionAutomationInventory.rolling_backup_35d === 'local_restore_negative_expiry_rehearsal_implemented_pending_target_environment_schedule_and_kms_acceptance' &&
+    releaseInfrastructureContract.objectives.backupRetentionDays === 35 &&
+    releaseInfrastructureContract.evidence.requiredSections.includes('backupExpiry') &&
+    ['database_backup_expired', 'database_backup_restore_denied', 'object_backup_expired', 'object_backup_restore_denied', 'local_restore_copy_expired'].every((marker) => releaseInfrastructureRunnerSource.includes(marker)) &&
+    releaseInfrastructureRunnerSource.includes('targetScheduleVerified: false') &&
+    releaseInfrastructureRunnerSource.includes('managedKeyDestructionVerified: false') &&
+    governance.runtimeStatus.backupDeletionRehearsed === false &&
+    governance.runtimeStatus.retentionAutomationComplete === false,
+  retentionAutomationInventory.rolling_backup_35d,
 )
 addCheck(
   'raw request and Provider payload retention is zero',
@@ -541,7 +732,7 @@ addCheck(
 addCheck(
   'export implementation remains explicit and bounded',
   governance.subjectRights.export.implementationTaskId === 'V1-67' &&
-    governance.subjectRights.export.implementationStatus === 'not_implemented' &&
+    governance.subjectRights.export.implementationStatus === 'implemented_pending_production_storage_acceptance' &&
     governance.subjectRights.export.targetDays === 30 &&
     governance.subjectRights.export.packageRetentionDays === 7 &&
     governance.subjectRights.export.downloadLinkHours === 24 &&
@@ -551,7 +742,7 @@ addCheck(
 addCheck(
   'deletion implementation remains explicit and bounded',
   governance.subjectRights.deletion.implementationTaskId === 'V1-67' &&
-    governance.subjectRights.deletion.implementationStatus === 'not_implemented' &&
+    governance.subjectRights.deletion.implementationStatus === 'implemented_pending_backup_expiry_rehearsal' &&
     governance.subjectRights.deletion.primaryStoreTargetDays === 30 &&
     governance.subjectRights.deletion.privateObjectTargetHours === 24 &&
     governance.subjectRights.deletion.cacheSearchTargetHours === 24 &&
@@ -559,6 +750,14 @@ addCheck(
     governance.subjectRights.deletion.externalProcessorConfirmationDays === 30 &&
     governance.subjectRights.deletion.backupExpiryDaysAfterPrimaryPurge === 35,
   JSON.stringify(governance.subjectRights.deletion),
+)
+addCheck(
+  'account export and deletion routes are backed by persistent runtime processing',
+  dataRightsRoutesSource.includes("'/api/users/me/data-rights/requests/:id/export'") &&
+    dataRightsRoutesSource.includes("'/api/admin/data-rights/requests/:id/process'") &&
+    prismaDataRightsSource.includes('buildDataExportPackage') &&
+    prismaDataRightsSource.includes('applyPrimaryDeletion'),
+  'server/src/modules/dataRights/routes.js',
 )
 addCheck(
   'deletion has immediate access revocation and closeout evidence',
@@ -572,12 +771,17 @@ addCheck(
 )
 addCheck(
   'legal holds are scoped, reviewed, and finite',
-  governance.subjectRights.legalHold.implementationStatus === 'not_implemented' &&
+  governance.subjectRights.legalHold.implementationStatus === 'implemented_pending_target_environment_migration_acceptance' &&
     governance.subjectRights.legalHold.authorizedRoles.length >= 2 &&
     governance.subjectRights.legalHold.requiredFields.length >= 8 &&
     governance.subjectRights.legalHold.reviewIntervalDays === 90 &&
     governance.subjectRights.legalHold.indefiniteHoldAllowed === false &&
-    governance.subjectRights.legalHold.behavior.includes('scoped'),
+    governance.subjectRights.legalHold.behavior.includes('scoped') &&
+    schemaSource.includes('model DataRightsLegalHold {') &&
+    schemaSource.includes('model DataRightsLegalHoldEvent {') &&
+    dataRightsRoutesSource.includes("'/api/admin/data-rights/legal-holds'") &&
+    prismaDataRightsSource.includes('eligibleReceipts') &&
+    prismaDataRightsSource.includes("heldBeforeProvider.has('creative')"),
   JSON.stringify(governance.subjectRights.legalHold),
 )
 
@@ -693,6 +897,14 @@ addCheck(
   governance.currentRuntimeBaseline.evidenceFiles.join(', '),
 )
 addCheck(
+  'Provider deletion is fail-closed, idempotent, and persists bounded receipts',
+  providerDeletionGatewaySource.includes("'idempotency-key'") &&
+    providerDeletionGatewaySource.includes('receiptHash') &&
+    providerDeletionGatewaySource.includes("payload?.status !== 'completed'") &&
+    prismaDataRightsSource.includes('providerDeletionGateway'),
+  'server/src/dataRights/providerDeletionGateway.js',
+)
+addCheck(
   'runtime Provider HTTP client keeps secrets in the deployment boundary',
   providerHttpClientSource.includes("secretEnvKey: 'CREATIVE_STAGING_PROVIDER_API_TOKEN'") &&
     providerHttpClientSource.includes('source[definition.secretEnvKey]') &&
@@ -783,6 +995,326 @@ addCheck(
   adminRoutes.includes('safeErrorPreview') &&
     adminRoutes.includes('safeProviderJobIdEvidence'),
   'server/src/modules/admin/routes.js',
+)
+addCheck(
+  'runtime data export retention deletes namespace-constrained objects before locators',
+  exportArtifactRetentionSource.includes('exportStorageKeyPattern') &&
+    exportArtifactRetentionSource.includes('deleteStorageObject') &&
+    exportArtifactRetentionSource.includes('receiptHash') &&
+    prismaDataRightsSource.indexOf('deleteDataRightsExportObject') < prismaDataRightsSource.indexOf('dataRightsExportArtifact.deleteMany') &&
+    prismaDataRightsSource.includes("SET LOCAL app.data_rights_maintenance = 'on'") &&
+    prismaDataRightsSource.includes("'export_artifact_expired'") &&
+    workerJobsSource.includes("id: 'data-rights-export-retention-sweep'") &&
+    workerJobsSource.includes('dataRightsExportRetentionSweepLimit'),
+  'dedicated object boundary, transactional locator removal, immutable evidence, and leased bounded worker',
+)
+addCheck(
+  'runtime observability retention aggregates then deletes bounded raw telemetry',
+  observabilityRetentionSource.includes("policyId: 'observability_bounded'") &&
+    observabilityRetentionSource.includes('rawLogDays: 30') &&
+    observabilityRetentionSource.includes('traceDays: 7') &&
+    observabilityRetentionSource.includes('aggregateDays: 90') &&
+    prismaObservabilitySource.indexOf('observabilityRetentionAggregate.upsert') < prismaObservabilitySource.indexOf('observabilityLog.deleteMany') &&
+    prismaObservabilitySource.includes('traceSpan.deleteMany') &&
+    prismaObservabilitySource.includes('observabilityRetentionAggregate.deleteMany') &&
+    workerJobsSource.includes("id: 'observability-retention-sweep'") &&
+    workerJobsSource.includes('observabilityRetentionSweepLimit') &&
+    observabilityRetentionMigration.includes('observability_retention_aggregates'),
+  'anonymous daily aggregates, transactional raw deletion, aggregate expiry, and leased bounded worker',
+)
+addCheck(
+  'runtime observability persistence rejects non-allowlisted structured log data globally',
+  structuredLoggingSource.includes('projectPersistedObservabilityLog') &&
+    structuredLoggingSource.includes('rejectUnsupportedKeys') &&
+    structuredLoggingSource.includes('projectLogAttributes') &&
+    structuredLoggingSource.includes('must be a bounded scalar') &&
+    prismaObservabilitySource.includes('projectPersistedObservabilityLog(log)') &&
+    seedObservabilitySource.includes('projectPersistedObservabilityLog(log)'),
+  'shared root and event-attribute allowlist before Prisma/Seed writes',
+)
+addCheck(
+  'runtime notification retention deletes bounded notification, email Provider event, and terminal Provider alert families after 180 days',
+  notificationRetentionSource.includes("policyId: 'notification_created_plus_180d'") &&
+    notificationRetentionSource.includes('retentionDays: 180') &&
+    notificationRetentionSource.includes('maximumSweepLimit: 1000') &&
+    prismaRepositorySource.includes("orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]") &&
+    prismaRepositorySource.includes('notificationDeliveryAttempt.count') &&
+    prismaRepositorySource.includes('notification.deleteMany') &&
+    prismaRepositorySource.includes('notificationEmailProviderEvent.deleteMany') &&
+    prismaRepositorySource.includes('providerAlertDeliveryAttempt.deleteMany') &&
+    prismaRepositorySource.includes('providerAlertDeliveryReplay.deleteMany') &&
+    prismaRepositorySource.includes('providerAlertDelivery.deleteMany') &&
+    notificationRetentionSource.includes("providerAlertTerminalStatuses: Object.freeze(['succeeded', 'dead_lettered', 'cancelled'])") &&
+    workerJobsSource.includes("id: 'notification-retention-sweep'") &&
+    workerJobsSource.includes('notificationRetentionSweepLimit') &&
+    notificationRetentionMigration.includes('notifications_retention_idx') &&
+    providerAlertRetentionMigration.includes('provider_alert_deliveries_status_updated_at_id_idx') &&
+    notificationEmailProviderEventMigration.includes('notification_email_provider_events_recipient_fingerprint_received_at_idx') &&
+    notificationEmailProviderEventMigration.includes('notification_deliveries_provider_receipt_hash_idx'),
+  'global oldest-first bounded deletion, active recipient suppression and Provider alert exclusion, child evidence cleanup, indexes, and leased worker',
+)
+addCheck(
+  'runtime operation lease retention deletes bounded expired or released coordination rows after seven days',
+  operationLeaseRetentionSource.includes("policyId: 'lease_expiry_plus_7d'") &&
+    operationLeaseRetentionSource.includes('retentionDays: 7') &&
+    operationLeaseRetentionSource.includes('maximumSweepLimit: 1000') &&
+    prismaRepositorySource.includes("orderBy: [{ releasedAt: 'asc' }, { key: 'asc' }]") &&
+    prismaRepositorySource.includes("orderBy: [{ expiresAt: 'asc' }, { key: 'asc' }]") &&
+    prismaRepositorySource.includes('operationLease.deleteMany') &&
+    workerJobsSource.includes("id: 'operation-lease-retention-sweep'") &&
+    workerJobsSource.includes('operationLeaseRetentionSweepLimit') &&
+    operationLeaseRetentionMigration.includes('operation_leases_released_retention_idx'),
+  'seven-day cutoff, released/expired ordering, bounded rechecked deletion, index, and leased worker',
+)
+addCheck(
+  'runtime private Library retention provides owner recovery then bounded hard deletion after 30 days',
+  privateLibraryRetentionSource.includes("policyId: 'private_library_delete_plus_30d'") &&
+    privateLibraryRetentionSource.includes('retentionDays: 30') &&
+    privateLibraryRetentionSource.includes('maximumSweepLimit: 1000') &&
+    prismaRepositorySource.includes("action: 'library.deleted'") &&
+    prismaRepositorySource.includes("action: 'library.restored'") &&
+    prismaRepositorySource.includes("orderBy: [{ deletedAt: 'asc' }, { id: 'asc' }]") &&
+    prismaRepositorySource.includes('libraryItem.deleteMany') &&
+    workerJobsSource.includes("id: 'private-library-retention-sweep'") &&
+    workerJobsSource.includes('privateLibraryRetentionSweepLimit') &&
+    privateLibraryRetentionMigration.includes('library_items_deleted_at_id_idx'),
+  'owner-scoped soft delete, optimistic restore, 30-day cutoff, bounded rechecked deletion, index, and leased worker',
+)
+addCheck(
+  'runtime auth credential retention deletes bounded credential material while retaining session evidence',
+  authCredentialRetentionSource.includes("policyId: 'auth_expiry_plus_30d'") &&
+    authCredentialRetentionSource.includes('retentionDays: 30') &&
+    authCredentialRetentionSource.includes('maximumSweepLimit: 1000') &&
+    prismaRepositorySource.includes('oAuthAuthorizationRequest.deleteMany') &&
+    prismaRepositorySource.includes('refreshToken.deleteMany') &&
+    prismaRepositorySource.includes('apiKeyCredential.deleteMany') &&
+    workerJobsSource.includes("id: 'auth-credential-retention-sweep'") &&
+    workerJobsSource.includes('authCredentialRetentionSweepLimit') &&
+    authCredentialRetentionMigration.includes('refresh_tokens_retention_idx') &&
+    schemaSource.includes('model AuthEmailAction') &&
+    authCredentialRetentionSource.includes('consumedAt') &&
+    prismaRepositorySource.includes('authEmailAction.deleteMany'),
+  'OAuth requests, email actions, refresh tokens, and API key material use a 30-day bounded worker; AuthSession remains security evidence',
+)
+addCheck(
+  'runtime community retention irreversibly anonymizes expired content while preserving active review and legal holds',
+  retentionAutomationInventory.community_delete_plus_30d === 'implemented_pending_target_environment_acceptance' &&
+    communityRetentionSource.includes("policyId: 'community_delete_plus_30d'") &&
+    communityRetentionSource.includes('retentionDays: 30') &&
+    communityRetentionSource.includes('moderationAppealWindowDays: 30') &&
+    prismaCommunityRetentionSource.includes("scopeDomain: 'community'") &&
+    prismaCommunityRetentionSource.includes('moderationCaseBlocksCommunityRetention(row, now)') &&
+    prismaCommunityRetentionSource.includes('data-rights-subject:') &&
+    prismaCommunityRetentionSource.includes('moderation-target:') &&
+    prismaCommunityRetentionSource.includes("isolationLevel: 'ReadCommitted'") &&
+    prismaCommunityRetentionSource.includes('postLike.deleteMany') &&
+    prismaCommunityRetentionSource.includes('metadata: null') &&
+    prismaCommunityRetentionSource.includes("deletionReasonCode: 'retention_expired'") &&
+    workerJobsSource.includes("id: 'community-retention-sweep'") &&
+    workerJobsSource.includes("lease: lease('community-retention-sweep')") &&
+    communityRetentionMigration.includes('posts_deleted_at_id_idx') &&
+    communityRetentionMigration.includes('comments_deleted_at_id_idx'),
+  '30-day cutoff, tombstone identity, private content and likes removal, shared subject/target locks, review/appeal and legal-hold exclusions, indexes, and leased worker',
+)
+addCheck(
+  'runtime security event retention preserves open incidents and legal holds before bounded 365 or 730 day deletion',
+  retentionAutomationInventory.security_event_365d === 'implemented_pending_target_environment_acceptance' &&
+    securityRetentionSource.includes("policyId: 'security_event_365d'") &&
+    securityRetentionSource.includes('standardRetentionDays: 365') &&
+    securityRetentionSource.includes('confirmedCriticalRetentionDays: 730') &&
+    prismaSecurityRetentionSource.includes("status: 'resolved', criticalConfirmed: true") &&
+    prismaSecurityRetentionSource.includes("'security-retention-legal-holds'") &&
+    prismaSecurityRetentionSource.includes('data-rights-subject-ref:') &&
+    prismaSecurityRetentionSource.includes("isolationLevel: 'ReadCommitted'") &&
+    prismaSecurityRetentionSource.includes('securityEvent.deleteMany') &&
+    workerJobsSource.includes("id: 'security-event-retention-sweep'") &&
+    workerJobsSource.includes("lease: lease('security-event-retention-sweep')") &&
+    adminRoutesSource.includes("'/api/admin/security/incidents'") &&
+    adminRoutesSource.includes("'/api/admin/security/incidents/:id/resolve'") &&
+    securityRetentionMigration.includes('security_incidents_resolution_check') &&
+    securityRetentionMigration.includes('security_events_subject_ref_occurred_at_idx'),
+  'persistent incident state, explicit hashed subject reference, legal-hold fail-closed behavior, Admin CAS workflow, indexes, and leased worker',
+)
+addCheck(
+  'runtime risk retention redacts terminal subject links after 365 days while preserving decision evidence under legal hold',
+  retentionAutomationInventory.security_event_365d === 'implemented_pending_target_environment_acceptance' &&
+    riskRetentionSource.includes("policyId: 'security_event_365d'") &&
+    riskRetentionSource.includes('retentionDays: 365') &&
+    riskRetentionSource.includes("riskCase?.status === 'recovered'") &&
+    riskRetentionSource.includes("riskCase?.status === 'closed'") &&
+    prismaRiskRetentionSource.includes("'security-retention-legal-holds'") &&
+    prismaRiskRetentionSource.includes('data-rights-subject-ref:') &&
+    prismaRiskRetentionSource.includes("isolationLevel: 'ReadCommitted'") &&
+    prismaRiskRetentionSource.includes('retentionRedactedAt: now') &&
+    prismaRiskRetentionSource.includes('appellantId: null') &&
+    prismaRiskRetentionSource.includes('actorId: null') &&
+    prismaRiskRetentionSource.includes("dedupe_key = 'retained:'") &&
+    workerJobsSource.includes("id: 'risk-record-retention-sweep'") &&
+    workerJobsSource.includes("lease: lease('risk-record-retention-sweep')") &&
+    riskRetentionMigration.includes('risk_cases_subject_ref_retention_redacted_at_idx') &&
+    riskRetentionMigration.includes('risk_appeals_appellant_id_fkey'),
+  'terminal-only 365-day cutoff, explicit temporary subject reference, legal-hold lock and recheck, irreversible field redaction, CAS, indexes, and leased worker',
+)
+addCheck(
+  'runtime moderation case retention redacts closed case subjects after 730 days while preserving bounded decision evidence',
+  retentionAutomationInventory.moderation_close_plus_730d === 'implemented_pending_target_environment_acceptance' &&
+    moderationRetentionSource.includes("policyId: 'moderation_close_plus_730d'") &&
+    moderationRetentionSource.includes('retentionDays: 730') &&
+    moderationRetentionSource.includes('moderationAppealWindowMs') &&
+    prismaModerationRetentionSource.includes("INTERVAL '30 days'") &&
+    prismaModerationRetentionSource.includes("'security-retention-legal-holds'") &&
+    prismaModerationRetentionSource.includes('data-rights-subject-ref:') &&
+    prismaModerationRetentionSource.includes("isolationLevel: 'ReadCommitted'") &&
+    prismaModerationRetentionSource.includes("SET LOCAL app.moderation_retention_maintenance = 'on'") &&
+    prismaModerationRetentionSource.includes('affectedUserId: null') &&
+    prismaModerationRetentionSource.includes('reporterId: null') &&
+    prismaModerationRetentionSource.includes("statement: '[redacted after retention]'") &&
+    prismaModerationRetentionSource.includes('reviewerId: null') &&
+    prismaModerationRetentionSource.includes('appellantId: null') &&
+    prismaModerationRetentionSource.includes('assigneeId: null, actorId: null') &&
+    workerJobsSource.includes("id: 'moderation-case-retention-sweep'") &&
+    workerJobsSource.includes("lease: lease('moderation-case-retention-sweep')") &&
+    moderationRetentionMigration.includes('app.moderation_retention_maintenance') &&
+    moderationRetentionMigration.includes('moderation_cases_affected_subject_ref_retention_redacted_at_idx') &&
+    moderationRetentionMigration.includes('moderation_queue_events_shape_check'),
+  'case-family 730-day cutoff, 30-day appeal window, legal-hold locks and recheck, dedicated maintenance mode, irreversible subject/text redaction, indexes, and leased worker',
+)
+addCheck(
+  'runtime moderation operational retention permanently retires expired rules and minimizes completed bulk evidence',
+  retentionAutomationInventory.moderation_close_plus_730d === 'implemented_pending_target_environment_acceptance' &&
+    moderationOperationalRetentionSource.includes("latest?.toState === 'retired'") &&
+    moderationOperationalRetentionSource.includes('!record.retentionRedactedAt') &&
+    prismaModerationOperationalRetentionSource.includes("latest.to_state = 'retired'") &&
+    prismaModerationOperationalRetentionSource.includes("scope_domain IN ('audit', 'safety')") &&
+    prismaModerationOperationalRetentionSource.includes("'security-retention-legal-holds'") &&
+    prismaModerationOperationalRetentionSource.includes('data-rights-subject-ref:') &&
+    prismaModerationOperationalRetentionSource.includes('safety-rule-key:') &&
+    prismaModerationOperationalRetentionSource.includes('moderation-bulk-idempotency:') &&
+    prismaModerationOperationalRetentionSource.includes("SET LOCAL app.moderation_retention_maintenance = 'on'") &&
+    prismaModerationOperationalRetentionSource.includes('createdById: null') &&
+    prismaModerationOperationalRetentionSource.includes('actorSubjectRef: null') &&
+    prismaModerationOperationalRetentionSource.includes('idempotencyKey: `retained:') &&
+    prismaSafetyOperationsSource.includes('moderationBulkIdempotencyHash') &&
+    prismaSafetyOperationsSource.includes("SAFETY_RULE_RETENTION_REDACTED") &&
+    prismaSafetyOperationsSource.includes('moderation-case:') &&
+    workerJobsSource.includes("id: 'moderation-operational-retention-sweep'") &&
+    workerJobsSource.includes("lease: lease('moderation-operational-retention-sweep')") &&
+    moderationOperationalRetentionMigration.includes('moderation_bulk_operations_idempotency_hash_key') &&
+    moderationOperationalRetentionMigration.includes('safety_rule_versions_created_by_subject_ref_retention_redacted_at_idx'),
+  'retired-rule and completed-bulk 730-day cutoff, legal-hold fail-closed behavior, shared write locks, permanent retirement, hash-only replay protection, aggregate result retention, migration indexes, and leased worker',
+)
+addCheck(
+  'runtime marketplace retention deletes abandoned drafts and minimizes closed transaction evidence',
+  retentionAutomationInventory.marketplace_close_plus_730d === 'partial_mutable_task_redaction_implemented_immutable_lifecycle_event_ledger_and_asset_evidence_contract_required' &&
+    marketplaceRetentionSource.includes("policyId: 'marketplace_close_plus_730d'") &&
+    marketplaceRetentionSource.includes('abandonedDraftDays: 30') &&
+    marketplaceRetentionSource.includes('terminalRetentionDays: 730') &&
+    prismaMarketplaceRetentionSource.includes("scopeDomain: marketplaceRetentionContract.legalHoldScopeDomain") &&
+    prismaMarketplaceRetentionSource.includes("'security-retention-legal-holds'") &&
+    prismaMarketplaceRetentionSource.includes('activeSubmissionStatuses') &&
+    prismaMarketplaceRetentionSource.includes("status IN ('pending', 'failed')") &&
+    prismaMarketplaceRetentionSource.includes("SET LOCAL app.marketplace_retention_maintenance = 'on'") &&
+    prismaMarketplaceRetentionSource.includes('searchDocument.deleteMany') &&
+    prismaMarketplaceRetentionSource.includes('notification.deleteMany') &&
+    prismaMarketplaceRetentionSource.includes('publisherId: null, assigneeId: null') &&
+    workerJobsSource.includes("id: 'marketplace-retention-sweep'") &&
+    workerJobsSource.includes("lease: lease('marketplace-retention-sweep')") &&
+    marketplaceRetentionMigration.includes("'task:' || task_id_value") &&
+    marketplaceRetentionMigration.includes('MARKETPLACE_RETENTION_REDACTED') &&
+    marketplaceRetentionMigration.includes('tasks_publisher_subject_ref_retention_redacted_at_idx'),
+  'partial 30-day abandoned-draft deletion and 730-day mutable task-family minimization with immutable lifecycle, event, ledger, and asset evidence explicitly left pending contract approval',
+)
+addCheck(
+  'runtime support retention performs two-stage minimization while preserving bounded case evidence',
+  retentionAutomationInventory.support_close_plus_730d === 'implemented_pending_target_environment_acceptance' &&
+    supportRetentionSource.includes("policyId: 'support_close_plus_730d'") &&
+    supportRetentionSource.includes('messageBodyDays: 365') &&
+    supportRetentionSource.includes('minimalEvidenceDays: 730') &&
+    supportRetentionSource.includes("legalHoldScopeDomains: Object.freeze(['support', 'audit'])") &&
+    prismaSupportRetentionSource.includes("'security-retention-legal-holds'") &&
+    prismaSupportRetentionSource.includes('data-rights-subject-ref:') &&
+    prismaSupportRetentionSource.includes("status: { in: supportRetentionContract.openDataRightsStatuses }") &&
+    prismaSupportRetentionSource.includes('supportTicketMessage.updateMany') &&
+    prismaSupportRetentionSource.includes('supportTicketCaseLink.updateMany') &&
+    prismaSupportRetentionSource.includes('requesterId: null') &&
+    prismaSupportRetentionSource.includes('createdBySubjectRef: null') &&
+    prismaSupportSource.includes('support-ticket:') &&
+    prismaSupportSource.includes("'SUPPORT_TICKET_RETAINED'") &&
+    workerJobsSource.includes("id: 'support-retention-sweep'") &&
+    workerJobsSource.includes("lease: lease('support-retention-sweep')") &&
+    supportRetentionMigration.includes('requester_subject_ref') &&
+    supportRetentionMigration.includes('retention_message_redacted_at') &&
+    supportRetentionMigration.includes('retention_redacted_at') &&
+    supportRetentionMigration.includes('ON DELETE SET NULL'),
+  '365-day message-body redaction, 730-day identity/text/resource minimization, immutable case evidence, legal/data-rights blockers, stable subject refs, shared write locks, migration indexes, and leased worker',
+)
+addCheck(
+  'runtime generation retention minimizes terminal generation metadata after review, lifecycle, accounting, and legal-hold closeout',
+  retentionAutomationInventory.generation_terminal_365d === 'implemented_pending_target_environment_acceptance' &&
+    generationRetentionSource.includes("policyId: 'generation_terminal_365d'") &&
+    generationRetentionSource.includes('previewDays: 30') &&
+    generationRetentionSource.includes('retentionDays: 365') &&
+    prismaGenerationRetentionSource.includes("scope_domain IN ('audit', 'safety')") &&
+    prismaGenerationRetentionSource.includes("row.status IN ('reserved', 'reconciliation_required')") &&
+    prismaGenerationRetentionSource.includes("row.status = 'scheduled'") &&
+    prismaGenerationRetentionSource.includes("SET LOCAL app.generation_retention_maintenance = 'on'") &&
+    prismaGenerationRetentionSource.includes('actorId: null, actorHandle: null, subjectRef: null') &&
+    prismaGenerationRetentionSource.includes('providerRequestId: null, providerJobId: null') &&
+    workerJobsSource.includes("id: 'generation-retention-sweep'") &&
+    workerJobsSource.includes("lease: lease('generation-retention-sweep')") &&
+    generationRetentionMigration.includes("'creative-generation:' || NEW.id") &&
+    generationRetentionMigration.includes('creative_generations_subject_ref_retention_redacted_at_idx'),
+  '30/365-day two-stage minimization, review/appeal, legal-hold and unsettled lifecycle exclusions, shared database write lock, irreversible redaction, indexes, and leased worker',
+)
+addCheck(
+  'new internal accounting facts pseudonymize subjects without claiming historical retention completion',
+  retentionAutomationInventory.internal_ledger_plus_730d === 'partial_new_writes_pseudonymized_historical_immutable_fact_anonymization_contract_pending' &&
+    internalAccountingSource.includes('export const accountingSubjectRef') &&
+    internalAccountingSource.includes('export const accountingAvailableAccountRef') &&
+    internalAccountingSource.includes('export const accountingActorRef') &&
+    prismaRepositorySource.includes('const actorRef = accountingActorRef(actor)') &&
+    prismaRepositorySource.includes('evidence: { subjectRef, accountVersion: account?.version ?? null }') &&
+    seedRepositorySource.includes('actorRef: accountingActorRef(actor)') &&
+    seedRepositorySource.includes('evidence: { subjectRef, accountVersion: account.version }') &&
+    !prismaRepositorySource.includes('accountRef: `user:') &&
+    !seedRepositorySource.includes('accountRef: `user:') &&
+    governance.runtimeStatus.retentionAutomationComplete === false,
+  'stable subject refs for new movement, operation, and reconciliation facts; historical immutable rows remain pending contract approval',
+)
+addCheck(
+  'runtime Provider secret retention disables rotated inference credentials before 30-day managed-version deletion',
+  retentionAutomationInventory.retired_secret_30d === 'implemented_pending_target_environment_acceptance' &&
+    providerSecretRetentionSource.includes("policyId: 'retired_secret_30d'") &&
+    providerSecretRetentionSource.includes('retentionDays: 30') &&
+    providerSecretRetentionSource.includes("actions: Object.freeze(['disable', 'delete'])") &&
+    providerSecretRetentionSource.includes('managed-secret-lifecycle-enabled') &&
+    providerSecretRetentionSource.includes("'idempotency-key': `secret-lifecycle:${action}:${targetHash}`") &&
+    prismaModelGovernanceSource.includes("receipt.action === 'disable'") &&
+    prismaModelGovernanceSource.includes("action === 'delete'") &&
+    prismaModelGovernanceSource.includes("findFirst({ where: { rotatedFromId: fresh.id } })") &&
+    prismaModelGovernanceSource.includes("findMany({ where: { secretRefId: fresh.id } })") &&
+    prismaModelGovernanceSource.includes('rotatedTo.createdAt > cutoff') &&
+    workerJobsSource.includes("id: 'provider-secret-retention-sweep'") &&
+    workerJobsSource.includes("lease: lease('provider-secret-retention-sweep')") &&
+    providerEnvSource.includes('PROVIDER_SECRET_RETENTION_WORKER_ENABLED requires the managed secret lifecycle gateway') &&
+    providerSecretRetentionMigration.includes('provider_secret_lifecycle_receipts_immutable_guard') &&
+    providerSecretRetentionMigration.includes('provider_secret_lifecycle_receipts_secret_ref_id_action_key'),
+  'closed inference-purpose allowlist, immediate disable, 30-day delete, fixed HTTPS gateway, hash-only immutable receipts, idempotent retry, and leased worker',
+)
+addCheck(
+  'runtime audit retention archives a bounded expired prefix before leased automatic prune',
+  retentionAutomationInventory.audit_event_plus_730d === 'implemented_pending_target_environment_acceptance' &&
+    auditRetentionSource.includes('Math.min(policy.batchSize, maximumCandidates)') &&
+    auditRetentionSource.includes('policy.minimumRetainedEvents') &&
+    auditRetentionWorkerSource.indexOf('archiveWriter(prepared.artifact') < auditRetentionWorkerSource.indexOf('repository.pruneRetention') &&
+    auditRetentionWorkerSource.includes("archive.provider === 'mock'") &&
+    auditRetentionWorkerSource.includes("action: 'system.audit.retention_executed'") &&
+    archiveWriterSource.includes('persisted: false') &&
+    prismaRepositorySource.includes("SELECT pg_advisory_xact_lock(hashtext('audit_event_chain_v1'))") &&
+    prismaRepositorySource.indexOf('auditRetentionDisposition.create') < prismaRepositorySource.indexOf('auditEvent.deleteMany') &&
+    workerJobsSource.includes("id: 'audit-retention-sweep'") &&
+    workerJobsSource.includes("lease: lease('audit-retention-sweep')"),
+  '730-day bounded prefix, durable non-mock archive, transactional snapshot recheck, immutable disposition, and leased worker',
 )
 
 const humanDocument = read(governance.guardrails.policyDocument)

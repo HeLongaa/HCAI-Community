@@ -11,7 +11,10 @@ AUTH-01 permits real Google and GitHub OAuth for personal accounts. Google, GitH
 - `OAUTH_GOOGLE_CLIENT_SECRET` and `OAUTH_GITHUB_CLIENT_SECRET` are resolved only from the deployment environment. Admin stores an allowlisted `secret://env/...` reference; runtime resolves that reference without copying secret material into PostgreSQL or an API response.
 - Missing configuration, missing mounted secrets, unsafe redirects, network errors, timeouts, non-2xx responses, malformed JSON, and unverified email evidence fail closed.
 - Local and test environments may use signed dev callbacks unless `OAUTH_DEV_MODE=disabled`. Production never falls back to dev mode.
-- Redirect URIs must use HTTPS in production, contain no query or fragment, and exactly target `/api/auth/oauth/{provider}/callback`.
+- `NODE_ENV=production` and `DEPLOYMENT_ENV=production` are both production signals. A deployment with `DEPLOYMENT_ENV=production` and a non-production `NODE_ENV` fails configuration validation instead of enabling Seed repositories, development OAuth, insecure cookies, or default local origins.
+- Redirect URIs must use HTTPS in production, contain no query or fragment, exactly target `/api/auth/oauth/{provider}/callback`, and use the canonical `OAUTH_CALLBACK_ORIGIN`.
+- `OAUTH_BROWSER_RETURN_ORIGIN` is the canonical frontend origin. It must be an exact HTTPS origin and must appear in `AUTH_TRUSTED_ORIGINS` or `CORS_ALLOWED_ORIGINS`.
+- When the API and frontend use different origins, the callback bridge redirects directly to the frontend hash route. It does not write access tokens or OAuth state to API-origin local storage.
 
 ## Google Registration
 
@@ -43,15 +46,22 @@ GitHub OAuth Apps support one callback URL. Use separate OAuth Apps and credenti
 Run the preflight in the API deployment environment after mounting credentials and saving the matching Admin configuration:
 
 ```bash
-npm run oauth:preflight -- --api-origin=https://api.example.com
+npm run oauth:preflight -- \
+  --api-origin=https://api.example.com \
+  --callback-origin=https://api.example.com \
+  --browser-origin=https://app.example.com
 ```
 
-The command never prints secret values. Without `--api-origin`, it checks environment-provided client ids, secrets, and redirect URIs. With `--api-origin`, client ids and redirect URIs may instead come from the Admin control plane; the command still requires each deployment secret, then verifies that public Provider status reports Google and GitHub as `external` and available and that each effective callback exactly equals the callback derived from the supplied API origin. This covers Admin enablement and prevents a valid-looking but wrong-host callback from passing deployment preflight.
+The command never prints secret values. Without `--api-origin`, it checks environment-provided client ids, secrets, and redirect URIs. With `--api-origin`, client ids and redirect URIs may instead come from the Admin control plane; the command still requires each deployment secret, then verifies that public Provider status reports Google and GitHub as `external` and available. Each effective callback must equal the canonical callback origin and each browser return origin must equal the trusted frontend origin. This covers Admin enablement and prevents a valid-looking but wrong-host callback or an API-host browser return from passing deployment preflight.
 
 For local registration, use dedicated development clients and run:
 
 ```bash
-npm run oauth:preflight -- --allow-local --api-origin=http://127.0.0.1:8787
+npm run oauth:preflight -- \
+  --allow-local \
+  --api-origin=http://127.0.0.1:8787 \
+  --callback-origin=http://127.0.0.1:8787 \
+  --browser-origin=http://127.0.0.1:5174
 ```
 
 Register these exact local callbacks:
@@ -71,6 +81,37 @@ Passing preflight does not prove that the third-party console contains the callb
 
 ## Staging Acceptance
 
-Use dedicated Provider test accounts and record successful login, link, unlink, cancellation, invalid-state, changed-configuration, and disabled-Provider behavior. Evidence may include timestamps, status codes, stable error codes, and masked account identifiers, but never secrets, authorization codes, tokens, raw state, or Provider payloads. Rotate or revoke credentials after accidental disclosure and disable the Provider from Admin during containment.
+The automated engineering gate is:
+
+```bash
+npm run test:oauth-staging
+```
+
+For each Provider, an authorized operator must run preflight and the interactive rehearsal from the same clean release checkout:
+
+```bash
+OAUTH_STAGING_PROVIDER=google \
+OAUTH_STAGING_API_ORIGIN=https://api-staging.example.com \
+OAUTH_STAGING_BROWSER_ORIGIN=https://app-staging.example.com \
+OAUTH_STAGING_ENVIRONMENT=staging \
+OAUTH_STAGING_CONFIRMATION=real-staging-oauth-acceptance \
+RELEASE_ARTIFACT_SHA256=<64-hex-release-artifact-sha256> \
+npm run oauth-staging:preflight
+
+# Run only after preflight passes. Repeat with OAUTH_STAGING_PROVIDER=github.
+npm run oauth-staging:rehearse
+```
+
+The selected deployment must also expose its matching `OAUTH_GOOGLE_CLIENT_SECRET` or `OAUTH_GITHUB_CLIENT_SECRET`. The rehearsal opens a temporary Chromium profile and permits manual MFA with a dedicated Provider test account; it does not store Provider passwords, recovery codes, cookies, authorization codes, raw state, access tokens, refresh tokens, account identifiers, or Provider payloads. `OAUTH_STAGING_LOGIN_TIMEOUT_SECONDS` may be set from 30 to 900 seconds, `OAUTH_STAGING_HEADLESS` defaults to `false`, and evidence defaults to `.artifacts/oauth-staging` with mode `0600`.
+
+Successful evidence proves only one fresh external login for the selected Provider, credentialed CORS and return to the configured product origin, Secure/HttpOnly/SameSite=None refresh-cookie controls, a Secure browser-readable CSRF cookie, CSRF rotation during cookie refresh, authenticated `/api/me`, observation of the selected linked Provider, and logout with both authentication cookies cleared. The evidence contains only source/artifact hashes, API/browser/Provider-host hashes, timestamps, booleans, and a SHA-256 receipt. Validate it independently:
+
+```bash
+node scripts/verify-oauth-staging-evidence.mjs .artifacts/oauth-staging/<run-id>.json
+```
+
+This rehearsal does not prove account linking from an existing signed-in session, account conflict handling, unlink behavior, Provider cancellation, invalid-state rejection, changed-configuration rejection, disabled-Provider behavior, or production approval. Those scenarios require separate controlled acceptance. The evidence always records these limitations as false, and a staging result can never set `productionApproved=true`.
+
+Use dedicated Provider test accounts for every live scenario. Evidence may include timestamps, status codes, stable error codes, and hashes, but never secrets, authorization codes, tokens, raw state, URLs, identity fields, or Provider payloads. Rotate or revoke credentials after accidental disclosure and disable the Provider from Admin during containment.
 
 External console registration cannot be completed from source control alone. Before declaring production ready, an owner with access to Google Cloud Console and GitHub Developer settings must create the clients, register the exact callbacks, mount both secrets, and execute this staging acceptance sequence.

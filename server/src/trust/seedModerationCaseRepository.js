@@ -81,6 +81,20 @@ export const createSeedModerationCaseRepository = ({
       onReportCreated(record, reporter)
       return { duplicate: false, item: dto(record, { includeStatement: true }) }
     },
+    recordAutomatedDecision: (id, payload) => {
+      const record = read(id)
+      if (!record) return null
+      if (record.targetType !== 'creative_generation') throw new HttpError(409, 'AUTOMATED_DECISION_TARGET_INVALID', 'Automated decisions are limited to creative generations')
+      const existing = record.decisions.find((item) => item.stage === 'original')
+      if (existing) {
+        if (existing.reviewerId !== null || existing.outcome !== payload.outcome || existing.reasonCode !== payload.reasonCode) throw new HttpError(409, 'MODERATION_DECISION_EXISTS', 'Original decision already exists')
+        return dto(record, { includeStatement: true })
+      }
+      const decision = { id: `decision-${randomUUID()}`, caseId: record.id, appealId: null, reviewerId: null, reviewer: null, stage: 'original', outcome: payload.outcome, reasonCode: payload.reasonCode, note: payload.note, createdAt: new Date().toISOString() }
+      record.decisions.push(decision)
+      audit(null, 'trust.automated_decision.created', 'moderation_decision', decision.id, { caseId: record.id, outcome: decision.outcome, reasonCode: decision.reasonCode })
+      return dto(record, { includeStatement: true })
+    },
     findForUser: (id, actor) => {
       const record = read(id)
       if (!record || (record.report.reporterId !== actor.id && record.affectedUserId !== actor.id)) return null

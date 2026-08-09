@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 
+import { dataRightsSafeSubjectRef } from '../dataRights/dataRightsLifecycle.js'
 import {
   assertRiskTransition,
   decodeRiskCursor,
@@ -71,6 +72,7 @@ export const createPrismaRiskRepository = (client, { runSerializableTransaction,
       riskCase = await transaction.riskCase.create({
         data: {
           userId,
+          subjectRef: dataRightsSafeSubjectRef(userId),
           status: 'restricted',
           disposition,
           riskLevel: severity,
@@ -257,16 +259,14 @@ export const createPrismaRiskRepository = (client, { runSerializableTransaction,
     transition: (id, payload, actor) => runSerializableTransaction(async (transaction) => {
       const current = await transaction.riskCase.findUnique({ where: { id: String(id) }, include: caseInclude })
       if (!current) return null
+      if (current.retentionRedactedAt) return { retentionRedacted: true }
       if (current.version !== payload.expectedVersion) return { conflict: true }
       assertRiskTransition(current, payload)
       const now = new Date()
       const pendingAppeal = current.appeals.find((appeal) => appeal.status === 'pending')
       if (pendingAppeal && !payload.appealDecision) return { appealDecisionRequired: true }
-      if (pendingAppeal && payload.appealDecision) {
-        await transaction.riskAppeal.update({ where: { id: pendingAppeal.id }, data: { status: payload.appealDecision, decisionReasonCode: payload.reasonCode, decidedById: actor.id, decidedAt: now } })
-      }
-      const updated = await transaction.riskCase.update({
-        where: { id: current.id },
+      const changed = await transaction.riskCase.updateMany({
+        where: { id: current.id, version: current.version, retentionRedactedAt: null },
         data: {
           status: payload.toStatus,
           disposition: payload.disposition,
@@ -276,10 +276,16 @@ export const createPrismaRiskRepository = (client, { runSerializableTransaction,
           expiresAt: payload.toStatus === 'restricted' ? new Date(now.getTime() + (payload.restrictionSeconds ?? 3_600) * 1000) : null,
           recoveredAt: payload.toStatus === 'recovered' ? now : current.recoveredAt,
           closedAt: payload.toStatus === 'closed' ? now : current.closedAt,
-          events: { create: { fromStatus: current.status, toStatus: payload.toStatus, disposition: payload.disposition, reasonCode: payload.reasonCode, actorType: 'admin', actorId: actor.id, evidence: { appealDecision: payload.appealDecision } } },
         },
-        include: caseInclude,
       })
+      if (changed.count !== 1) return { conflict: true }
+      if (pendingAppeal && payload.appealDecision) {
+        await transaction.riskAppeal.update({ where: { id: pendingAppeal.id }, data: { status: payload.appealDecision, decisionReasonCode: payload.reasonCode, decidedById: actor.id, decidedAt: now } })
+      }
+      await transaction.riskDispositionEvent.create({
+        data: { caseId: current.id, fromStatus: current.status, toStatus: payload.toStatus, disposition: payload.disposition, reasonCode: payload.reasonCode, actorType: 'admin', actorId: actor.id, evidence: { appealDecision: payload.appealDecision } },
+      })
+      const updated = await transaction.riskCase.findUnique({ where: { id: current.id }, include: caseInclude })
       await recordAudit({ actor, action: 'admin.risk.case.transitioned', resourceType: 'risk_case', resourceId: current.id, metadata: { fromStatus: current.status, toStatus: payload.toStatus, disposition: payload.disposition, reasonCode: payload.reasonCode, previousVersion: current.version, version: updated.version, appealDecision: payload.appealDecision } }, transaction)
       return { case: serializeRiskCase(updated, { includeUser: true }) }
     }),

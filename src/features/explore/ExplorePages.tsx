@@ -1,15 +1,11 @@
-import { useState } from 'react'
-import { Check, Download, Heart, ListMusic, MoreHorizontal, Play } from 'lucide-react'
+import { Image, ListMusic, Play } from 'lucide-react'
 import type { Page, Track } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
-import { radioStations, tracks, visualWorks } from '../../data/mockData'
-import { mediaTypeLabel, textFor } from '../../domain/utils'
+import { textFor } from '../../domain/utils'
 
 export function ExplorePage({
   t,
-  playTrack,
   setPage,
-  requireAuth,
 }: {
   t: Record<string, string>
   playTrack: (track: Track) => void
@@ -18,182 +14,52 @@ export function ExplorePage({
 }) {
   return (
     <div className="stack">
-      <SectionHeader eyebrow={textFor(t, 'Live discovery', '实时发现')} title={t.radio} />
-      <RadioCarousel t={t} playTrack={playTrack} />
-      <div className="feature-strip compact">
-        {[t.unlimitedStreaming, t.freeDownloads, t.noCopyright, t.royaltyFree].map((item) => (
-          <span key={item}>
-            <Check size={16} />
-            {item}
-          </span>
-        ))}
+      <SectionHeader eyebrow={textFor(t, 'Discover', '发现')} title={textFor(t, 'Public creative catalog', '公开创作目录')} />
+      <div className="empty-state">
+        <Image size={28} />
+        <strong>{textFor(t, 'No public works yet', '暂无公开作品')}</strong>
+        <span>{textFor(t, 'Only governed, explicitly published works will appear here.', '这里只展示经过治理并明确公开发布的作品。')}</span>
+        <button className="primary-button" type="button" onClick={() => setPage('playground')}>
+          {textFor(t, 'Open AI Workspace', '进入 AI 工作台')}
+        </button>
       </div>
-      <ExplorePreview t={t} playTrack={playTrack} setPage={setPage} requireAuth={requireAuth} />
     </div>
   )
 }
 
 export function ExplorePreview({
   t,
-  playTrack,
   setPage,
-  requireAuth,
 }: {
   t: Record<string, string>
   playTrack: (track: Track) => void
   setPage: (page: Page) => void
   requireAuth?: () => void
 }) {
-  const [mediaFilter, setMediaFilter] = useState<'all' | 'Image' | 'Video'>('all')
-  const filteredVisualWorks =
-    mediaFilter === 'all' ? visualWorks : visualWorks.filter((work) => work.type === mediaFilter)
-
   return (
-    <div className="stack">
-      <section>
-        <SectionHeader title={t.trending} action={<button className="ghost-button" type="button" onClick={() => setPage('playlist')}>{t.playlists}</button>} />
-        <div className="track-grid">
-          {tracks.map((track) => (
-            <TrackCard key={track.id} t={t} track={track} playTrack={playTrack} setPage={setPage} requireAuth={requireAuth} />
-          ))}
-        </div>
-      </section>
-      <section>
-        <SectionHeader
-          title={textFor(t, 'Trending images & videos', '热门图片与视频')}
-          action={
-            <div className="media-filter-row" role="tablist" aria-label={textFor(t, 'Trending media filter', '热门媒体分类')}>
-              {[
-                ['all', textFor(t, 'All', '全部')],
-                ['Image', textFor(t, 'Images', '图片')],
-                ['Video', textFor(t, 'Videos', '视频')],
-              ].map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  className={mediaFilter === key ? 'chip active' : 'chip'}
-                  onClick={() => setMediaFilter(key as 'all' | 'Image' | 'Video')}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          }
-        />
-        <div className="visual-grid small">
-          {filteredVisualWorks.map((work) => (
-            <article className="visual-card" key={work.title}>
-              <img src={work.image} alt="" />
-              <div>
-                <strong>{work.title}</strong>
-                <span>
-                  {mediaTypeLabel(work.type, t)} · {work.creator} · {work.views} {textFor(t, 'views', '浏览')}
-                </span>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-    </div>
-  )
-}
-
-function RadioCarousel({ t, playTrack }: { t: Record<string, string>; playTrack: (track: Track) => void }) {
-  return (
-    <div className="radio-row">
-      {radioStations.map((station, index) => (
-        <article className="radio-card" key={station.title}>
-          <img src={station.image} alt="" />
-          <button type="button" disabled={!tracks[index % tracks.length]?.audioUrl} onClick={() => playTrack(tracks[index % tracks.length])} title={textFor(t, 'Public playback is not available', '公共播放暂未开放')}>
-            <Play size={17} fill="currentColor" />
-            {textFor(t, 'Live', '直播')}
-          </button>
-          <div>
-            <strong>{station.title}</strong>
-            <span>
-              {station.host} · {station.listeners} {textFor(t, 'listening', '人在听')}
-            </span>
-          </div>
-        </article>
-      ))}
-    </div>
-  )
-}
-
-function TrackCard({
-  t,
-  track,
-  playTrack,
-  setPage,
-  requireAuth,
-}: {
-  t: Record<string, string>
-  track: Track
-  playTrack: (track: Track) => void
-  setPage: (page: Page) => void
-  requireAuth?: () => void
-}) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  return (
-    <article className="track-card">
-      <button className="track-play" type="button" disabled={!track.audioUrl} onClick={() => playTrack(track)} title={textFor(t, 'Public playback is not available', '公共播放暂未开放')}>
-        <img src={track.cover} alt="" />
-        <span>
-          <Play size={18} fill="currentColor" />
-        </span>
-      </button>
-      <div className="track-meta">
-        <button type="button" disabled={!track.audioUrl} onClick={() => playTrack(track)}>
-          {track.title}
+    <section className="stack">
+      <SectionHeader title={textFor(t, 'Published media', '已发布媒体')} />
+      <div className="empty-state compact">
+        <ListMusic size={24} />
+        <strong>{textFor(t, 'The public media catalog is empty', '公开媒体目录为空')}</strong>
+        <button className="ghost-button" type="button" onClick={() => setPage('assets')}>
+          {textFor(t, 'Open your assets', '查看我的资产')}
         </button>
-        <span>
-          <button type="button" onClick={() => setPage('profile')}>
-            {track.artist}
-          </button>
-          · {track.plays} {textFor(t, 'plays', '播放')}
-        </span>
       </div>
-      <div className="more-wrap">
-        <button className="icon-button small" type="button" disabled={!track.audioUrl} onClick={() => setMenuOpen((open) => !open)} title={textFor(t, 'Track actions are not available', '歌曲操作暂未开放')}>
-          <MoreHorizontal size={17} />
-        </button>
-        {menuOpen && (
-          <div className="floating-menu">
-            <button type="button" disabled={!track.audioUrl} onClick={() => playTrack(track)}>
-              <Play size={15} />
-              {textFor(t, 'Play', '播放')}
-            </button>
-            <button type="button" onClick={requireAuth}>
-              <Heart size={15} />
-              {textFor(t, 'Like', '喜欢')}
-            </button>
-            <button type="button" onClick={requireAuth}>
-              <Download size={15} />
-              {textFor(t, 'Download', '下载')}
-            </button>
-            <button type="button" onClick={requireAuth}>
-              <ListMusic size={15} />
-              {textFor(t, 'Add to playlist', '加入播放列表')}
-            </button>
-          </div>
-        )}
-      </div>
-    </article>
+    </section>
   )
 }
 
-export function TrackRow({ t, track, playTrack }: { t: Record<string, string>; track: Track; playTrack: (track: Track) => void }) {
+export function TrackRow({ track, playTrack }: { track: Track; playTrack: (track: Track) => void }) {
   return (
     <div className="track-row">
-      <button type="button" disabled={!track.audioUrl} onClick={() => playTrack(track)} title={textFor(t, 'Public playback is not available', '公共播放暂未开放')}>
-        <img src={track.cover} alt="" />
+      <button type="button" disabled={!track.audioUrl} onClick={() => playTrack(track)}>
+        {track.cover && <img src={track.cover} alt="" />}
         <Play size={14} fill="currentColor" />
       </button>
       <div>
         <strong>{track.title}</strong>
-        <span>
-          {track.artist} · {track.plays} {textFor(t, 'plays', '播放')}
-        </span>
+        <span>{track.artist}</span>
       </div>
       <span>{track.duration}</span>
     </div>

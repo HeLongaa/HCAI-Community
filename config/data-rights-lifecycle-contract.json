@@ -3,8 +3,8 @@
   "taskId": "LEGAL-02",
   "scope": "personal_accounts_only",
   "dependencies": ["USER-02", "MEDIA-03", "AUDIT-01"],
-  "permissions": ["admin:data-rights:read", "admin:data-rights:manage"],
-  "models": ["DataRightsRequest", "DataRightsEvent", "DataRightsExportArtifact", "DataRightsDeletionReceipt", "DataRightsBackupExpiryReceipt"],
+  "permissions": ["admin:data-rights:read", "admin:data-rights:manage", "admin:data-rights:legal-hold"],
+  "models": ["DataRightsRequest", "DataRightsEvent", "DataRightsExportArtifact", "DataRightsDeletionReceipt", "DataRightsBackupExpiryReceipt", "DataRightsLegalHold", "DataRightsLegalHoldEvent"],
   "routes": [
     "POST /api/users/me/data-rights/requests",
     "GET /api/users/me/data-rights/requests",
@@ -15,7 +15,10 @@
     "GET /api/admin/data-rights/metrics",
     "GET /api/admin/data-rights/requests/:id",
     "POST /api/admin/data-rights/requests/:id/process",
-    "POST /api/admin/data-rights/requests/:id/backup-receipts"
+    "POST /api/admin/data-rights/requests/:id/backup-receipts",
+    "GET /api/admin/data-rights/legal-holds",
+    "POST /api/admin/data-rights/legal-holds",
+    "POST /api/admin/data-rights/legal-holds/:id/release"
   ],
   "requestTypes": ["data_export", "account_deletion"],
   "statuses": ["identity_verified", "processing", "primary_completed", "completed", "cancelled", "blocked"],
@@ -35,6 +38,8 @@
     "graceDays": 30,
     "backupExpiryDaysAfterPrimary": 35,
     "completionRequiresBackupReceipt": true,
+    "processingRecoverySeconds": 300,
+    "receiptDispositions": ["erased", "anonymized", "retained_minimal", "externally_erased"],
     "requiredBackupClasses": ["primary_database", "object_storage", "audit_archive"],
     "domains": [
       "identity",
@@ -62,6 +67,17 @@
     "backupReceiptsImmutable": true,
     "rawSubjectIdentifiersAllowed": false,
     "maintenanceBypassRequiresTransactionSetting": "app.data_rights_maintenance=on"
+  },
+  "legalHold": {
+    "authorityRoles": ["legal_hold_admin", "security_legal_incident_owner"],
+    "reviewIntervalDays": 90,
+    "maximumDurationDays": 365,
+    "indefiniteAllowed": false,
+    "scopeMode": "single_deletion_domain_per_hold",
+    "activeDisposition": "retain_scoped_domain_process_unrelated_domains_and_retry_after_release_or_expiry",
+    "creationCutoff": "account_deletion_processing_provider_dispatch_uncertain_or_scope_receipt",
+    "cutoffConflictCode": "DATA_RIGHTS_LEGAL_HOLD_CUTOFF_PASSED",
+    "eventsAppendOnly": true
   },
   "productionReadiness": {
     "engineeringLifecycleImplemented": true,

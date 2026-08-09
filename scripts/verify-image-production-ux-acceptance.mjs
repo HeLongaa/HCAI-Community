@@ -7,6 +7,10 @@ const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 
 const ui = fs.readFileSync(path.join(root, 'src/features/workspace/WorkspacePages.tsx'), 'utf8')
 const app = fs.readFileSync(path.join(root, 'src/App.tsx'), 'utf8')
 const e2e = fs.readFileSync(path.join(root, 'e2e/image-capability.spec.ts'), 'utf8')
+const provider = fs.readFileSync(path.join(root, 'server/src/creative/openaiImageProvider.js'), 'utf8')
+const resolver = fs.readFileSync(path.join(root, 'server/src/modelControl/modelRuntimeResolver.js'), 'utf8')
+const history = fs.readFileSync(path.join(root, 'server/src/creative/userGenerationHistory.js'), 'utf8')
+const admin = fs.readFileSync(path.join(root, 'src/features/admin/ModelControlPanel.tsx'), 'utf8')
 const checks = []
 const check = (name, pass, detail = '') => checks.push({ name, pass: Boolean(pass), detail })
 
@@ -17,6 +21,10 @@ check('rollback disables OpenAI without Mock fallback', contract.provider.rollba
 check('prompt and output limits match the frozen capability', contract.limits.maximumPromptCharacters === 2000 && contract.limits.maximumOutputsPerRequest === 1)
 check('cost limits remain bounded', contract.limits.perJobUsdCap === 0.25 && contract.limits.dailyUsdCap === 8)
 check('quality set is closed', JSON.stringify(contract.quality.options) === JSON.stringify(['low', 'medium', 'high']) && contract.quality.default === 'medium')
+check('database pricing and reconciliation are frozen', contract.pricing.source === 'model_control_pricing_version' && contract.pricing.outputUnits === 9 && contract.pricing.tokenUnits.length === 3 && contract.pricing.immutableSnapshotRequired && contract.pricing.missingTrustedPriceStatus === 'reconciliation_required')
+check('runtime consumes versioned image pricing', provider.includes('CREATIVE_OPENAI_IMAGE_PRICING_JSON') && provider.includes("pricingSource: outputPricing ? 'model_control_pricing_version'") && resolver.includes('findRuntimePricings'))
+check('admin can maintain every image price component', contract.pricing.tokenUnits.every((unit) => admin.includes(`'${unit}'`)) && admin.includes('image_output_${size}_${quality}'))
+check('user history exposes safe estimate, actual, and pending state', history.includes('estimateAmount') && history.includes('actualAmount') && history.includes("'reconciliation_required'"))
 check('reliability fails closed', Object.values(contract.reliability).every((value) => value === true || value === false) && contract.reliability.concurrentDuplicateDispatchAllowed === false)
 check('mobile acceptance uses 390x844', contract.mobile.viewport.width === 390 && contract.mobile.viewport.height === 844)
 check('all declared evidence exists', contract.evidence.every((file) => fs.existsSync(path.join(root, file))), contract.evidence.join(', '))
@@ -27,6 +35,7 @@ check('quality is sent by the application request', app.includes("['quality', qu
 check('E2E proves high quality request mapping', e2e.includes("selectOption('high')") && e2e.includes("quality: 'high'"))
 check('E2E proves page overflow boundary', e2e.includes('document.documentElement.scrollWidth'))
 check('E2E proves keyboard generation', e2e.includes("keyboard.press('Enter')"))
+check('E2E proves settled Provider cost presentation', e2e.includes('Provider cost USD 0.041000'))
 check('focused gate is registered', packageJson.scripts['test:image-production-ux-acceptance'] === 'node scripts/verify-image-production-ux-acceptance.mjs && node --test server/src/creative/imageProductionAcceptance.test.js server/src/creative/generationExecutionRuntime.test.js server/src/creative/providerErrorPolicy.test.js && playwright test e2e/image-capability.spec.ts')
 check('quick precheck includes server acceptance', packageJson.scripts['precheck:quick']?.includes('npm run test:image-production-ux-acceptance:server'))
 

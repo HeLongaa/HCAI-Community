@@ -51,7 +51,10 @@
     "seed": "server/src/repositories/seedRepository.js",
     "prisma": "server/src/repositories/prismaRepository.js",
     "integration": "server/src/repositories/prismaAiStats.integration.test.js",
-    "ui": "src/features/admin/AdminPage.tsx",
+    "ui": [
+      "src/features/admin/AdminPage.tsx",
+      "src/features/admin/AdminGenerationMetricsPanel.tsx"
+    ],
     "documentation": "docs/AI_GENERATION_BUSINESS_METRICS.md"
   }
 }

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import sharp from 'sharp'
 
 import {
   assertOpenAIImageBudgetAllowsDispatch,
@@ -10,6 +11,7 @@ import {
   createOpenAIImageHttpClient,
   compileOpenAIImageEditPrompt,
   projectOpenAIImageGenerationResponse,
+  openAIImagePricingUnitForRequest,
   readOpenAIImageInputFiles,
   readOpenAIImageOutputBytes,
 } from './openaiImageProvider.js'
@@ -49,6 +51,18 @@ test('OpenAI Image request uses the fixed model path and minimum allowlist paylo
   })
   assert.equal(mapped.serializedBody.includes('stylePreset'), false)
   assert.equal(mapped.serializedBody.includes('seed'), false)
+})
+
+test('MiniMax Image 01 Live requests base64 output without changing the public PNG contract', () => {
+  const mapped = buildOpenAIImageGenerationRequest(request, { modelId: 'image-01-live' })
+  assert.deepEqual(mapped.body, {
+    model: 'image-01-live',
+    prompt: 'Compose as a clear poster with deliberate visual hierarchy.\n\nA clean launch poster',
+    size: '1536x1024',
+    quality: 'medium',
+    n: 1,
+    response_format: 'b64_json',
+  })
 })
 
 test('OpenAI Image request rejects provider-unsupported parameters and sizes', () => {
@@ -111,10 +125,15 @@ test('OpenAI Image response strictly validates one canonical PNG and safe usage'
     input_tokens_details: { image_tokens: 0, text_tokens: 20 },
     output_tokens_details: { image_tokens: 100, text_tokens: 0 },
   })
+  const compatible = await projectOpenAIImageGenerationResponse({
+    data: [{ b64_json: pngBase64, url: 'https://private.example/output.png?signature=discarded' }],
+  })
+  assert.equal(compatible.output.contentType, 'image/png')
+  assert.equal(Object.hasOwn(compatible.output, 'url'), false)
+  assert.equal(JSON.stringify(compatible).includes('private.example'), false)
   await assert.rejects(
-    projectOpenAIImageGenerationResponse({ data: [{ b64_json: pngBase64, url: 'https://private.example/output.png' }] }),
-    (error) => error.code === 'CREATIVE_PROVIDER_HTTP_RESPONSE_INVALID' &&
-      JSON.stringify(error).includes('private.example') === false,
+    projectOpenAIImageGenerationResponse({ data: [{ b64_json: pngBase64, url: 'http://private.example/output.png' }] }),
+    (error) => error.details.reasonCode === 'output_url_invalid' && JSON.stringify(error).includes('private.example') === false,
   )
   await assert.rejects(
     projectOpenAIImageGenerationResponse({ data: [{ b64_json: Buffer.from('not an image').toString('base64') }] }),
@@ -139,6 +158,27 @@ test('OpenAI Image response accepts safe OpenAI-compatible router metadata witho
 
   assert.equal(result.output.contentType, 'image/png')
   assert.equal(JSON.stringify(result).includes('Provider-rewritten private prompt'), false)
+})
+
+test('OpenAI Image response normalizes MiniMax JPEG base64 to the public PNG output contract', async () => {
+  const jpeg = await sharp({
+    create: { width: 2, height: 2, channels: 3, background: { r: 42, g: 91, b: 180 } },
+  }).jpeg().toBuffer()
+  const result = await projectOpenAIImageGenerationResponse({
+    created: 1_725_000_001,
+    metadata: { failed_count: '0', success_count: '1' },
+    data: [{ b64_json: jpeg.toString('base64'), url: '', revised_prompt: '' }],
+  })
+  assert.equal(result.output.contentType, 'image/png')
+  assert.equal((await sharp(result.output.body).metadata()).format, 'png')
+  assert.equal(JSON.stringify(result).includes('failed_count'), false)
+  await assert.rejects(
+    projectOpenAIImageGenerationResponse({
+      metadata: { failed_count: 1, success_count: 0 },
+      data: [{ b64_json: jpeg.toString('base64'), url: '' }],
+    }),
+    (error) => error.details.reasonCode === 'metadata_result_count_invalid',
+  )
 })
 
 test('OpenAI Image HTTP client is disabled unless all staging network gates are explicit', () => {
@@ -174,7 +214,7 @@ test('OpenAI Image HTTP client uses deployment secret internally with injected f
           output_tokens: 100,
           total_tokens: 120,
         },
-      }), { status: 200 })
+      }), { status: 200, headers: { 'x-request-id': 'openai-request-fixture-1' } })
     },
   })
   const result = await client.generateImage(request)
@@ -182,6 +222,7 @@ test('OpenAI Image HTTP client uses deployment secret internally with injected f
   assert.equal(calls[0].url, 'https://api.openai.com/v1/images/generations')
   assert.equal(calls[0].options.headers.authorization, 'Bearer openai-fixture-token')
   assert.equal(result.output.contentType, 'image/png')
+  assert.equal(result.providerRequestId, 'openai-request-fixture-1')
   assert.equal(JSON.stringify(client).includes('openai-fixture-token'), false)
   assert.equal(JSON.stringify(result).includes('openai-fixture-token'), false)
 })
@@ -201,13 +242,44 @@ test('OpenAI Image HTTP client supports an HTTPS OpenAI-compatible router and co
     },
     fetchImpl: async (url, options) => {
       calls.push({ url, options })
-      return new Response(JSON.stringify({ data: [{ b64_json: pngBase64 }] }), { status: 200 })
+      return new Response(JSON.stringify({ data: [{ b64_json: pngBase64 }] }), {
+        status: 200,
+        headers: { 'x-oneapi-request-id': '202608090001-router-request-fixture' },
+      })
     },
   })
 
-  await client.generateImage(request)
+  const result = await client.generateImage(request)
   assert.equal(calls[0].url, 'https://router.hctopup.com/v1/images/generations')
   assert.equal(JSON.parse(calls[0].options.body).model, 'gpt-image-2')
+  assert.equal(result.providerRequestId, '202608090001-router-request-fixture')
+})
+
+test('MiniMax Router image success fails closed without a safe gateway request id', async () => {
+  const routerSource = {
+    NODE_ENV: 'production',
+    CREATIVE_PROVIDER_RUNTIME_ENV: 'staging',
+    CREATIVE_OPENAI_IMAGE_HTTP_CLIENT_ENABLED: 'true',
+    CREATIVE_OPENAI_IMAGE_NETWORK_CALLS_ENABLED: 'true',
+    CREATIVE_OPENAI_IMAGE_CONFIRMATION: 'staging-only',
+    CREATIVE_OPENAI_IMAGE_API_TOKEN: 'router-fixture-token',
+    CREATIVE_OPENAI_IMAGE_BASE_URL: 'https://router.hctopup.com/v1',
+    CREATIVE_OPENAI_IMAGE_MODEL: 'image-01-live',
+    CREATIVE_OPENAI_IMAGE_COST_PROVIDER_ID: 'hcai-router-minimax-image-01-live',
+  }
+  const response = (headers = {}) => new Response(JSON.stringify({ data: [{ b64_json: pngBase64 }] }), { status: 200, headers })
+
+  await assert.rejects(
+    createOpenAIImageHttpClient({ source: routerSource, fetchImpl: async () => response() }).generateImage(request),
+    (error) => error.code === 'CREATIVE_PROVIDER_HTTP_RESPONSE_INVALID' && error.details.reasonCode === 'provider_request_id_missing',
+  )
+  await assert.rejects(
+    createOpenAIImageHttpClient({ source: routerSource, fetchImpl: async () => response({ 'x-oneapi-request-id': 'https://router.example/private?token=secret' }) }).generateImage(request),
+    (error) => error.code === 'CREATIVE_PROVIDER_HTTP_RESPONSE_INVALID' &&
+      error.details.reasonCode === 'provider_request_id_invalid' &&
+      JSON.stringify(error).includes('private') === false &&
+      JSON.stringify(error).includes('secret') === false,
+  )
 })
 
 test('OpenAI Image HTTP client rejects unsafe router configuration before dispatch', () => {
@@ -247,12 +319,13 @@ test('OpenAI Image HTTP errors expose only safe shared taxonomy evidence', async
     },
     fetchImpl: async () => new Response(JSON.stringify({
       error: 'token=openai-fixture-token https://private.example',
-    }), { status: 429, headers: { 'retry-after': '9999' } }),
+    }), { status: 429, headers: { 'retry-after': '9999', 'x-oneapi-request-id': 'router-rate-limit-1' } }),
   })
   await assert.rejects(
     client.generateImage(request),
     (error) => error.code === 'CREATIVE_PROVIDER_RATE_LIMITED' &&
       error.details.retryAfterSeconds === 900 &&
+      error.details.providerRequestId === 'router-rate-limit-1' &&
       JSON.stringify(error).includes('openai-fixture-token') === false &&
       JSON.stringify(error).includes('private.example') === false,
   )
@@ -306,6 +379,82 @@ test('OpenAI Image cost metadata enforces quality pricing and daily cap', () => 
   )
 })
 
+test('OpenAI Image cost uses versioned database output and token prices', () => {
+  const pricedSource = {
+    ...source,
+    CREATIVE_OPENAI_IMAGE_PRICING_REQUIRED: 'true',
+    CREATIVE_OPENAI_IMAGE_PRICING_JSON: JSON.stringify([
+      { id: 'price-output-medium-landscape', currency: 'USD', unit: 'image_output_1536x1024_medium', unitPriceMicros: 41000, effectiveFrom: '2026-07-22T00:00:00.000Z' },
+      { id: 'price-input-text', currency: 'USD', unit: 'input_text_tokens', unitPriceMicros: 5000000, effectiveFrom: '2026-07-22T00:00:00.000Z' },
+      { id: 'price-input-image', currency: 'USD', unit: 'input_image_tokens', unitPriceMicros: 8000000, effectiveFrom: '2026-07-22T00:00:00.000Z' },
+      { id: 'price-output-image', currency: 'USD', unit: 'output_image_tokens', unitPriceMicros: 30000000, effectiveFrom: '2026-07-22T00:00:00.000Z' },
+    ]),
+  }
+  assert.equal(openAIImagePricingUnitForRequest(request), 'image_output_1536x1024_medium')
+  const metadata = buildOpenAIImageProviderCostMetadata({
+    request,
+    result: {
+      output: { contentType: 'image/png' },
+      usage: { input_tokens: 20, input_tokens_details: { image_tokens: 0, text_tokens: 20 }, output_tokens: 100, total_tokens: 120 },
+    },
+    source: pricedSource,
+    now: new Date('2026-07-22T01:00:00.000Z'),
+  })
+  assert.equal(metadata.estimate.amount, 0.041)
+  assert.equal(metadata.estimate.billingUnit, 'image')
+  assert.equal(metadata.model.pricingSource, 'model_control_pricing_version')
+  assert.equal(metadata.model.pricingSourceRef, 'price-output-medium-landscape')
+  assert.equal(metadata.actual.amount, 0.0031)
+  assert.equal(metadata.risk.reconciliationRequired, false)
+
+  const missingComponents = buildOpenAIImageProviderCostMetadata({
+    request,
+    result: { output: { contentType: 'image/png' }, usage: { input_tokens: 20, input_tokens_details: { image_tokens: 0, text_tokens: 20 }, output_tokens: 100, total_tokens: 120 } },
+    source: { ...source, CREATIVE_OPENAI_IMAGE_PRICING_REQUIRED: 'true', CREATIVE_OPENAI_IMAGE_PRICING_JSON: JSON.stringify([JSON.parse(pricedSource.CREATIVE_OPENAI_IMAGE_PRICING_JSON)[0]]) },
+  })
+  assert.equal(missingComponents.actual.amount, null)
+  assert.deepEqual(missingComponents.risk.reasonCodes, ['provider_usage_or_component_pricing_incomplete'])
+})
+
+test('OpenAI Image-compatible cost metadata supports deployment provider identity and display name', () => {
+  const metadata = buildOpenAIImageProviderCostMetadata({
+    request,
+    source: {
+      ...source,
+      CREATIVE_OPENAI_IMAGE_MODEL: 'image-01-live',
+      CREATIVE_OPENAI_IMAGE_DISPLAY_NAME: 'HCAI Router MiniMax Image 01 Live',
+      CREATIVE_OPENAI_IMAGE_COST_PROVIDER_ID: 'hcai-router-minimax-image-01-live',
+    },
+  })
+  assert.equal(metadata.providerId, 'hcai-router-minimax-image-01-live')
+  assert.equal(metadata.model.displayName, 'HCAI Router MiniMax Image 01 Live')
+  assert.equal(metadata.budget.budgetScope, 'staging:hcai-router-minimax-image-01-live:image')
+})
+
+test('MiniMax Image 01 Live settles successful output from its approved fixed per-image price', () => {
+  const metadata = buildOpenAIImageProviderCostMetadata({
+    request,
+    result: { output: { contentType: 'image/png' }, usage: null },
+    source: {
+      ...source,
+      CREATIVE_OPENAI_IMAGE_MODEL: 'image-01-live',
+      CREATIVE_OPENAI_IMAGE_COST_PROVIDER_ID: 'hcai-router-minimax-image-01-live',
+      CREATIVE_OPENAI_IMAGE_PRICING_REQUIRED: 'true',
+      CREATIVE_OPENAI_IMAGE_PRICING_JSON: JSON.stringify([
+        { id: 'price-minimax-image-landscape-medium', currency: 'USD', unit: 'image_output_1536x1024_medium', unitPriceMicros: 3424, effectiveFrom: '2026-08-08T15:05:37.000Z' },
+      ]),
+    },
+    now: new Date('2026-08-08T16:00:00.000Z'),
+  })
+
+  assert.equal(metadata.estimate.amount, 0.003424)
+  assert.equal(metadata.actual.amount, 0.003424)
+  assert.equal(metadata.actual.source, 'approved_fixed_output_price')
+  assert.equal(metadata.actual.confidence, 'calculated')
+  assert.equal(metadata.risk.reconciliationRequired, false)
+  assert.deepEqual(metadata.risk.reasonCodes, [])
+})
+
 test('OpenAI Image adapter returns contract-safe output with non-serializable in-memory bytes', async () => {
   const generation = await createOpenAIImageGeneration({
     request,
@@ -323,7 +472,7 @@ test('OpenAI Image adapter returns contract-safe output with non-serializable in
           output_tokens: 100,
           total_tokens: 120,
         },
-      }),
+      }, { providerRequestId: 'router-generation-request-1' }),
     },
   })
   assert.equal(generation.status, 'completed')
@@ -333,6 +482,8 @@ test('OpenAI Image adapter returns contract-safe output with non-serializable in
   assert.equal(JSON.stringify(generation).includes(pngBase64), false)
   assert.equal(JSON.stringify(generation).includes('openai-fixture-token'), false)
   assert.equal(generation.usage.providerCost.actual.amount, 0.0031)
+  assert.equal(generation.providerRequestId, 'router-generation-request-1')
+  assert.equal(generation.usage.providerCost.job.providerRequestId, 'router-generation-request-1')
 })
 
 test('OpenAI Image edit cost reconciles when Provider usage lacks input modality details', async () => {
@@ -363,12 +514,15 @@ test('OpenAI Image adapter maps client failures without leaking Provider content
         throw Object.assign(new Error('Bearer openai-private-token https://private.example'), {
           statusCode: 429,
           code: 'CREATIVE_PROVIDER_RATE_LIMITED',
+          details: { providerRequestId: 'router-failed-request-1' },
         })
       },
     },
   })
   assert.equal(generation.status, 'failed')
   assert.equal(generation.errorCode, 'PROVIDER_RATE_LIMITED')
+  assert.equal(generation.providerRequestId, 'router-failed-request-1')
+  assert.equal(generation.usage.providerCost.job.providerRequestId, 'router-failed-request-1')
   assert.equal(JSON.stringify(generation).includes('openai-private-token'), false)
   assert.equal(JSON.stringify(generation).includes('private.example'), false)
 })

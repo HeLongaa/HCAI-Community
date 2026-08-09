@@ -6,7 +6,7 @@
   "routeRoot": "server/src/modules",
   "openApiPath": "server/src/docs/openapi.js",
   "permissionMatrixPath": "docs/PERMISSION_MATRIX.md",
-  "ignoredRoutes": ["GET /health", "GET /metrics", "GET /api/openapi.json"],
+  "ignoredRoutes": ["GET /health", "GET /ready", "GET /metrics", "GET /api/openapi.json"],
   "routeGroups": [
     { "id": "auth", "module": "identity-access", "prefixes": ["/api/auth", "/api/me"], "nav": "account", "breadcrumb": "Account", "deepLink": "account" },
     { "id": "users", "module": "user-profile", "prefixes": ["/api/users", "/api/profiles"], "nav": "profiles", "breadcrumb": "Profiles", "deepLink": "profiles" },
@@ -24,6 +24,8 @@
     { "id": "developer", "module": "developer-platform", "prefixes": ["/api/developer", "/api/v1"], "nav": "api", "breadcrumb": "Developer access", "deepLink": "api" },
     { "id": "featureFlags", "module": "config-feature-flags", "prefixes": ["/api/feature-flags"], "nav": "runtime", "breadcrumb": "Feature flags", "deepLink": "feature-flags" },
     { "id": "search", "module": "search-discovery", "prefixes": ["/api/search"], "nav": "explore", "breadcrumb": "Search", "deepLink": "search" },
+    { "id": "inspiration", "module": "search-discovery", "prefixes": ["/api/inspiration"], "nav": "inspiration", "breadcrumb": "Inspiration", "deepLink": "inspiration" },
+    { "id": "observability", "module": "observability-incident", "prefixes": ["/api/observability"], "nav": "admin", "breadcrumb": "Observability", "deepLink": "observability" },
     { "id": "admin", "module": "admin-console", "prefixes": ["/api/admin"], "nav": "admin", "breadcrumb": "Admin", "deepLink": "admin", "requiresPermission": "admin:access" }
   ]
 }

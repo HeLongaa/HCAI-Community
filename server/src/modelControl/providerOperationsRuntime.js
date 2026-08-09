@@ -149,6 +149,24 @@ export const parseProviderHealthEvidenceCreate = (policy, raw, actor) => {
   return { id: `provider-health-${randomUUID()}`, ...payloadEvidence, evidenceHash: stableProviderCostHash(payloadEvidence), createdByRef: actorRef(actor) }
 }
 
+export const parseProviderOperationalExternalGatesProvision = (raw) => {
+  const payload = objectValue(raw)
+  exactFields(payload, ['capAmount', 'remainingAmount', 'sourceType', 'sourceRef', 'expiresAt', 'reasonCode'])
+  const sourceType = String(payload.sourceType ?? '')
+  if (!['fixture_config', 'manual_attestation', 'injected_reader'].includes(sourceType)) throw validationFailed('sourceType is invalid')
+  const now = new Date()
+  const expiresAt = payload.expiresAt ? iso(payload.expiresAt, 'expiresAt') : new Date(now.getTime() + 86_400_000).toISOString()
+  if (Date.parse(expiresAt) <= now.getTime()) throw validationFailed('expiresAt must be in the future')
+  return {
+    capAmount: text(payload.capAmount, 'capAmount', 40),
+    remainingAmount: payload.remainingAmount == null || payload.remainingAmount === '' ? null : text(payload.remainingAmount, 'remainingAmount', 40),
+    sourceType,
+    sourceRef: identifier(payload.sourceRef, 'sourceRef'),
+    expiresAt,
+    reasonCode: identifier(payload.reasonCode, 'reasonCode'),
+  }
+}
+
 export const evaluateProviderOperationalReadiness = ({ profile, secretRef, controls, capEvidence, circuit, health, rate, estimateMicros, now = new Date(), ignorePolicyStatus = false }) => {
   const gates = []
   gates.push({ id: 'policy', allowed: ignorePolicyStatus || profile?.status === 'active', reasonCode: profile ? `provider_policy_${profile.status}` : 'provider_policy_missing' })

@@ -24,6 +24,10 @@ import {
   taskAdminTransitionActions,
 } from '../tasks/taskAdminContract.js'
 import { taskRecoveryActions } from '../tasks/taskLifecycleRecoveryContract.js'
+import {
+  validateSecurityIncidentEventIds,
+  validateSecurityIncidentReasonCode,
+} from '../security/securityRetention.js'
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const handlePattern = /^[a-zA-Z0-9_-]{3,32}$/
@@ -186,6 +190,21 @@ export const parseRegisterRequest = (body) => {
   }
 }
 
+export const parseAuthEmailRequest = (body) => ({
+  email: requireEmail(body, 'email'),
+})
+
+export const parseAuthEmailTokenRequest = (body) => {
+  const token = requireText(body, 'token')
+  if (!/^[A-Za-z0-9_-]{32,256}$/.test(token)) throw validationFailed('token is invalid')
+  return { token }
+}
+
+export const parsePasswordResetConfirmRequest = (body) => ({
+  ...parseAuthEmailTokenRequest(body),
+  password: requirePassword(body, 'password'),
+})
+
 export const parseOAuthStartRequest = (body) => ({
   redirectTo: optionalText(body, 'redirectTo', '/'),
   linkAccount: body.linkAccount === true,
@@ -326,6 +345,17 @@ export const parseCreateLibraryItemRequest = (body) => ({
   sourceId: nullableText(body, 'sourceId'),
   metadata: body.metadata ?? null,
 })
+
+export const parseLibraryLifecycleRequest = (body) => {
+  const expectedVersion = requireNumber(body, 'expectedVersion')
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+    throw validationFailed('expectedVersion must be a positive integer')
+  }
+  return {
+    expectedVersion,
+    reasonCode: requireOneOf(body, 'reasonCode', ['owner_requested', 'owner_restore']),
+  }
+}
 
 export const parseCreateMediaUploadRequest = (body) => {
   const sizeBytes = requireNumber(body, 'sizeBytes')
@@ -851,6 +881,19 @@ export const parseReleaseChangeRequest = (body) => {
   if (secretRef && !/^secret:\/\/[a-zA-Z0-9][a-zA-Z0-9/_.:-]{2,180}$/.test(secretRef)) {
     throw validationFailed('secretRef must be a secret:// reference')
   }
+  const productionBindingFields = ['sourceCommit', 'releaseArtifactSha256', 'rollbackArtifactSha256', 'productionEvidenceReceiptSha256']
+  const productionBinding = Object.fromEntries(productionBindingFields.map((field) => [field, body?.[field] == null ? null : requireText(body, field)]))
+  if (targetEnvironment === 'production') {
+    if (!/^[a-f0-9]{40}$/.test(productionBinding.sourceCommit ?? '')) throw validationFailed('sourceCommit must be a lowercase Git commit SHA for production')
+    for (const field of productionBindingFields.slice(1)) {
+      if (!/^[a-f0-9]{64}$/.test(productionBinding[field] ?? '')) throw validationFailed(`${field} must be a lowercase SHA-256 for production`)
+    }
+    if (productionBinding.releaseArtifactSha256 === productionBinding.rollbackArtifactSha256) {
+      throw validationFailed('releaseArtifactSha256 and rollbackArtifactSha256 must differ')
+    }
+  } else if (Object.values(productionBinding).some((value) => value != null)) {
+    throw validationFailed('production evidence binding is only allowed for production changes')
+  }
   return {
     changeType,
     sourceEnvironment,
@@ -861,6 +904,7 @@ export const parseReleaseChangeRequest = (body) => {
     secretVersion,
     summary: requireText(body, 'summary'),
     reasonCode: requireText(body, 'reasonCode'),
+    ...productionBinding,
   }
 }
 
@@ -869,20 +913,44 @@ export const parseReleaseDecisionRequest = (body) => ({
   note: optionalText(body, 'note', ''),
 })
 
-export const parseReleaseApplyRequest = (body) => ({
-  outcome: requireOneOf(body, 'outcome', ['deployed', 'failed']),
-  deploymentId: requireText(body, 'deploymentId'),
-  evidenceUrl: requireText(body, 'evidenceUrl'),
-  reasonCode: requireText(body, 'reasonCode'),
-  note: optionalText(body, 'note', ''),
-})
+const parseReleaseEvidenceUrl = (body) => {
+  const value = requireText(body, 'evidenceUrl')
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'https:' || url.username || url.password || url.hash) throw new Error('unsafe')
+    return url.toString()
+  } catch {
+    throw validationFailed('evidenceUrl must be a fixed HTTPS URL without credentials or fragment')
+  }
+}
 
-export const parseReleaseRollbackRequest = (body) => ({
-  deploymentId: requireText(body, 'deploymentId'),
-  evidenceUrl: requireText(body, 'evidenceUrl'),
-  reasonCode: requireText(body, 'reasonCode'),
-  note: optionalText(body, 'note', ''),
-})
+export const parseReleaseApplyRequest = (body) => {
+  const deploymentId = requireText(body, 'deploymentId')
+  if (!safeResourceIdPattern.test(deploymentId)) throw validationFailed('deploymentId must be a safe bounded identifier')
+  const evidenceBundle = body?.evidenceBundle
+  if (evidenceBundle != null && (typeof evidenceBundle !== 'object' || Array.isArray(evidenceBundle))) {
+    throw validationFailed('evidenceBundle must be an object')
+  }
+  return {
+    outcome: requireOneOf(body, 'outcome', ['deployed', 'failed']),
+    deploymentId,
+    evidenceUrl: parseReleaseEvidenceUrl(body),
+    evidenceBundle: evidenceBundle ?? null,
+    reasonCode: requireText(body, 'reasonCode'),
+    note: optionalText(body, 'note', ''),
+  }
+}
+
+export const parseReleaseRollbackRequest = (body) => {
+  const deploymentId = requireText(body, 'deploymentId')
+  if (!safeResourceIdPattern.test(deploymentId)) throw validationFailed('deploymentId must be a safe bounded identifier')
+  return {
+    deploymentId,
+    evidenceUrl: parseReleaseEvidenceUrl(body),
+    reasonCode: requireText(body, 'reasonCode'),
+    note: optionalText(body, 'note', ''),
+  }
+}
 
 export const parseCreativeGenerationHistoryQuery = (query) => {
   const workspace = optionalText(query, 'workspace', 'image')
@@ -958,11 +1026,15 @@ export const parseCreativeAccountingPreviewQuery = (query) => {
   const workspace = optionalText(query, 'workspace', null)
   const mode = optionalText(query, 'mode', null)
   const providerId = optionalText(query, 'providerId', null)
+  const aspectRatio = optionalText(query, 'aspectRatio', '1:1')
+  const quality = optionalText(query, 'quality', 'medium')
   if (!workspace || !creativeWorkspaces.includes(workspace)) {
     throw validationFailed(`workspace must be one of: ${creativeWorkspaces.join(', ')}`)
   }
   if (!mode) throw validationFailed('mode is required')
-  return { workspace, mode, providerId }
+  if (!['1:1', '3:2', '2:3'].includes(aspectRatio)) throw validationFailed('aspectRatio must be one of: 1:1, 3:2, 2:3')
+  if (!['low', 'medium', 'high'].includes(quality)) throw validationFailed('quality must be one of: low, medium, high')
+  return { workspace, mode, providerId, aspectRatio, quality }
 }
 
 export const parseAdminReviewListQuery = (query) => ({
@@ -1055,6 +1127,31 @@ export const parseAdminSecurityEventListQuery = (query) => ({
   type: optionalText(query, 'type', null),
   source: optionalText(query, 'source', null),
   severity: optionalText(query, 'severity', null),
+})
+
+export const parseAdminSecurityIncidentListQuery = (query) => ({
+  status: query.status ? requireOneOf(query, 'status', ['open', 'resolved']) : null,
+  limit: parseLimit(query, 50, 100),
+})
+
+export const parseAdminSecurityIncidentCreateRequest = (body) => {
+  if (typeof body?.criticalConfirmed !== 'boolean') throw validationFailed('criticalConfirmed must be a boolean')
+  return {
+    eventIds: validateSecurityIncidentEventIds(requireStringArray(body, 'eventIds')),
+    criticalConfirmed: body.criticalConfirmed,
+    reasonCode: validateSecurityIncidentReasonCode(requireText(body, 'reasonCode')),
+  }
+}
+
+export const parseAdminSecurityIncidentAttachRequest = (body) => ({
+  eventIds: validateSecurityIncidentEventIds(requireStringArray(body, 'eventIds')),
+  expectedVersion: requireExpectedVersion(body),
+  reasonCode: validateSecurityIncidentReasonCode(requireText(body, 'reasonCode')),
+})
+
+export const parseAdminSecurityIncidentResolveRequest = (body) => ({
+  expectedVersion: requireExpectedVersion(body),
+  reasonCode: validateSecurityIncidentReasonCode(requireText(body, 'reasonCode')),
 })
 
 const optionalBooleanText = (query, field) => {

@@ -12,6 +12,7 @@ import { createPrismaJobRepository } from '../jobs/prismaJobRepository.js'
 import { createPrismaReleaseRepository } from '../releases/prismaReleaseRepository.js'
 import { createPrismaSystemSettingsRepository } from '../settings/prismaSystemSettingsRepository.js'
 import { createPrismaConfigResourcesRepository } from '../configResources/prismaConfigResourcesRepository.js'
+import { createPrismaConfigurationRetentionRepository } from '../config/prismaConfigurationRetentionRepository.js'
 import { createPrismaModelControlRepository } from '../modelControl/prismaModelControlRepository.js'
 import { createPrismaModelRoutingRepository } from '../modelControl/prismaModelRoutingRepository.js'
 import { createPrismaModelGovernanceRepository } from '../modelControl/prismaModelGovernanceRepository.js'
@@ -19,8 +20,19 @@ import { createPrismaProviderOperationsRepository } from '../modelControl/prisma
 import { createPrismaModelEvaluationRepository } from '../modelControl/prismaModelEvaluationRepository.js'
 import { createPrismaProviderLegalRepository } from '../modelControl/prismaProviderLegalRepository.js'
 import { createPrismaGenerationExecutionRepository } from '../creative/prismaGenerationExecutionRepository.js'
+import { createPrismaGenerationRetentionRepository } from '../creative/prismaGenerationRetentionRepository.js'
+import { createPrismaProviderLifecycleRetentionRepository } from '../creative/prismaProviderLifecycleRetentionRepository.js'
+import { createPrismaMediaAssetRetentionRepository } from '../media/prismaMediaAssetRetentionRepository.js'
+import { createPrismaMarketplaceRetentionRepository } from '../tasks/prismaMarketplaceRetentionRepository.js'
+import { createPrismaSupportRetentionRepository } from '../support/prismaSupportRetentionRepository.js'
+import { dataRightsSafeSubjectRef } from '../dataRights/dataRightsLifecycle.js'
 import { hashPassword, verifyPassword } from '../auth/passwords.js'
 import { createAccessToken, createOpaqueToken, futureDate, hashToken, refreshTokenTtlMs, verifyAccessToken } from '../auth/sessionTokens.js'
+import {
+  buildAuthEmailActionConfig,
+  createAuthEmailActionCodec,
+  hashAuthEmailActionToken,
+} from '../auth/emailActions.js'
 import {
   getAdminReviewDto,
   buildUserSummary,
@@ -76,6 +88,7 @@ import { dispatchMediaScanAlert } from '../media/alertDispatcher.js'
 import { writeStorageObject } from '../storage/objectWriter.js'
 import { writeJsonArchive } from '../storage/archiveWriter.js'
 import { createPrismaChatRepository } from '../chat/prismaChatRepository.js'
+import { createPrismaInspirationRepository } from '../inspiration/prismaInspirationRepository.js'
 import { safeProviderJobIdEvidence, safeProviderOperationMetadata } from '../creative/generationRecords.js'
 import { assetEligibleForWorkspace, assetMediaType, buildSafeAssetLibraryItem } from '../media/assetLibrary.js'
 import { createPrismaMediaBusinessMetricsRepository } from '../media/prismaMediaBusinessMetricsRepository.js'
@@ -91,11 +104,16 @@ import {
 import { applyPublishedTaskRule } from '../tasks/taskRuleRuntime.js'
 import { createPrismaTaskLifecycleRecoveryRepository } from '../tasks/prismaTaskLifecycleRecoveryRepository.js'
 import { createPrismaModerationCaseRepository } from '../trust/prismaModerationCaseRepository.js'
+import { createPrismaModerationOperationalRetentionRepository } from '../trust/prismaModerationOperationalRetentionRepository.js'
+import { createPrismaModerationRetentionRepository } from '../trust/prismaModerationRetentionRepository.js'
 import { createPrismaSafetyOperationsRepository } from '../trust/prismaSafetyOperationsRepository.js'
 import { communityModerationTransition } from '../trust/communityModeration.js'
 import {
+  accountingActorRef,
+  accountingAvailableAccountRef,
   accountingOperationKey,
   accountingPayloadHash,
+  accountingSubjectRef,
   reconcilePointLedgerRows,
   validateMovementGroup,
 } from '../accounting/internalAccounting.js'
@@ -140,13 +158,21 @@ import { createPrismaOAuthAdminRepository } from '../auth/prismaOAuthAdminReposi
 import { createPrismaAuthSessionAdminRepository } from '../auth/prismaAuthSessionAdminRepository.js'
 import { createPrismaAuthRiskAdminRepository } from '../auth/prismaAuthRiskAdminRepository.js'
 import { createPrismaRiskRepository } from '../risk/prismaRiskRepository.js'
+import { createPrismaRiskRetentionRepository } from '../risk/prismaRiskRetentionRepository.js'
 import { createPrismaUserAdminRepository } from '../users/prismaUserAdminRepository.js'
 import { createPrismaTaskAdminRepository } from '../tasks/prismaTaskAdminRepository.js'
 import { createPrismaCommunityAdminRepository } from '../community/prismaCommunityAdminRepository.js'
+import { createPrismaCommunityRetentionRepository } from '../community/prismaCommunityRetentionRepository.js'
+import { createPrismaSecurityRetentionRepository } from '../security/prismaSecurityRetentionRepository.js'
 import { createPrismaBillingAdminRepository } from '../accounting/prismaBillingAdminRepository.js'
 import { createPrismaEntitlementRepository } from '../entitlements/prismaEntitlementRepository.js'
 import { createPrismaNotificationManagementRepository } from '../notifications/prismaNotificationManagementRepository.js'
 import { createPrismaNotificationDeliveryRepository } from '../notifications/prismaNotificationDeliveryRepository.js'
+import { createPrismaProviderAlertDeliveryRepository } from '../creative/prismaProviderAlertDeliveryRepository.js'
+import { notificationRetentionContract, notificationRetentionCutoff, notificationRetentionSweepLimit } from '../notifications/notificationRetention.js'
+import { operationLeaseRetentionContract, operationLeaseRetentionCutoff, operationLeaseRetentionSweepLimit, operationLeaseRetentionTimestamp } from '../operations/operationLeaseRetention.js'
+import { privateLibraryRetentionContract, privateLibraryRetentionCutoff, privateLibraryRetentionSweepLimit } from '../library/libraryRetention.js'
+import { authCredentialRetentionContract, authCredentialRetentionCutoff, authCredentialRetentionSweepLimit, authCredentialTerminalAt } from '../auth/authCredentialRetention.js'
 import { createPrismaDeveloperAccessRepository } from '../developerAccess/prismaDeveloperAccessRepository.js'
 import { createPrismaWebhookRepository } from '../webhooks/prismaWebhookRepository.js'
 import { createPrismaSupportRepository } from '../support/prismaSupportRepository.js'
@@ -189,10 +215,8 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     return null
   }
 
-  if (shouldAutoSeedPrisma()) {
-    const { seedPrismaDatabase } = await import('./prismaSeed.js')
-    await seedPrismaDatabase(client)
-  }
+  const { seedPrismaDatabase } = await import('./prismaSeed.js')
+  await seedPrismaDatabase(client, { includeDemoContent: shouldAutoSeedPrisma() })
 
   const loadRolePermissionMap = async () => {
     const rows = await client.rolePermission.findMany({
@@ -230,12 +254,20 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   }
 
   const chat = createPrismaChatRepository(client, { recordAudit })
+  const inspiration = createPrismaInspirationRepository(client, { recordAudit })
   const moderationCases = createPrismaModerationCaseRepository(client, {
     recordAudit,
     onReportCreated: (db, record, reporter) => notifyCommunityReportCreated(db, record, reporter),
     onAppealCreated: (db, record, appeal, appellant) => notifyCommunityAppealCreated(db, record, appeal, appellant),
     onDecisionCreated: (db, record, decision, reviewer) => applyCommunityModerationDecision(db, record, decision, reviewer),
   })
+  const moderationRetention = createPrismaModerationRetentionRepository(client, { recordAudit })
+  const moderationOperationalRetention = createPrismaModerationOperationalRetentionRepository(client, { recordAudit })
+  const generationRetention = createPrismaGenerationRetentionRepository(client, { recordAudit })
+  const providerLifecycleRetention = createPrismaProviderLifecycleRetentionRepository(client, { recordAudit })
+  const mediaAssetRetention = createPrismaMediaAssetRetentionRepository(client, { recordAudit })
+  const marketplaceRetention = createPrismaMarketplaceRetentionRepository(client, { recordAudit })
+  const supportRetention = createPrismaSupportRetentionRepository(client, { recordAudit })
   const safetyOperations = createPrismaSafetyOperationsRepository(client, { moderationCases, recordAudit })
   const domainEvents = createPrismaDomainEventRepository(client, { recordAudit })
   const domainEventConsumers = createPrismaDomainEventConsumerRepository(client, { recordAudit })
@@ -243,11 +275,12 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   const releaseChanges = createPrismaReleaseRepository(client)
   const systemSettings = createPrismaSystemSettingsRepository(client, { recordAudit })
   const configResources = createPrismaConfigResourcesRepository(client, { recordAudit })
+  const configurationRetention = createPrismaConfigurationRetentionRepository(client, { recordAudit })
   const modelControl = createPrismaModelControlRepository(client, { recordAudit })
   const modelRouting = createPrismaModelRoutingRepository(client, { recordAudit })
   const modelEvaluation = createPrismaModelEvaluationRepository(client)
   const providerLegal = createPrismaProviderLegalRepository(client)
-  const modelGovernance = createPrismaModelGovernanceRepository(client, { modelEvaluation, providerLegal })
+  const modelGovernance = createPrismaModelGovernanceRepository(client, { modelEvaluation, providerLegal, recordAudit })
   const providerOperations = createPrismaProviderOperationsRepository(client)
   const creativeGenerationExecutions = createPrismaGenerationExecutionRepository(client, { recordAudit })
   const observability = createPrismaObservabilityRepository(client, {
@@ -286,6 +319,43 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   }
 
   const operationLeases = {
+    sweepRetention: async ({ now = new Date(), limit } = {}) => {
+      const cutoff = operationLeaseRetentionCutoff(now)
+      const take = operationLeaseRetentionSweepLimit(limit)
+      return runSerializableTransaction(async (db) => {
+        const [released, expired] = await Promise.all([
+          db.operationLease.findMany({
+            where: { releasedAt: { lte: cutoff } },
+            orderBy: [{ releasedAt: 'asc' }, { key: 'asc' }],
+            take,
+            select: { key: true, expiresAt: true, releasedAt: true },
+          }),
+          db.operationLease.findMany({
+            where: { releasedAt: null, expiresAt: { lte: cutoff } },
+            orderBy: [{ expiresAt: 'asc' }, { key: 'asc' }],
+            take,
+            select: { key: true, expiresAt: true, releasedAt: true },
+          }),
+        ])
+        const candidates = [...released, ...expired]
+          .sort((left, right) => operationLeaseRetentionTimestamp(left) - operationLeaseRetentionTimestamp(right) || left.key.localeCompare(right.key))
+          .slice(0, take)
+        const deleted = candidates.length === 0 ? { count: 0 } : await db.operationLease.deleteMany({
+          where: {
+            key: { in: candidates.map((lease) => lease.key) },
+            OR: [
+              { releasedAt: { lte: cutoff } },
+              { releasedAt: null, expiresAt: { lte: cutoff } },
+            ],
+          },
+        })
+        return {
+          policyId: operationLeaseRetentionContract.policyId,
+          inspected: candidates.length,
+          deleted: deleted.count,
+        }
+      })
+    },
     acquire: async ({ key, ownerId, ttlSeconds = 300, metadata = null } = {}) => {
       const leaseKey = String(key ?? '').trim()
       if (!leaseKey) {
@@ -423,6 +493,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       identity: event.identity ?? null,
       method: event.method ?? null,
       pathname: event.pathname ?? null,
+      subjectRef: event.subjectRef ?? null,
       occurredAt: Number.isNaN(occurredAt.getTime()) ? new Date() : occurredAt,
       details: event.details ?? null,
     }
@@ -469,7 +540,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       throw new HttpError(409, validation.code, 'Accounting movement group is invalid')
     }
     const operationId = `accounting-operation-${randomUUID()}`
-    const actorRef = actor?.handle ?? actor?.id ?? 'system'
+    const actorRef = accountingActorRef(actor)
     const inserted = await transaction.$queryRaw`
       INSERT INTO "internal_accounting_operations" (
         "id", "operation_key", "unit", "kind", "status", "source_type", "source_id",
@@ -631,10 +702,11 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       }
       const accountByUser = new Map(pointAccounts.map((account) => [account.userId, account]))
       for (const [userId, rows] of rowsByUser) {
+        const subjectRef = accountingSubjectRef(userId)
         const report = reconcilePointLedgerRows(rows)
         for (const drift of report.issues) {
           addIssue({
-            issueKey: `point_balance_drift:${userId}:${drift.ledgerId}`,
+            issueKey: `point_balance_drift:${subjectRef}:${drift.ledgerId}`,
             type: 'point_balance_drift',
             unit: 'points',
             sourceType: 'point_ledger',
@@ -642,22 +714,22 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             expectedAmount: drift.expectedBalance,
             actualAmount: drift.actualBalance,
             differenceAmount: drift.difference,
-            evidence: { userId },
+            evidence: { subjectRef },
           })
         }
         const account = accountByUser.get(userId)
         const latestBalance = report.actualBalance
         if (!account || account.balance !== latestBalance) {
           addIssue({
-            issueKey: `point_balance_drift:${userId}:account`,
+            issueKey: `point_balance_drift:${subjectRef}:account`,
             type: 'point_balance_drift',
             unit: 'points',
             sourceType: 'internal_point_account',
-            sourceId: account?.id ?? `missing:${userId}`,
+            sourceId: account?.id ?? `missing:${subjectRef}`,
             expectedAmount: latestBalance,
             actualAmount: account?.balance ?? 0,
             differenceAmount: (account?.balance ?? 0) - latestBalance,
-            evidence: { userId, accountVersion: account?.version ?? null },
+            evidence: { subjectRef, accountVersion: account?.version ?? null },
           })
         }
       }
@@ -859,7 +931,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       payload: { taskId: String(task.id), publisherId: task.publisherId, recipientId, amount: pointsReward },
       movements: [
         { unit: 'points', accountRef: `task:${task.id}:points:escrow`, accountType: 'escrow', amount: -pointsReward },
-        { unit: 'points', accountRef: `user:${recipientId}:points:available`, accountType: 'available', ownerUserId: recipientId, amount: pointsReward },
+        { unit: 'points', accountRef: accountingAvailableAccountRef(recipientId, 'points'), accountType: 'available', ownerUserId: recipientId, amount: pointsReward },
       ],
       actor,
     })
@@ -940,7 +1012,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       reasonCode: 'task_published',
       payload: { taskId: String(task.id), publisherId, amount: pointsReward },
       movements: [
-        { unit: 'points', accountRef: `user:${publisherId}:points:available`, accountType: 'available', ownerUserId: publisherId, amount: -pointsReward },
+        { unit: 'points', accountRef: accountingAvailableAccountRef(publisherId, 'points'), accountType: 'available', ownerUserId: publisherId, amount: -pointsReward },
         { unit: 'points', accountRef: `task:${task.id}:points:escrow`, accountType: 'escrow', amount: pointsReward },
       ],
       actor,
@@ -1002,7 +1074,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       payload: { taskId: String(task.id), publisherId, amount: pointsReward },
       movements: [
         { unit: 'points', accountRef: `task:${task.id}:points:escrow`, accountType: 'escrow', amount: -pointsReward },
-        { unit: 'points', accountRef: `user:${publisherId}:points:available`, accountType: 'available', ownerUserId: publisherId, amount: pointsReward },
+        { unit: 'points', accountRef: accountingAvailableAccountRef(publisherId, 'points'), accountType: 'available', ownerUserId: publisherId, amount: pointsReward },
       ],
       actor,
     })
@@ -1028,6 +1100,8 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       id: user.id,
       handle: profile?.handle ?? user.id,
       email: user.email,
+      emailVerified: Boolean(user.emailVerifiedAt),
+      emailVerifiedAt: user.emailVerifiedAt?.toISOString?.() ?? null,
       displayName: user.displayName,
       role: user.role,
       permissions: getDatabasePermissionsForRole(user.role),
@@ -1104,18 +1178,89 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
   const authSessionAdmin = createPrismaAuthSessionAdminRepository(client, { runSerializableTransaction, recordAudit })
   const authRiskAdmin = createPrismaAuthRiskAdminRepository(client, { runSerializableTransaction, recordAudit })
   const risk = createPrismaRiskRepository(client, { runSerializableTransaction, recordAudit })
+  const riskRetention = createPrismaRiskRetentionRepository(client, { recordAudit })
   const userAdmin = createPrismaUserAdminRepository(client, { runSerializableTransaction, recordAudit })
   const taskAdmin = createPrismaTaskAdminRepository(client, { runSerializableTransaction, recordAudit, createTaskEscrow, finalizeTaskEscrow })
   const communityAdmin = createPrismaCommunityAdminRepository(client, { runSerializableTransaction, recordAudit })
+  const communityRetention = createPrismaCommunityRetentionRepository(client, { recordAudit })
+  const securityRetention = createPrismaSecurityRetentionRepository(client, { recordAudit })
   const billingAdmin = createPrismaBillingAdminRepository(client)
   const entitlements = createPrismaEntitlementRepository(client)
   const notificationManagement = createPrismaNotificationManagementRepository(client, { runSerializableTransaction, recordAudit })
   const notificationDeliveries = createPrismaNotificationDeliveryRepository(client, { runSerializableTransaction, recordAudit })
+  const providerAlertDeliveries = createPrismaProviderAlertDeliveryRepository(client, { runSerializableTransaction, recordAudit })
   const taskLifecycleRecovery = createPrismaTaskLifecycleRecoveryRepository(client, { runSerializableTransaction, recordAudit, finalizeTaskEscrow })
   const developerAccess = createPrismaDeveloperAccessRepository(client, { runSerializableTransaction, recordAudit })
   const webhooks = createPrismaWebhookRepository(client, { runSerializableTransaction, recordAudit })
   const support = createPrismaSupportRepository(client, { runSerializableTransaction, recordAudit, notificationDeliveries })
   const dataRights = createPrismaDataRightsRepository(client, { runSerializableTransaction, recordAudit })
+
+  const authCredentialRetention = {
+    sweepRetention: ({ now = new Date(), limit } = {}) => runSerializableTransaction(async (db) => {
+      const cutoff = authCredentialRetentionCutoff(now)
+      const take = authCredentialRetentionSweepLimit(limit)
+      const terminalWhere = { OR: [{ expiresAt: { lte: cutoff } }, { revokedAt: { lte: cutoff } }] }
+      const emailActionTerminalWhere = { OR: [...terminalWhere.OR, { consumedAt: { lte: cutoff } }] }
+      const [oauthRequests, refreshTokens, apiKeys, emailActions] = await Promise.all([
+        db.oAuthAuthorizationRequest.findMany({
+          where: terminalWhere,
+          orderBy: [{ expiresAt: 'asc' }, { id: 'asc' }],
+          take,
+          select: { id: true, expiresAt: true, revokedAt: true },
+        }),
+        db.refreshToken.findMany({
+          where: terminalWhere,
+          orderBy: [{ expiresAt: 'asc' }, { id: 'asc' }],
+          take,
+          select: { id: true, expiresAt: true, revokedAt: true },
+        }),
+        db.apiKeyCredential.findMany({
+          where: terminalWhere,
+          orderBy: [{ expiresAt: 'asc' }, { id: 'asc' }],
+          take,
+          select: { id: true, expiresAt: true, revokedAt: true },
+        }),
+        db.authEmailAction.findMany({
+          where: emailActionTerminalWhere,
+          orderBy: [{ expiresAt: 'asc' }, { id: 'asc' }],
+          take,
+          select: { id: true, expiresAt: true, revokedAt: true, consumedAt: true },
+        }),
+      ])
+      const candidates = [
+        ...oauthRequests.map((row) => ({ ...row, type: 'oauthAuthorizationRequest' })),
+        ...refreshTokens.map((row) => ({ ...row, type: 'refreshToken' })),
+        ...apiKeys.map((row) => ({ ...row, type: 'apiKeyCredential' })),
+        ...emailActions.map((row) => ({ ...row, type: 'authEmailAction' })),
+      ].sort((left, right) => authCredentialTerminalAt(left) - authCredentialTerminalAt(right) || left.id.localeCompare(right.id)).slice(0, take)
+      const idsFor = (type) => candidates.filter((row) => row.type === type).map((row) => row.id)
+      const oauthIds = idsFor('oauthAuthorizationRequest')
+      const refreshIds = idsFor('refreshToken')
+      const apiKeyIds = idsFor('apiKeyCredential')
+      const emailActionIds = idsFor('authEmailAction')
+      if (emailActionIds.length) {
+        await db.notification.deleteMany({
+          where: { resourceType: 'auth_email_action', resourceId: { in: emailActionIds } },
+        })
+      }
+      const [oauthDeleted, refreshDeleted, apiKeysDeleted, emailActionsDeleted] = await Promise.all([
+        oauthIds.length ? db.oAuthAuthorizationRequest.deleteMany({ where: { id: { in: oauthIds }, ...terminalWhere } }) : { count: 0 },
+        refreshIds.length ? db.refreshToken.deleteMany({ where: { id: { in: refreshIds }, ...terminalWhere } }) : { count: 0 },
+        apiKeyIds.length ? db.apiKeyCredential.deleteMany({ where: { id: { in: apiKeyIds }, ...terminalWhere } }) : { count: 0 },
+        emailActionIds.length ? db.authEmailAction.deleteMany({ where: { id: { in: emailActionIds }, ...emailActionTerminalWhere } }) : { count: 0 },
+      ])
+      return {
+        policyId: authCredentialRetentionContract.policyId,
+        inspected: candidates.length,
+        deleted: {
+          oauthAuthorizationRequests: oauthDeleted.count,
+          refreshTokens: refreshDeleted.count,
+          apiKeyCredentials: apiKeysDeleted.count,
+          authEmailActions: emailActionsDeleted.count,
+        },
+      }
+    }),
+  }
 
   const createSessionForUser = async (user, reason = 'auth.session.created', options = {}) => {
     const now = new Date()
@@ -1183,6 +1328,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     id: String(payload.id),
     actorId: actorUser?.id ?? null,
     actorHandle: payload.actorHandle ?? actorUser?.profile?.handle ?? null,
+    subjectRef: actorUser?.id ? dataRightsSafeSubjectRef(actorUser.id) : null,
     workspace: payload.workspace,
     mode: payload.mode,
     providerId: payload.providerId,
@@ -1327,9 +1473,9 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             resourceId: payload.resourceId ?? null,
             readAt: null,
           },
-          select: { id: true },
         })
         if (existing) {
+          await notificationDeliveries.createForNotification(existing, recipient, db)
           return null
         }
       }
@@ -1674,7 +1820,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       },
       movements: [
         { unit: 'points', accountRef: 'system:adjustments:points:source', accountType: 'system_source', amount: -payload.delta },
-        { unit: 'points', accountRef: `user:${user.id}:points:available`, accountType: 'available', ownerUserId: user.id, amount: payload.delta },
+        { unit: 'points', accountRef: accountingAvailableAccountRef(user.id, 'points'), accountType: 'available', ownerUserId: user.id, amount: payload.delta },
       ],
       actor,
       allowNegative: true,
@@ -2353,20 +2499,80 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
 
   const mediaAssetScanStatus = (asset) => asObject(asObject(asset.metadata)?.security)?.scanStatus ?? 'pending'
 
+  const createAuthEmailAction = async (db, user, kind, actionConfig, options = {}) => {
+    const now = new Date()
+    const recent = options.enforceCooldown ? await db.authEmailAction.findFirst({
+      where: {
+        userId: user.id,
+        kind,
+        createdAt: { gt: new Date(now.getTime() - actionConfig.requestCooldownSeconds * 1_000) },
+      },
+      select: { id: true },
+    }) : null
+    if (recent) return { queued: false, cooldown: true }
+
+    await db.authEmailAction.updateMany({
+      where: { userId: user.id, kind, consumedAt: null, revokedAt: null },
+      data: { revokedAt: now, revokeReasonCode: 'superseded' },
+    })
+    const id = `auth-email-action-${randomUUID()}`
+    const encrypted = createAuthEmailActionCodec(actionConfig).create({ id, userId: user.id, kind })
+    const ttlSeconds = kind === 'verify_email'
+      ? actionConfig.verificationTtlSeconds
+      : actionConfig.passwordResetTtlSeconds
+    const action = await db.authEmailAction.create({
+      data: {
+        id,
+        userId: user.id,
+        kind,
+        tokenHash: encrypted.tokenHash,
+        ciphertext: encrypted.ciphertext,
+        encryptionKeyId: encrypted.encryptionKeyId,
+        encryptionIv: encrypted.encryptionIv,
+        encryptionTag: encrypted.encryptionTag,
+        expiresAt: new Date(now.getTime() + ttlSeconds * 1_000),
+      },
+    })
+    const verification = kind === 'verify_email'
+    const notification = await db.notification.create({
+      data: {
+        id: `notification-${randomUUID()}`,
+        recipientId: user.id,
+        type: verification ? 'auth_email_verification' : 'auth_password_reset',
+        title: verification ? 'Verify your email / 验证邮箱' : 'Reset your password / 重置密码',
+        body: verification
+          ? 'Use the secure link in this email to verify your address. / 请使用邮件中的安全链接验证邮箱。'
+          : 'Use the secure link in this email to reset your password. / 请使用邮件中的安全链接重置密码。',
+        resourceType: 'auth_email_action',
+        resourceId: action.id,
+        metadata: { kind, securityRequired: true },
+      },
+    })
+    await notificationDeliveries.createForNotification(notification, user, db)
+    await recordAudit({
+      actor: null,
+      action: verification ? 'auth.email_verification.requested' : 'auth.password_reset.requested',
+      resourceType: 'auth_email_action',
+      resourceId: action.id,
+      metadata: { kind, tokenStoredAsHash: true, tokenEncryptedForDelivery: true },
+    }, db)
+    return { queued: true, cooldown: false }
+  }
+
   const auth = {
     getCurrentUser: async () => {
       const user = await client.user.findFirst({
         orderBy: { createdAt: 'asc' },
         include: { profile: true },
       })
-      return user ? mapAccount(user) : fallbackRepository.auth?.getCurrentUser?.() ?? null
+      return user ? mapAccount(user) : fallbackRepository?.auth?.getCurrentUser?.() ?? null
     },
     findDemoAccountByAccessToken: async (token) => {
       const activeAccount = await getActiveAccessAccount(token)
       if (activeAccount) {
         return activeAccount
       }
-      const fallback = fallbackRepository.auth?.findDemoAccountByAccessToken?.(token)
+      const fallback = fallbackRepository?.auth?.findDemoAccountByAccessToken?.(token)
       if (fallback) {
         const persisted = await client.user.findUnique({ where: { id: fallback.id }, select: { status: true } })
         return persisted?.status && persisted.status !== 'active' ? null : fallback
@@ -2382,7 +2588,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       return user ? mapAccount(user) : null
     },
     findDemoAccountByRefreshToken: async (token) => {
-      const fallback = fallbackRepository.auth?.findDemoAccountByRefreshToken?.(token)
+      const fallback = fallbackRepository?.auth?.findDemoAccountByRefreshToken?.(token)
       if (fallback) {
         const persisted = await client.user.findUnique({ where: { id: fallback.id }, select: { status: true } })
         return persisted?.status && persisted.status !== 'active' ? null : fallback
@@ -2405,7 +2611,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       return refreshToken ? mapAccount(refreshToken.user) : null
     },
     findDemoAccountByHandle: async (handle) => {
-      const fallback = fallbackRepository.auth?.findDemoAccountByHandle?.(handle)
+      const fallback = fallbackRepository?.auth?.findDemoAccountByHandle?.(handle)
       if (fallback) {
         const persisted = await client.user.findUnique({ where: { id: fallback.id }, select: { status: true } })
         return persisted?.status && persisted.status !== 'active' ? null : fallback
@@ -2433,7 +2639,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       }
       return createSessionForUser(user, 'auth.session.created', { clientContext })
     },
-    registerEmailAccount: async ({ email, password, displayName, handle }, consent = null, clientContext = null) => {
+    registerEmailAccount: async ({ email, password, displayName, handle }, consent = null, clientContext = null, actionConfig = buildAuthEmailActionConfig()) => {
       const normalizedEmail = normalizeEmail(email)
       const existing = await client.user.findFirst({
         where: {
@@ -2450,10 +2656,13 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       }
 
       const passwordHash = await hashPassword(password)
-      const user = await client.$transaction(async (transaction) => {
+      let user
+      try {
+        user = await client.$transaction(async (transaction) => {
         const createdUser = await transaction.user.create({
           data: {
             email: normalizedEmail,
+            emailVerifiedAt: actionConfig.verificationRequired ? null : new Date(),
             displayName,
             role: 'member',
             status: 'active',
@@ -2501,8 +2710,18 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             }),
           })
         }
+        if (actionConfig.verificationRequired) {
+          await createAuthEmailAction(transaction, createdUser, 'verify_email', actionConfig)
+        }
         return createdUser
-      })
+        })
+      } catch (error) {
+        if (error?.code === 'P2002') return null
+        throw error
+      }
+      if (actionConfig.verificationRequired) {
+        return { verificationRequired: true, email: normalizedEmail, user: mapAccount(user) }
+      }
       return createSessionForUser(user, 'auth.session.created', { clientContext })
     },
     verifyPasswordCredentials: async ({ email, password }) => {
@@ -2518,6 +2737,111 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         return null
       }
       return mapAccount(authAccount.user)
+    },
+    requestEmailVerification: async ({ email }, actionConfig = buildAuthEmailActionConfig()) => {
+      if (!actionConfig.verificationRequired) return { accepted: true }
+      const user = await client.user.findFirst({
+        where: {
+          email: normalizeEmail(email),
+          emailVerifiedAt: null,
+          status: 'active',
+          authAccounts: { some: { provider: 'email' } },
+        },
+      })
+      if (!user) return { accepted: true }
+      await runSerializableTransaction((db) => createAuthEmailAction(db, user, 'verify_email', actionConfig, { enforceCooldown: true }))
+      return { accepted: true }
+    },
+    requestPasswordReset: async ({ email }, actionConfig = buildAuthEmailActionConfig()) => {
+      if (!actionConfig.passwordResetEnabled) return { accepted: true }
+      const user = await client.user.findFirst({
+        where: {
+          email: normalizeEmail(email),
+          status: 'active',
+          authAccounts: { some: { provider: 'email' } },
+        },
+      })
+      if (!user) return { accepted: true }
+      await runSerializableTransaction((db) => createAuthEmailAction(db, user, 'password_reset', actionConfig, { enforceCooldown: true }))
+      return { accepted: true }
+    },
+    consumeEmailVerification: async ({ token }, clientContext = null) => {
+      const tokenHash = hashAuthEmailActionToken(token)
+      return runSerializableTransaction(async (db) => {
+        const now = new Date()
+        const action = await db.authEmailAction.findFirst({
+          where: { tokenHash, kind: 'verify_email', consumedAt: null, revokedAt: null, expiresAt: { gt: now } },
+          include: { user: { include: { profile: true } } },
+        })
+        if (!action) return null
+        const consumed = await db.authEmailAction.updateMany({
+          where: { id: action.id, consumedAt: null, revokedAt: null, expiresAt: { gt: now } },
+          data: { consumedAt: now },
+        })
+        if (consumed.count !== 1) return null
+        const user = await db.user.update({
+          where: { id: action.userId },
+          data: { emailVerifiedAt: now },
+          include: { profile: true },
+        })
+        await db.authEmailAction.updateMany({
+          where: { userId: user.id, kind: 'verify_email', id: { not: action.id }, consumedAt: null, revokedAt: null },
+          data: { revokedAt: now, revokeReasonCode: 'email_verified' },
+        })
+        await recordAudit({ actor: mapAccount(user), action: 'auth.email.verified', resourceType: 'user', resourceId: user.id, metadata: { actionId: action.id } }, db)
+        return createSessionForUser(user, 'auth.session.created_after_email_verification', { db, clientContext })
+      })
+    },
+    resetPassword: async ({ token, password }) => {
+      const tokenHash = hashAuthEmailActionToken(token)
+      const passwordHash = await hashPassword(password)
+      return runSerializableTransaction(async (db) => {
+        const now = new Date()
+        const action = await db.authEmailAction.findFirst({
+          where: { tokenHash, kind: 'password_reset', consumedAt: null, revokedAt: null, expiresAt: { gt: now } },
+          include: { user: { include: { profile: true } } },
+        })
+        if (!action) return null
+        const consumed = await db.authEmailAction.updateMany({
+          where: { id: action.id, consumedAt: null, revokedAt: null, expiresAt: { gt: now } },
+          data: { consumedAt: now },
+        })
+        if (consumed.count !== 1) return null
+        await db.authAccount.update({
+          where: { userId_provider: { userId: action.userId, provider: 'email' } },
+          data: { passwordHash },
+        })
+        await db.authSession.updateMany({
+          where: { userId: action.userId, revokedAt: null },
+          data: { revokedAt: now, revokeReasonCode: 'password_reset', version: { increment: 1 } },
+        })
+        await db.refreshToken.updateMany({ where: { userId: action.userId, revokedAt: null }, data: { revokedAt: now } })
+        await db.authEmailAction.updateMany({
+          where: { userId: action.userId, kind: 'password_reset', id: { not: action.id }, consumedAt: null, revokedAt: null },
+          data: { revokedAt: now, revokeReasonCode: 'password_reset_completed' },
+        })
+        await recordAudit({ actor: mapAccount(action.user), action: 'auth.password.reset', resourceType: 'user', resourceId: action.userId, metadata: { actionId: action.id, allSessionsRevoked: true } }, db)
+        return { reset: true }
+      })
+    },
+    prepareEmailDelivery: async (claim, actionConfig = buildAuthEmailActionConfig()) => {
+      if (claim?.notification?.resourceType !== 'auth_email_action') return claim
+      const action = await client.authEmailAction.findFirst({
+        where: { id: claim.notification.resourceId, consumedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
+      })
+      if (!action) return { ...claim, authEmailActionUnavailable: true }
+      const token = createAuthEmailActionCodec(actionConfig).decrypt(action)
+      const verification = action.kind === 'verify_email'
+      const url = `${actionConfig.origin}/#auth?action=${verification ? 'verify-email' : 'password-reset'}&token=${encodeURIComponent(token)}`
+      return {
+        ...claim,
+        notification: {
+          ...claim.notification,
+          body: verification
+            ? `Verify your email / 验证邮箱\n\n${url}\n\nThis link expires soon and can be used once. / 此链接即将过期且仅可使用一次。`
+            : `Reset your password / 重置密码\n\n${url}\n\nThis link expires soon and can be used once. / 此链接即将过期且仅可使用一次。`,
+        },
+      }
     },
     loginWithPassword: async (payload, clientContext = null) => {
       const account = await auth.verifyPasswordCredentials(payload)
@@ -2582,12 +2906,19 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           if (linkedAccount && linkedAccount.userId !== linkUserId) {
             return null
           }
-          const user = await transaction.user.findUnique({
+          let user = await transaction.user.findUnique({
             where: { id: linkUserId },
             include: { profile: true },
           })
           if (!user || user.status !== 'active') {
             return null
+          }
+          if (!user.emailVerifiedAt && normalizeEmail(user.email) === normalizedEmail) {
+            user = await transaction.user.update({
+              where: { id: user.id },
+              data: { emailVerifiedAt: new Date() },
+              include: { profile: true },
+            })
           }
           if (!linkedAccount) {
             await transaction.authAccount.create({
@@ -2615,13 +2946,20 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             : null
         }
 
-        const existingUser = await transaction.user.findUnique({
+        let existingUser = await transaction.user.findUnique({
           where: { email: normalizedEmail },
           include: { profile: true },
         })
         if (existingUser) {
           if (existingUser.status !== 'active') {
             return null
+          }
+          if (!existingUser.emailVerifiedAt) {
+            existingUser = await transaction.user.update({
+              where: { id: existingUser.id },
+              data: { emailVerifiedAt: new Date() },
+              include: { profile: true },
+            })
           }
           await transaction.authAccount.create({
             data: {
@@ -2645,6 +2983,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         const user = await transaction.user.create({
           data: {
             email: normalizedEmail,
+            emailVerifiedAt: new Date(),
             displayName: profile.displayName,
             role: 'member',
             status: 'active',
@@ -5099,6 +5438,103 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       })
       return { updated: result.count }
     },
+    sweepRetention: async ({ now = new Date(), limit } = {}) => {
+      const cutoff = notificationRetentionCutoff(now)
+      const take = notificationRetentionSweepLimit(limit)
+      return runSerializableTransaction(async (db) => {
+        const notificationCandidates = await db.notification.findMany({
+          where: { createdAt: { lte: cutoff } },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          take,
+          select: { id: true, createdAt: true },
+        })
+        const providerAlertCandidates = await db.providerAlertDelivery.findMany({
+          where: {
+            status: { in: notificationRetentionContract.providerAlertTerminalStatuses },
+            updatedAt: { lte: cutoff },
+          },
+          orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+          take,
+          select: { id: true, updatedAt: true },
+        })
+        const emailProviderEventCandidates = await db.notificationEmailProviderEvent.findMany({
+          where: { receivedAt: { lte: cutoff } },
+          orderBy: [{ receivedAt: 'asc' }, { id: 'asc' }],
+          take,
+          select: { id: true, receivedAt: true },
+        })
+        const candidates = [
+          ...notificationCandidates.map((row) => ({ id: row.id, family: 'notification', retainedAt: row.createdAt })),
+          ...providerAlertCandidates.map((row) => ({ id: row.id, family: 'provider_alert', retainedAt: row.updatedAt })),
+          ...emailProviderEventCandidates.map((row) => ({ id: row.id, family: 'email_provider_event', retainedAt: row.receivedAt })),
+        ].sort((left, right) => left.retainedAt - right.retainedAt || left.id.localeCompare(right.id)).slice(0, take)
+        const notificationIds = candidates.filter((row) => row.family === 'notification').map((row) => row.id)
+        const providerAlertIds = candidates.filter((row) => row.family === 'provider_alert').map((row) => row.id)
+        const emailProviderEventIds = candidates.filter((row) => row.family === 'email_provider_event').map((row) => row.id)
+        if (candidates.length === 0) {
+          return {
+            policyId: notificationRetentionContract.policyId,
+            inspected: 0,
+            deleted: { notifications: 0, deliveries: 0, attempts: 0, emailProviderEvents: 0, providerAlertDeliveries: 0, providerAlertAttempts: 0, providerAlertReplays: 0 },
+          }
+        }
+        const deliveries = notificationIds.length
+          ? await db.notificationDelivery.count({ where: { notificationId: { in: notificationIds } } })
+          : 0
+        const attempts = notificationIds.length
+          ? await db.notificationDeliveryAttempt.count({ where: { delivery: { notificationId: { in: notificationIds } } } })
+          : 0
+        const eligibleProviderAlerts = providerAlertIds.length
+          ? await db.providerAlertDelivery.findMany({
+            where: {
+              id: { in: providerAlertIds },
+              status: { in: notificationRetentionContract.providerAlertTerminalStatuses },
+              updatedAt: { lte: cutoff },
+            },
+            select: { id: true },
+          })
+          : []
+        const eligibleProviderAlertIds = eligibleProviderAlerts.map((row) => row.id)
+        const deletedProviderAlertAttempts = eligibleProviderAlertIds.length
+          ? await db.providerAlertDeliveryAttempt.deleteMany({ where: { deliveryId: { in: eligibleProviderAlertIds } } })
+          : { count: 0 }
+        const deletedProviderAlertReplays = eligibleProviderAlertIds.length
+          ? await db.providerAlertDeliveryReplay.deleteMany({ where: { deliveryId: { in: eligibleProviderAlertIds } } })
+          : { count: 0 }
+        const deletedProviderAlerts = eligibleProviderAlertIds.length
+          ? await db.providerAlertDelivery.deleteMany({
+            where: {
+              id: { in: eligibleProviderAlertIds },
+              status: { in: notificationRetentionContract.providerAlertTerminalStatuses },
+              updatedAt: { lte: cutoff },
+            },
+          })
+          : { count: 0 }
+        const deletedNotifications = notificationIds.length
+          ? await db.notification.deleteMany({
+            where: { id: { in: notificationIds }, createdAt: { lte: cutoff } },
+          })
+          : { count: 0 }
+        const deletedEmailProviderEvents = emailProviderEventIds.length
+          ? await db.notificationEmailProviderEvent.deleteMany({
+              where: { id: { in: emailProviderEventIds }, receivedAt: { lte: cutoff } },
+            })
+          : { count: 0 }
+        return {
+          policyId: notificationRetentionContract.policyId,
+          inspected: candidates.length,
+          deleted: {
+            notifications: deletedNotifications.count,
+            deliveries,
+            attempts,
+            emailProviderEvents: deletedEmailProviderEvents.count,
+            providerAlertDeliveries: deletedProviderAlerts.count,
+            providerAlertAttempts: deletedProviderAlertAttempts.count,
+            providerAlertReplays: deletedProviderAlertReplays.count,
+          },
+        }
+      })
+    },
     createForHandles: createNotificationsForHandles,
   }
 
@@ -5482,6 +5918,30 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       })
       return getCreativeGenerationDto(row)
     },
+    beginReviewResume: async (id, approval, actor) => client.$transaction(async (transaction) => {
+      const current = await transaction.creativeGeneration.findUnique({ where: { id: String(id) } })
+      if (!current || current.actorId !== actor.id) return null
+      const safety = asObject(current.safety)
+      if (current.status !== 'review_required' || safety.moderationCaseId !== approval.moderationCaseId) return false
+      const nextSafety = {
+        ...safety,
+        reviewRequired: false,
+        reviewResume: {
+          status: 'claimed',
+          moderationCaseId: approval.moderationCaseId,
+          decisionId: approval.decisionId,
+          decisionOutcome: approval.decisionOutcome,
+        },
+      }
+      const changed = await transaction.creativeGeneration.updateMany({
+        where: { id: current.id, status: 'review_required' },
+        data: { status: 'queued', completedAt: null, failedAt: null, errorCode: null, errorMessagePreview: null, safety: nextSafety },
+      })
+      if (changed.count !== 1) return false
+      const row = await transaction.creativeGeneration.findUnique({ where: { id: current.id } })
+      await recordAudit({ actor, action: 'creative.generation.review_resume_claimed', resourceType: 'creative_generation', resourceId: current.id, metadata: { moderationCaseId: approval.moderationCaseId, decisionId: approval.decisionId, decisionOutcome: approval.decisionOutcome } }, transaction)
+      return getCreativeGenerationDto(row)
+    }, { isolationLevel: 'Serializable' }),
     fail: async (id, patch = {}, actor) => {
       const row = await client.creativeGeneration.update({
         where: { id: String(id) },
@@ -7335,7 +7795,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           reasonCode: 'generation_reserved',
           payload: { generationId: ledger.generationId, actorHandle: ledger.actorHandle, amount },
           movements: [
-            { unit: 'creative_credit', accountRef: `user:${ledger.actorHandle}:creative_credit:available`, accountType: 'available', amount: -amount },
+            { unit: 'creative_credit', accountRef: accountingAvailableAccountRef(ledger.actorId ?? ledger.actorHandle, 'creative_credit'), accountType: 'available', amount: -amount },
             { unit: 'creative_credit', accountRef: `generation:${ledger.generationId}:creative_credit:reserved`, accountType: 'reserved', amount },
           ],
           actor,
@@ -7461,7 +7921,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           payload: { generationId: updated.generationId, ledgerId: updated.id, amount: refundedAmount },
           movements: [
             { unit: 'creative_credit', accountRef: `generation:${updated.generationId}:creative_credit:reserved`, accountType: 'reserved', amount: -refundedAmount },
-            { unit: 'creative_credit', accountRef: `user:${updated.actorHandle}:creative_credit:available`, accountType: 'available', amount: refundedAmount },
+            { unit: 'creative_credit', accountRef: accountingAvailableAccountRef(updated.actorId ?? updated.actorHandle, 'creative_credit'), accountType: 'available', amount: refundedAmount },
           ],
           actor,
         })
@@ -7520,7 +7980,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           payload: { generationId: updated.generationId, ledgerId: updated.id, amount: updated.reservationAmount },
           movements: [
             { unit: 'creative_credit', accountRef: `generation:${updated.generationId}:creative_credit:reserved`, accountType: 'reserved', amount: -updated.reservationAmount },
-            { unit: 'creative_credit', accountRef: `user:${updated.actorHandle}:creative_credit:available`, accountType: 'available', amount: updated.reservationAmount },
+            { unit: 'creative_credit', accountRef: accountingAvailableAccountRef(updated.actorId ?? updated.actorHandle, 'creative_credit'), accountType: 'available', amount: updated.reservationAmount },
           ],
           actor,
         })
@@ -7965,7 +8425,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
           }
           movements = [
             { unit: 'points', accountRef: 'system:reconciliation:points:source', accountType: 'system_source', amount: -delta },
-            { unit: 'points', accountRef: `user:${account.userId}:points:available`, accountType: 'available', ownerUserId: account.userId, amount: delta },
+            { unit: 'points', accountRef: accountingAvailableAccountRef(account.userId, 'points'), accountType: 'available', ownerUserId: account.userId, amount: delta },
           ]
           repairPayload = { issueId: issue.id, accountId: account.id, userId: account.userId, delta }
           applySnapshot = async () => {}
@@ -8336,7 +8796,9 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         const generation = await client.creativeGeneration.findFirst({ where: { outputAssetIds: { has: asset.id } } })
         return {
           ...buildSafeAssetLibraryItem(asset, { generation, relations: [...asset.outgoingRelations, ...asset.incomingRelations], referenced: Boolean(generation || asset.portfolioAssets.length) }),
-          owner: { id: asset.owner.id, handle: asset.owner.profile?.handle ?? asset.owner.id },
+          owner: asset.owner
+            ? { id: asset.owner.id, handle: asset.owner.profile?.handle ?? asset.owner.id }
+            : { id: 'retained', handle: '[deleted]' },
           portfolio: asset.portfolioAssets.map(getPortfolioAssetDto),
         }
       }))
@@ -8349,6 +8811,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     setAdminAssetArchived: async (id, archived, actor) => {
       const current = await client.mediaAsset.findUnique({ where: { id: String(id) }, include: { owner: { include: { profile: true } }, storageObject: true } })
       if (!current) return null
+      if (current.retentionRedactedAt) throw new HttpError(409, 'ASSET_RETENTION_REDACTED', 'Retention-redacted assets cannot be changed')
       if (current.deletedAt) throw new HttpError(409, 'ASSET_DELETED', 'Deleted assets must be recovered before archive changes')
       const now = new Date()
       await client.$transaction(async (transaction) => {
@@ -8363,6 +8826,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     setAdminAssetDeleted: async (id, deleted, actor, payload = {}) => {
       const current = await client.mediaAsset.findUnique({ where: { id: String(id) }, include: { owner: { include: { profile: true } }, storageObject: true } })
       if (!current) return null
+      if (current.retentionRedactedAt) throw new HttpError(409, 'ASSET_RETENTION_REDACTED', 'Retention-redacted assets cannot be recovered')
       const now = new Date()
       const cleanupRetentionDays = deleted ? (await getMediaGovernancePolicy()).retention.storageCleanupRetentionDays : null
       await client.$transaction(async (transaction) => {
@@ -8608,8 +9072,9 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       })
       const scanResult = await scanMediaAsset(asset)
       const scanJob = await createMediaScanJob(asset, scanResult)
-      const policyReviewRequired = Boolean(payload.generation.safety?.reviewRequired)
-      const effectiveScanStatus = policyReviewRequired ? 'review' : scanResult?.status ?? 'pending'
+      const outputSafetyDecision = payload.output.safety?.decision ?? payload.generation.safety?.output?.decision ?? 'review'
+      const policyReviewRequired = Boolean(payload.generation.safety?.reviewRequired) || outputSafetyDecision !== 'allow'
+      const effectiveScanStatus = outputSafetyDecision === 'block' ? 'rejected' : policyReviewRequired ? 'review' : scanResult?.status ?? 'pending'
       const updated = await client.$transaction(async (transaction) => {
         const nextAsset = await transaction.mediaAsset.update({
           where: { id: asset.id },
@@ -8636,6 +9101,9 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
               rejectionReason: scanResult?.reason ?? undefined,
               creativeReviewRequired: policyReviewRequired,
               creativeReviewReasons: payload.generation.safety?.reasons ?? [],
+              outputSafetyDecision,
+              outputSafetyClassified: payload.output.safety?.classified === true,
+              outputSafetyEvidenceHash: payload.output.safety?.evidenceHash ?? null,
               completedAt: new Date().toISOString(),
             }),
           }),
@@ -8754,8 +9222,9 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       }
       const scanResult = await scanMediaAsset(asset)
       const scanJob = await createMediaScanJob(asset, scanResult)
-      const policyReviewRequired = Boolean(payload.generation.safety?.reviewRequired)
-      const effectiveScanStatus = policyReviewRequired ? 'review' : scanResult?.status ?? 'pending'
+      const outputSafetyDecision = payload.output.safety?.decision ?? payload.generation.safety?.output?.decision ?? 'review'
+      const policyReviewRequired = Boolean(payload.generation.safety?.reviewRequired) || outputSafetyDecision !== 'allow'
+      const effectiveScanStatus = outputSafetyDecision === 'block' ? 'rejected' : policyReviewRequired ? 'review' : scanResult?.status ?? 'pending'
       const updated = await client.$transaction(async (transaction) => {
         const nextAsset = await transaction.mediaAsset.update({
           where: { id: asset.id },
@@ -8782,6 +9251,9 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
             rejectionReason: scanResult?.reason ?? undefined,
             creativeReviewRequired: policyReviewRequired,
             creativeReviewReasons: payload.generation.safety?.reasons ?? [],
+            outputSafetyDecision,
+            outputSafetyClassified: payload.output.safety?.classified === true,
+            outputSafetyEvidenceHash: payload.output.safety?.evidenceHash ?? null,
             completedAt: new Date().toISOString(),
           }),
           },
@@ -9365,11 +9837,15 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         return null
       }
       const ownerHandle = asset.owner?.profile?.handle ?? asset.owner?.id ?? null
-      const scanStatus = asObject(asObject(asset.metadata)?.security)?.scanStatus
+      const metadata = asObject(asset.metadata)
+      const security = asObject(metadata?.security)
+      const scanStatus = security?.scanStatus
+      const generatedAsset = Boolean(metadata?.creative || metadata?.ingestion)
+      const outputSafetyAllowed = !generatedAsset || security?.outputSafetyDecision === 'allow'
       if (ownerHandle !== actor.handle && !hasPermission(actor, 'admin:access')) {
         return null
       }
-      if (asset.status !== 'uploaded' || scanStatus !== 'clean' || asset.storageObject?.state !== 'available' || asset.archivedAt || asset.deletedAt) {
+      if (asset.status !== 'uploaded' || scanStatus !== 'clean' || !outputSafetyAllowed || asset.storageObject?.state !== 'available' || asset.archivedAt || asset.deletedAt) {
         return null
       }
       await recordAudit({
@@ -9385,14 +9861,40 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     },
   }
 
+  const libraryItemDto = (row) => ({
+    id: row.id,
+    title: row.title,
+    type: row.metadata?.type ?? row.sourceType,
+    source: row.metadata?.source ?? row.sourceType,
+    saves: String(row.metadata?.saves ?? 1),
+    text: row.content,
+    sourceId: row.sourceId ?? null,
+    metadata: row.metadata ?? null,
+    version: row.version,
+    deletedAt: row.deletedAt?.toISOString?.() ?? null,
+    deletionReasonCode: row.deletionReasonCode ?? null,
+  })
+  const findLibraryOwner = (actor) => client.user.findFirst({
+    where: {
+      OR: [
+        ...(actor?.id ? [{ id: String(actor.id) }] : []),
+        ...(actor?.handle ? [{ profile: { handle: actor.handle } }] : []),
+      ],
+    },
+    select: { id: true },
+  })
   const library = {
-    list: async (options = {}) => {
+    list: async (options = {}, actor) => {
+      const owner = await findLibraryOwner(actor)
+      if (!owner) return { items: [], nextCursor: null, limit: options.limit ?? 20 }
       const limit = options.limit ?? 20
       const cursor = options.cursor
         ? await client.libraryItem.findUnique({ where: { id: String(options.cursor) }, select: { id: true } })
         : null
       const rows = await client.libraryItem.findMany({
         where: {
+          userId: owner.id,
+          deletedAt: null,
           ...(options.type ? { sourceType: options.type } : {}),
           ...(options.sourceId ? { sourceId: options.sourceId } : {}),
           ...(options.search ? {
@@ -9409,16 +9911,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
       })
       const pageRows = rows.slice(0, limit)
       return {
-        items: pageRows.map((row) => ({
-        id: row.id,
-        title: row.title,
-        type: row.metadata?.type ?? row.sourceType,
-        source: row.metadata?.source ?? row.sourceType,
-        saves: String(row.metadata?.saves ?? 1),
-        text: row.content,
-        sourceId: row.sourceId ?? null,
-        metadata: row.metadata ?? null,
-        })),
+        items: pageRows.map(libraryItemDto),
         nextCursor: rows.length > limit && pageRows.length > 0 ? pageRows[pageRows.length - 1].id : null,
         limit,
       }
@@ -9445,38 +9938,67 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         resourceType: 'library_item',
         resourceId: row.id,
       })
-      return {
-        id: row.id,
-        title: row.title,
-        type: row.metadata?.type ?? row.sourceType,
-        source: row.metadata?.source ?? row.sourceType,
-        saves: String(row.metadata?.saves ?? 1),
-        text: row.content,
-        sourceId: row.sourceId ?? null,
-        metadata: row.metadata ?? null,
-      }
+      return libraryItemDto(row)
     },
     findById: async (id) => {
       const row = await client.libraryItem.findUnique({
         where: { id: String(id) },
       })
-      if (!row) {
+      if (!row || row.deletedAt) {
         return null
       }
-      return {
-        id: row.id,
-        title: row.title,
-        type: row.metadata?.type ?? row.sourceType,
-        source: row.metadata?.source ?? row.sourceType,
-        saves: String(row.metadata?.saves ?? 1),
-        text: row.content,
-        sourceId: row.sourceId ?? null,
-        metadata: row.metadata ?? null,
-      }
+      return libraryItemDto(row)
+    },
+    softDelete: async (id, payload, actor) => {
+      const owner = await findLibraryOwner(actor)
+      if (!owner) return null
+      const current = await client.libraryItem.findFirst({ where: { id: String(id), userId: owner.id } })
+      if (!current) return null
+      if (current.deletedAt) return libraryItemDto(current)
+      const deletedAt = new Date()
+      const changed = await client.libraryItem.updateMany({
+        where: { id: current.id, userId: owner.id, version: payload.expectedVersion, deletedAt: null },
+        data: { deletedAt, deletionReasonCode: payload.reasonCode, version: { increment: 1 } },
+      })
+      if (changed.count !== 1) throw new HttpError(409, 'VERSION_CONFLICT', 'Library item version is stale')
+      const row = await client.libraryItem.findUniqueOrThrow({ where: { id: current.id } })
+      await recordAudit({ actor, action: 'library.deleted', resourceType: 'library_item', resourceId: row.id, metadata: { reasonCode: payload.reasonCode, version: row.version } })
+      return libraryItemDto(row)
+    },
+    restore: async (id, payload, actor) => {
+      const owner = await findLibraryOwner(actor)
+      if (!owner) return null
+      const current = await client.libraryItem.findFirst({ where: { id: String(id), userId: owner.id } })
+      if (!current) return null
+      if (!current.deletedAt) return libraryItemDto(current)
+      const changed = await client.libraryItem.updateMany({
+        where: { id: current.id, userId: owner.id, version: payload.expectedVersion, deletedAt: { not: null } },
+        data: { deletedAt: null, deletionReasonCode: null, version: { increment: 1 } },
+      })
+      if (changed.count !== 1) throw new HttpError(409, 'VERSION_CONFLICT', 'Library item version is stale')
+      const row = await client.libraryItem.findUniqueOrThrow({ where: { id: current.id } })
+      await recordAudit({ actor, action: 'library.restored', resourceType: 'library_item', resourceId: row.id, metadata: { reasonCode: payload.reasonCode, version: row.version } })
+      return libraryItemDto(row)
+    },
+    sweepRetention: async ({ now = new Date(), limit } = {}) => {
+      const cutoff = privateLibraryRetentionCutoff(now)
+      const boundedLimit = privateLibraryRetentionSweepLimit(limit)
+      return client.$transaction(async (transaction) => {
+        const candidates = await transaction.libraryItem.findMany({
+          where: { deletedAt: { lte: cutoff } },
+          orderBy: [{ deletedAt: 'asc' }, { id: 'asc' }],
+          take: boundedLimit,
+          select: { id: true },
+        })
+        const deleted = candidates.length
+          ? await transaction.libraryItem.deleteMany({ where: { id: { in: candidates.map((item) => item.id) }, deletedAt: { lte: cutoff } } })
+          : { count: 0 }
+        return { policyId: privateLibraryRetentionContract.policyId, inspected: candidates.length, deleted: deleted.count }
+      })
     },
     findAccessibleChatContext: async (id, actor) => {
       const row = await client.libraryItem.findFirst({
-        where: { id: String(id), userId: String(actor.id) },
+        where: { id: String(id), userId: String(actor.id), deletedAt: null },
         select: { title: true, content: true },
       })
       return row ? { title: row.title, content: row.content } : null
@@ -9486,7 +10008,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         where: { id: String(id) },
         include: { user: { include: { profile: true } } },
       })
-      if (!item) {
+      if (!item || item.deletedAt) {
         return null
       }
       if (!hasPermission(actor, 'task:create')) {
@@ -9554,7 +10076,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         where: { id: String(id) },
         include: { user: { include: { profile: true } } },
       })
-      if (!item) {
+      if (!item || item.deletedAt) {
         return null
       }
       const ownerHandle = item.user?.profile?.handle ?? item.user?.id ?? null
@@ -9568,16 +10090,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
         resourceId: item.id,
       })
       return {
-        item: {
-          id: item.id,
-          title: item.title,
-          type: item.metadata?.type ?? item.sourceType,
-          source: item.metadata?.source ?? item.sourceType,
-          saves: String(item.metadata?.saves ?? 1),
-          text: item.content,
-          sourceId: item.sourceId ?? null,
-          metadata: item.metadata ?? null,
-        },
+        item: libraryItemDto(item),
         workspaceDraft: {
           title: item.title,
           seed: item.content,
@@ -10441,6 +10954,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     ...(process.env.NODE_ENV === 'production' ? {} : fallbackRepository),
     client,
     auth,
+    authCredentialRetention,
     tasks,
     posts,
     profiles,
@@ -10451,6 +10965,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     providerBudgetNotifications,
     providerLifecycleAudit,
     providerBudgetAudit,
+    providerAlertDeliveries,
     chat,
     creativeGenerations,
     creativeGenerationExecutions,
@@ -10470,8 +10985,18 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     notificationDeliveries,
     media,
     library,
+    inspiration,
     audit,
     securityEvents,
+    securityRetention,
+    riskRetention,
+    moderationRetention,
+    moderationOperationalRetention,
+    generationRetention,
+    providerLifecycleRetention,
+    mediaAssetRetention,
+    marketplaceRetention,
+    supportRetention,
     operationLeases,
     domainEvents,
     domainEventConsumers,
@@ -10479,6 +11004,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     releaseChanges,
     systemSettings,
     configResources,
+    configurationRetention,
     modelControl,
     modelRouting,
     modelGovernance,
@@ -10494,6 +11020,7 @@ const createPrismaRepository = async (fallbackRepository = {}) => {
     userAdmin,
     taskAdmin,
     communityAdmin,
+    communityRetention,
     taskLifecycleRecovery,
     developerAccess,
     webhooks,

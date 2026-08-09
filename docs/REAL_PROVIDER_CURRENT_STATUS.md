@@ -2,7 +2,7 @@
 
 This is the first decision page to read before starting any real-provider work. It compresses the current provider readiness state into one handoff: what is usable now, what is fixture-only, what remains deferred, and what requires explicit approval.
 
-Current decision: **the repository has guarded real-Provider staging runtimes, not production Provider enablement**. OpenAI Chat/Image, Google Veo, and ElevenLabs Music boundaries are default-disabled and require dedicated staging, credentials, approval, control-plane, budget, and modality-specific governance gates. Real paid acceptance requires an explicit short-lived envelope; production paid-provider enablement remains no-go.
+Current decision: **the repository has guarded real-Provider staging runtimes, not production Provider enablement**. OpenAI Chat/Image and HCAI Router Seedance video/MiniMax Music boundaries are default-disabled and require dedicated staging, credentials, approval, control-plane, budget, and modality-specific governance gates. Real paid acceptance requires an explicit short-lived envelope; production paid-provider enablement remains no-go.
 
 V1-04 now records conditional implementation-planning decisions for all four modalities in
 `docs/V1_PROVIDER_DECISION_MATRIX.md` and `config/v1-provider-matrix.json`. These selections define primary/backup
@@ -47,14 +47,14 @@ V1-24 completes the code boundary for bytes and production classification withou
 V1-25 freezes the Video contract in `server/src/creative/videoCapabilityContract.js` and
 `docs/V1_VIDEO_CAPABILITY_CONTRACT.md`. It defines text-to-video, image-to-video, and music-video product modes; closed
 720p MP4 parameters; governed input roles; asynchronous lifecycle; application-owned composition; safety, persistence,
-and USD budget boundaries; and disabled Veo/Runway catalog projections. It adds no Provider adapter, credential, HTTP
+and USD budget boundaries; and disabled Router Seedance/Runway catalog projections. It adds no Provider adapter, credential, HTTP
 client, lifecycle registration, automatic failover, real call, or production enablement.
 
-V1-26 adds `server/src/creative/videoInputAssets.js` and `server/src/creative/googleVeoProvider.js`. It resolves
+V1-26 adds `server/src/creative/videoInputAssets.js` and `server/src/creative/routerVideoProvider.js`. It resolves
 owner-visible Video assets into fixed image/audio roles; rejects invalid purpose, upload, scan, size, and magic MIME;
-attaches safe output lineage; maps a closed 720p Veo fixture request; strictly projects queued/running/terminal fixture
+attaches safe output lineage; maps a closed 720p Router Seedance fixture request; strictly projects queued/running/terminal fixture
 operations; constructs idempotent lifecycle replay; and reserves the USD estimate as generated seconds through the
-shared Provider control and cost ledger. The Veo shell remains unconfigured and product-unavailable. Its adapter is
+shared Provider control and cost ledger. The Router shell remains product-unavailable unless every staging gate passes. Its adapter is
 fixture-injectable only; HTTP, credentials, Provider operation state, lifecycle registration, output fetch, real calls,
 and production enablement remain absent or false.
 
@@ -63,40 +63,41 @@ dispatch now preserves queued state and records only a safe job id, normalized s
 hashes, and allowlisted metadata. A separately gated fixture worker can project running/terminal states through the
 shared replay ledger, ingest bounded magic-verified MP4 output, keep it scanner-private, settle or reconcile Provider
 cost, settle/refund credits, commit/release quota, recover partial side effects, time out, and cancel idempotently. The
-lifecycle and worker switches default false; no Veo HTTP/status/mutation client, credential, callback, real call, or
+lifecycle and worker switches default false; no Router credential, callback, real call, or
 production enablement exists.
 
 V1-28 replaces the local Video workspace simulation with `src/features/workspace/VideoStudioPage.tsx` and
 `src/hooks/useVideoGenerationWorkflow.ts`. The UI derives modes and parameters from the application capability catalog,
 selects ordered governed image/audio roles, creates and lists Video jobs through application APIs, polls application
 generation detail, performs owner mutations, and uses private media download contracts for clean MP4 preview/download.
-Mock execution is labeled as Mock; Veo is labeled fixture-only and Runway unavailable. Catalog failure disables
+Mock execution is labeled as Mock; Router Seedance is labeled fixture-only and Runway unavailable. Catalog failure disables
 generation. No browser code calls a Provider URL, and no Provider runtime, credential, HTTP client, real status read, or
 production switch is enabled by this UI work.
 
 V1-29 adds `config/v1-video-staging-gate.json`, `scripts/verify-v1-video-staging-gate.mjs`, and
-`docs/V1_VIDEO_STAGING_ACCEPTANCE.md`. AI-VIDEO-01 extends that gate with the guarded Vertex REST boundary for stable
-`veo-3.1-fast-generate-001`: create, fetch-operation, best-effort cancel, authenticated private GCS download, worker
-wiring, strict long-operation projection, current USD 0.08/second 720p no-audio pricing, and a one-call/four-second
-application acceptance harness. All network and lifecycle switches remain false by default. Real staging evidence is
-blocked by the Google Cloud project, short-lived access token, private GCS prefix, and approval envelope; automatic
+`docs/V1_VIDEO_STAGING_ACCEPTANCE.md`. AI-VIDEO-01 extends that gate with the guarded HCAI Router boundary for
+`seedance-2.0-fast`: task creation, polling, authenticated private content download, worker wiring, strict task
+projection, explicit unsupported cancellation, conservative application budget guards, and a one-call/four-second
+application acceptance harness. All network and lifecycle switches remain false by default. Real staging evidence
+was completed once on 2026-07-21: Router returned `SUCCESS` after about 129 seconds, charged USD 0.484, and MuseFlow
+privately ingested and scanned one valid MP4 while closing credits and quota. The temporary key was deleted. Automatic
 Runway routing and production enablement remain prohibited.
 
 V1-30 adds `server/src/creative/musicCapabilityContract.js`. It freezes instrumental and lyrics-to-song modes,
 closed duration/genre/mood/tempo/language/MP3 parameters, a three-minute maximum, application-owned asynchronous state,
 private scanner-gated output, license metadata, rights/safety/data requirements, and the USD 0.60/10/250 budget envelope.
-ElevenLabs Music v2 Enterprise and Google Lyria 3 Pro Preview are catalog-only disabled shells. Reference audio, remix,
+HCAI Router MiniMax Music 3.0 and Google Lyria 3 Pro Preview are default-disabled shells. Reference audio, remix,
 voice cloning, and TTS are explicitly unavailable.
 
-`server/src/creative/elevenLabsMusicProvider.js` maps both Music modes to official `music_v2`, validates bounded MP3
-bytes/MIME, `song-id`, duration, safe errors, generated-minute cost, and mandatory Enterprise license evidence. Its
-HTTP runtime uses `POST /v1/music` only after all dedicated staging, network, credential, rights, opt-out, evidence,
+`server/src/creative/routerMusicProvider.js` maps both Music modes to Router `music-3.0`, validates bounded MP3
+bytes/MIME, trace ID, duration, safe errors, USD 0.15 request cost, and mandatory rights evidence. Its
+HTTP runtime uses `POST /v1/music_generation` only after all dedicated staging, network, credential, rights, opt-out, evidence,
 control-plane, and budget gates pass; output bytes and credentials never enter serializable state.
 
 V1-32 wires the injected Music fixture through the shared application-owned generation path. It reserves and settles
-generated-minute Provider cost, persists owner-scoped generation history, keeps MP3 bytes only in a process-local
+request-based Provider cost, persists owner-scoped generation history, keeps MP3 bytes only in a process-local
 WeakMap, fails closed after serialization, and ingests clean fixture MP3 output into private scanner-gated media assets.
-The ElevenLabs adapter is registered only in an explicitly gated staging process. A one-call 30-second acceptance
+The Router MiniMax adapter is registered only in an explicitly gated staging process. A fixture acceptance
 harness covers application dispatch, private MP3 ingestion, scanning, license evidence, credits, quota, and cost
 closeout. Automatic backup and production enablement remain unavailable.
 
@@ -104,7 +105,7 @@ V1-33 replaces the local Music workspace simulation with `src/features/workspace
 `src/hooks/useMusicGenerationWorkflow.ts`. The UI derives modes and parameters from the application capability catalog,
 creates and lists owner-scoped Music jobs, polls application generation detail, performs owner cancel/retry mutations,
 and uses private media download contracts for clean MP3 playback and download. Mock execution is labeled as Mock;
-The browser never calls ElevenLabs directly. Application-side staging dispatch is possible only behind the guarded
+The browser never calls Router or MiniMax directly. Application-side staging dispatch is possible only behind the guarded
 runtime; no automatic Lyria routing or production switch is enabled.
 
 V1-44 freezes the corresponding four-modality content safety baseline in
@@ -149,8 +150,8 @@ Completed evidence through PR #89:
 | --- | --- | --- | --- |
 | Image | OpenAI GPT Image 2 | Replicate FLUX 1.1 Pro | Confirm OpenAI production geography, GPT Image 2 residency/ZDR, and contracted support posture; approve FLUX model terms separately. |
 | Chat | OpenAI GPT-5.6 Terra | Anthropic Claude Sonnet 5 | Configure retention controls, approve supported-country access, and accept or contract Anthropic US storage. |
-| Video | Google Veo 3.1 Fast | Runway Gen-4.5 | Confirm Veo model-specific SLA/indemnity; Runway is blocked until enterprise no-training and retention terms exist. |
-| Music | ElevenLabs Music v2 Enterprise | Google Lyria 3 Pro Preview | Obtain Enterprise Music platform/reseller/media rights; explicitly accept Lyria Preview no-SLA/no-indemnity risk. |
+| Video | HCAI Router Seedance 2.0 Fast | Runway Gen-4.5 | Confirm Router/upstream price, rights, data handling, locations, quota, safety/provenance, and SLA; Runway is independently blocked. |
+| Music | HCAI Router MiniMax Music 3.0 | Google Lyria 3 Pro Preview | Resolve MiniMax upstream plan error 2061 and approve Router/MiniMax rights; explicitly accept Lyria Preview no-SLA/no-indemnity risk. |
 
 The launch budget envelope is USD 63/day and USD 1,550/month across all four modalities. It is a fail-closed guardrail,
 not a spending approval. Provider credit auto-reload is disabled, backup budgets are independent, and budget exhaustion

@@ -8,9 +8,13 @@ Provider no-go decision.
 V1-25 freezes the Video product and Provider contract. The executable source of truth is
 `server/src/creative/videoCapabilityContract.js`.
 
-Current decision: **the contract, governed input resolver, deterministic Mock projection, and guarded Google Veo
-request/lifecycle boundary are implemented. The real adapter registers only when every staging gate is satisfied.
-Runway, automatic failover, and production enablement remain disabled**.
+Current decision: **Video generation is capability-available based on the completed 2026-07-21 Seedance end-to-end
+receipt. The contract, governed input resolver, deterministic Mock projection, and guarded HCAI Router Seedance
+request/lifecycle boundary are implemented. The real adapter becomes runtime-available when its deployment gates are satisfied.
+The MiniMax Hailuo 2.3 Router task adapter completed a credentialed staging transport acceptance on 2026-07-30 and is
+marked `staging_available`; its runtime becomes active only when the dedicated staging configuration is complete. Runway,
+automatic failover, and production enablement
+remain disabled**.
 
 The Mock path produces a deterministic governed placeholder artifact for testing and accounting. It is not a real MP4
 render and must remain visibly classified as Mock until the later Video product workflow is implemented.
@@ -19,11 +23,23 @@ render and must remain visibly classified as Mock until the later Video product 
 
 | Role | Provider | Model | Current state |
 | --- | --- | --- | --- |
-| Primary | Google | Veo 3.1 Fast (`veo-3.1-fast-generate-001`) | Guarded staging REST adapter; disabled by default |
+| Primary | HCAI Router / Jiekou AI | Seedance 2.0 Fast (`seedance-2.0-fast`) | Guarded staging REST adapter; disabled by default |
 | Backup | Runway | Gen-4.5 (`gen-4.5`) | Disabled; no-training and retention terms required |
+| Runtime candidate | HCAI Router / MiniMax | Hailuo 2.3 (`MiniMax-Hailuo-2.3`) | Async adapter and lifecycle registered; available when staging gates are configured |
+
+The executable availability projection is `capabilityAvailable=true`, `runtimeAvailableWhenConfigured=true`, and
+`productionAvailable=false`. The first value records proven product capability; the second preserves deployment-secret,
+network, lifecycle, budget, and safety gates; the third keeps the full-system launch decision separate.
 
 Both Provider projections declare only text-to-video and image-to-video support. Music video is an application-owned
 composition workflow and must not be represented as a native Provider capability. Backup routing is never automatic.
+
+MiniMax is recorded separately under `feasibleCandidates`; it does not replace the frozen primary or backup. The
+implemented boundary accepts one 6-second, 768P, 16:9 MP4. `MiniMax-Hailuo-2.3` supports text-to-video and
+image-to-video in this adapter, while `MiniMax-Hailuo-2.3-Fast` is restricted to image-to-video. Task creation,
+polling, file metadata resolution, allowlisted temporary download, MP4 validation, size limit, and SHA-256 projection
+are implemented. Cost reservation/reconciliation and shared lifecycle closeout are registered. Safety acceptance,
+rights evidence, runtime secrets, and a paid end-to-end MiniMax staging receipt are still required before production use.
 
 ## Modes And Inputs
 
@@ -46,8 +62,8 @@ composition workflow and must not be represented as a native Provider capability
 ## Lifecycle And Composition
 
 Video jobs are asynchronous and use `queued`, `running`, `completed`, `failed`, `cancelled`, or `review_required`.
-Timeout is 900 seconds with one Provider attempt. Callback or polling replay, idempotent cancellation, application-owned
-terminal records, and media ingestion are required before real traffic.
+Timeout is 900 seconds with one Provider attempt. Polling replay, explicit unsupported-cancellation handling,
+application-owned terminal records, and media ingestion are required before real traffic.
 
 Storyboards are application or Chat inputs compiled into Provider instructions. Captions, burned-in text, sidecar VTT,
 voiceover, and music synchronization are application composition stages, not unverified Provider-native features.
@@ -58,14 +74,14 @@ voiceover, and music synchronization are application composition stages, not unv
 - Real-person identity, consent, and rights evidence is required when applicable.
 - Representative frames and audio must be classified after generation; the full asset remains private until scanner
   approval.
-- C2PA/Content Credentials must be preserved when supplied.
+- Provenance metadata must be preserved when supplied; Router C2PA support is not confirmed.
 - Unknown safety or region state blocks without bypass.
 - Provider spend is separate from product credits: USD 1.20 per job, USD 20 daily, USD 500 monthly, 20 jobs per day.
 - A current estimate, Provider cap evidence, control-plane approval, and durable reservation are required before dispatch.
 
 ## Closeout
 
-V1-26 implements governed input bytes/lineage, a fixed fixture-only Veo request descriptor, strict async result
+V1-26 implements governed input bytes/lineage, a fixed fixture-only Router request descriptor, strict async result
 projection/replay construction, and generated-second cost reservation. V1-27 adds safe Provider operation state,
 registered-but-disabled fixture lifecycle behavior, output ingestion, scanner isolation, timeout/cancellation, and
 terminal accounting. V1-28 and V1-29 deliver the production Video UI and fixture staging acceptance while preserving
@@ -74,5 +90,9 @@ V1-28 implements the application-API Video workspace with capability-driven cont
 owner-scoped history, application polling/mutations, scanner-aware private preview, refresh-safe retry guidance, and
 explicit Mock/fixture/unavailable labels. V1-29 freezes and executes the 13-scenario fixture acceptance matrix in
 `config/v1-video-staging-gate.json`, including request mapping, ordered inputs, lifecycle, accounting, private release,
-failure handling, operational evidence, and rollback. AI-VIDEO-01 adds the guarded Vertex/GCS client and application
-acceptance; real staging evidence remains pending credentials and the short-lived acceptance envelope.
+failure handling, operational evidence, and rollback. AI-VIDEO-01 adds the guarded Router task/content client and
+application acceptance; real staging evidence remains pending a scoped key and the short-lived acceptance envelope.
+The MiniMax Hailuo candidate uses Router `POST /v1/video/generations`, `GET /v1/video/generations/:task_id`, and the
+authenticated `GET /v1/videos/:task_id/content` proxy. Its executable contract reports `implementationFeasible=true`,
+`lifecycleRegistered=true`, `runtimeAvailableWhenConfigured=true`, `availability=staging_available`,
+`runtimeEnabled=false`, and `productionNoGo=true`.

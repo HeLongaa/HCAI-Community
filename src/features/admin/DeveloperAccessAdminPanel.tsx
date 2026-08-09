@@ -4,10 +4,16 @@ import { SectionHeader } from '../../components/ui/SectionHeader'
 import { textFor } from '../../domain/utils'
 import { adminService } from '../../services/adminService'
 import type { DeveloperAccessControl, DeveloperAccessMetrics, DeveloperApiKeyCredential, DeveloperApiV1Contract, DeveloperServiceAccount } from '../../services/contracts'
+import { AdminActionFeedback, type AdminActionFeedbackMessage } from './AdminActionFeedback'
+import { AdminOperationConfirmation } from './AdminOperationConfirmation'
+import { downloadJsonArtifact } from './downloadAdminArtifact'
 
-type Props = { t: Record<string, string>; canRead: boolean; canManage: boolean; notify: (message: string) => void }
+type Props = { t: Record<string, string>; canRead: boolean; canManage: boolean }
+type PendingDeveloperRevoke =
+  | { kind: 'account'; account: DeveloperServiceAccount }
+  | { kind: 'key'; account: DeveloperServiceAccount; key: DeveloperApiKeyCredential }
 
-export function DeveloperAccessAdminPanel({ t, canRead, canManage, notify }: Props) {
+export function DeveloperAccessAdminPanel({ t, canRead, canManage }: Props) {
   const [control, setControl] = useState<DeveloperAccessControl | null>(null)
   const [accounts, setAccounts] = useState<DeveloperServiceAccount[]>([])
   const [metrics, setMetrics] = useState<DeveloperAccessMetrics | null>(null)
@@ -17,6 +23,8 @@ export function DeveloperAccessAdminPanel({ t, canRead, canManage, notify }: Pro
   const [ownerHandle, setOwnerHandle] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<AdminActionFeedbackMessage | null>(null)
+  const [pendingRevoke, setPendingRevoke] = useState<PendingDeveloperRevoke | null>(null)
 
   const load = useCallback(async () => {
     if (!canRead) return
@@ -45,6 +53,8 @@ export function DeveloperAccessAdminPanel({ t, canRead, canManage, notify }: Pro
   const saveControl = async (enabled = control?.enabled) => {
     if (!control || !canManage) return
     setBusy('control')
+    setError(null)
+    setFeedback(null)
     try {
       const updated = await adminService.updateDeveloperAccessControl({
         enabled: Boolean(enabled), allowedScopes: control.allowedScopes,
@@ -55,40 +65,54 @@ export function DeveloperAccessAdminPanel({ t, canRead, canManage, notify }: Pro
         reasonCode: enabled ? 'admin_enabled' : 'admin_disabled',
       })
       setControl(updated)
-      notify(textFor(t, 'Developer access control updated.', '开发者访问控制已更新。'))
+      setFeedback({ kind: 'success', text: textFor(t, 'Developer access control updated.', '开发者访问控制已更新。') })
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : textFor(t, 'Could not update control.', '无法更新控制配置。'))
+      const message = nextError instanceof Error ? nextError.message : textFor(t, 'Could not update control.', '无法更新控制配置。')
       await load()
+      setFeedback({ kind: 'error', text: message })
     } finally { setBusy(null) }
   }
 
-  const revokeAccount = async (account: DeveloperServiceAccount) => {
-    if (!canManage || !window.confirm(textFor(t, `Revoke ${account.name}?`, `撤销 ${account.name}？`))) return
-    setBusy(account.id)
+  const confirmRevoke = async () => {
+    if (!canManage || !pendingRevoke) return
+    const targetId = pendingRevoke.kind === 'account' ? pendingRevoke.account.id : pendingRevoke.key.id
+    setBusy(targetId)
+    setError(null)
+    setFeedback(null)
     try {
-      const updated = await adminService.revokeDeveloperServiceAccount(account.id, { expectedVersion: account.version, reasonCode: 'admin_incident_response' })
-      setAccounts((current) => current.map((item) => item.id === updated.id ? updated : item))
+      if (pendingRevoke.kind === 'account') {
+        const { account } = pendingRevoke
+        const updated = await adminService.revokeDeveloperServiceAccount(account.id, { expectedVersion: account.version, reasonCode: 'admin_incident_response' })
+        setAccounts((current) => current.map((item) => item.id === updated.id ? updated : item))
+      } else {
+        const { account, key } = pendingRevoke
+        await adminService.revokeDeveloperApiKey(account.id, key.id, { expectedVersion: key.version, reasonCode: 'admin_incident_response' })
+      }
       await load()
-    } catch (nextError) { setError(nextError instanceof Error ? nextError.message : 'Revoke failed') } finally { setBusy(null) }
-  }
-
-  const revokeKey = async (account: DeveloperServiceAccount, key: DeveloperApiKeyCredential) => {
-    if (!canManage || !window.confirm(textFor(t, `Revoke ${key.name}?`, `撤销 ${key.name}？`))) return
-    setBusy(key.id)
-    try {
-      await adminService.revokeDeveloperApiKey(account.id, key.id, { expectedVersion: key.version, reasonCode: 'admin_incident_response' })
-      await load()
-    } catch (nextError) { setError(nextError instanceof Error ? nextError.message : 'Revoke failed') } finally { setBusy(null) }
+      setFeedback({ kind: 'success', text: pendingRevoke.kind === 'account'
+        ? textFor(t, 'Service account revoked.', 'Service Account 已撤销。')
+        : textFor(t, 'API key revoked.', 'API Key 已撤销。') })
+      setPendingRevoke(null)
+    } catch (nextError) {
+      setFeedback({ kind: 'error', text: nextError instanceof Error ? nextError.message : textFor(t, 'Revoke failed.', '撤销失败。') })
+    } finally {
+      setBusy(null)
+    }
   }
 
   const exportSnapshot = async () => {
-    const snapshot = await adminService.exportDeveloperServiceAccounts({ search: search || null, status: status || null, ownerHandle: ownerHandle || null })
-    const url = URL.createObjectURL(new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' }))
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = `developer-access-${new Date().toISOString().slice(0, 10)}.json`
-    anchor.click()
-    URL.revokeObjectURL(url)
+    setFeedback(null)
+    try {
+      const snapshot = await adminService.exportDeveloperServiceAccounts({ search: search || null, status: status || null, ownerHandle: ownerHandle || null })
+      downloadJsonArtifact({
+        value: snapshot,
+        fileName: `developer-access-${new Date().toISOString().slice(0, 10)}.json`,
+        mimeType: 'application/json',
+      })
+      setFeedback({ kind: 'success', text: textFor(t, 'Developer access snapshot downloaded.', '开发者访问快照已下载。') })
+    } catch (nextError) {
+      setFeedback({ kind: 'error', text: nextError instanceof Error ? nextError.message : textFor(t, 'Could not export developer access.', '无法导出开发者访问数据。') })
+    }
   }
 
   if (!canRead) return null
@@ -96,6 +120,7 @@ export function DeveloperAccessAdminPanel({ t, canRead, canManage, notify }: Pro
     <section className="panel developer-admin-panel" data-testid="developer-access-admin">
       <SectionHeader eyebrow={textFor(t, 'Developer platform', '开发者平台')} title={textFor(t, 'Service account operations', 'Service Account 运营')} action={<button className="icon-button" type="button" onClick={() => void load()} title={textFor(t, 'Refresh', '刷新')}><RefreshCw size={17} /></button>} />
       {error && <div className="inline-alert error">{error}</div>}
+      <AdminActionFeedback message={feedback} />
       {control && <div className="developer-control-grid">
         <div><strong>{control.enabled ? textFor(t, 'Enabled', '已启用') : textFor(t, 'Default off', '默认关闭')}</strong><span>v{control.version}</span><button className={control.enabled ? 'ghost-button danger-button' : 'primary-button'} type="button" onClick={() => void saveControl(!control.enabled)} disabled={!canManage || busy === 'control'}><Power size={16} />{control.enabled ? textFor(t, 'Disable', '停用') : textFor(t, 'Enable', '启用')}</button></div>
         <label><span>{textFor(t, 'Accounts per user', '每用户账号数')}</span><input type="number" min="1" max="20" value={control.maxServiceAccountsPerUser} onChange={(event) => setControl({ ...control, maxServiceAccountsPerUser: Number(event.target.value) })} disabled={!canManage} /></label>
@@ -111,7 +136,7 @@ export function DeveloperAccessAdminPanel({ t, canRead, canManage, notify }: Pro
         <div><strong>{apiContract.deprecations[0] ? new Date(apiContract.deprecations[0].sunsetAt).toLocaleDateString() : textFor(t, 'None', '无')}</strong><span>{textFor(t, 'next legacy sunset', '下一个旧版 Sunset')}</span></div>
       </div>}
       <div className="developer-admin-filters"><label><span>{textFor(t, 'Owner', 'Owner')}</span><input value={ownerHandle} onChange={(event) => setOwnerHandle(event.target.value)} /></label><label><span>{textFor(t, 'Status', '状态')}</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">{textFor(t, 'All', '全部')}</option><option value="active">active</option><option value="revoked">revoked</option></select></label><label className="grow"><span>{textFor(t, 'Search', '搜索')}</span><input value={search} onChange={(event) => setSearch(event.target.value)} /></label><button className="ghost-button" type="button" onClick={() => void load()}><Search size={16} />{textFor(t, 'Apply', '查询')}</button><button className="ghost-button" type="button" onClick={() => void exportSnapshot()}><Download size={16} />JSON</button></div>
-      <div className="developer-admin-list">{accounts.map((account) => <div className="developer-admin-account" key={account.id}><div><strong>{account.name}</strong><span>@{account.owner?.handle ?? account.owner?.displayName} · {account.status} · v{account.version}</span></div><span>{account.keys.length} {textFor(t, 'keys', '个密钥')}</span><button className="icon-button" type="button" title={textFor(t, 'Revoke account', '撤销账号')} onClick={() => void revokeAccount(account)} disabled={!canManage || account.status !== 'active' || busy === account.id}><Ban size={16} /></button>{account.keys.map((key) => <div className="developer-admin-key" key={key.id}><code>{key.displayPrefix}</code><span>{key.status}</span><span>{key.usageCount} uses</span><span>{key.scopes.join(', ')}</span><button className="icon-button" type="button" title={textFor(t, 'Revoke key', '撤销密钥')} onClick={() => void revokeKey(account, key)} disabled={!canManage || key.status !== 'active' || busy === key.id}><Ban size={14} /></button></div>)}</div>)}</div>
+      <div className="developer-admin-list">{accounts.map((account) => <div className="developer-admin-account" key={account.id}><div><strong>{account.name}</strong><span>@{account.owner?.handle ?? account.owner?.displayName} · {account.status} · v{account.version}</span></div><span>{account.keys.length} {textFor(t, 'keys', '个密钥')}</span><button className="icon-button" type="button" title={textFor(t, 'Revoke account', '撤销账号')} onClick={() => setPendingRevoke({ kind: 'account', account })} disabled={!canManage || account.status !== 'active' || busy === account.id}><Ban size={16} /></button>{account.keys.map((key) => <div className="developer-admin-key" key={key.id}><code>{key.displayPrefix}</code><span>{key.status}</span><span>{key.usageCount} uses</span><span>{key.scopes.join(', ')}</span><button className="icon-button" type="button" title={textFor(t, 'Revoke key', '撤销密钥')} onClick={() => setPendingRevoke({ kind: 'key', account, key })} disabled={!canManage || key.status !== 'active' || busy === key.id}><Ban size={14} /></button></div>)}{pendingRevoke?.account.id === account.id && <AdminOperationConfirmation ariaLabel={textFor(t, 'Confirm developer credential revoke', '确认撤销开发者凭证')} title={pendingRevoke.kind === 'account' ? textFor(t, `Revoke ${pendingRevoke.account.name}?`, `撤销 ${pendingRevoke.account.name}？`) : textFor(t, `Revoke ${pendingRevoke.key.name}?`, `撤销 ${pendingRevoke.key.name}？`)} description={pendingRevoke.kind === 'account' ? textFor(t, 'All active keys under this service account will stop authenticating future API requests.', '此 Service Account 下的所有活跃密钥都将无法继续认证后续 API 请求。') : textFor(t, 'This key will stop authenticating future API requests. Other active keys remain available.', '此密钥将无法继续认证后续 API 请求，其他活跃密钥不受影响。')} confirmLabel={pendingRevoke.kind === 'account' ? textFor(t, 'Revoke account', '撤销账号') : textFor(t, 'Revoke key', '撤销密钥')} cancelLabel={textFor(t, 'Back', '返回')} onConfirm={() => void confirmRevoke()} onCancel={() => setPendingRevoke(null)} busy={busy === (pendingRevoke.kind === 'account' ? pendingRevoke.account.id : pendingRevoke.key.id)} />}</div>)}</div>
     </section>
   )
 }

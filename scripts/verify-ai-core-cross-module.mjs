@@ -19,7 +19,7 @@ const delivery = read('server/src/creative/deliveryAssets.js')
 const generationCenter = read('src/features/generations/GenerationCenterPage.tsx')
 const assetLibrary = read('src/features/assets/AssetLibraryPage.tsx')
 const useAsset = read('src/features/assets/UseCreativeAsset.tsx')
-const admin = read('src/features/admin/AdminPage.tsx')
+const admin = contract.evidence.adminInterfaces.map(read).join('\n')
 const packageJson = JSON.parse(read('package.json'))
 const checks = []
 const add = (name, pass, detail = '') => checks.push({ name, pass: Boolean(pass), detail })
@@ -41,7 +41,7 @@ add('personal summary excludes Provider dimensions', history.includes('serialize
 add('output projection includes application-only lineage and reuse decisions', history.includes('safeOutputRelation') && history.includes('sourceAssetId') && history.includes('targetAssetId') && history.includes('asset.actions?.reuse'))
 add('delivery evidence is allowlisted and immutable by value', delivery.includes('buildCreativeAssetEvidence') && delivery.includes('sourceGeneration') && delivery.includes('capturedAt'))
 add('generation center UI exposes filters sort summary export and output reuse', ['Generation summary', 'Generation sort', 'Export generation history', 'UseCreativeAsset', 'lineage links'].every((marker) => generationCenter.includes(marker)))
-add('asset library exposes lineage recovery and cross-studio reuse', ['Version & reuse lineage', 'archiveAsset', 'recoverAsset', 'hcaiAssetReuse'].every((marker) => assetLibrary.includes(marker)))
+add('asset library exposes lineage recovery and cross-studio reuse', ['Version history', 'archiveAsset', 'recoverAsset', 'hcaiAssetReuse'].every((marker) => assetLibrary.includes(marker)))
 add('library portfolio and task delivery are paired user actions', ['saveAssetToLibrary', 'addAssetToPortfolio', 'taskService.submit'].every((marker) => useAsset.includes(marker)))
 add('Admin has paired query summary export bulk and recovery operations', ['creativeGenerations', 'creativeGenerationSummary', 'exportGenerations', 'admin-generation-bulk-actions', 'admin-generation-recovery'].every((marker) => admin.includes(marker)))
 add('failure duplicate concurrency timeout and recovery evidence stays present', [

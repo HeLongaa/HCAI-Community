@@ -256,27 +256,46 @@ const strictBoolean = (value, fallback = false) => {
   return String(value).trim().toLowerCase() === 'true'
 }
 
+const notificationSenderPattern = /^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/
+
 export const buildNotificationDeliveryConfig = (source = process.env) => {
+  const production = source.NODE_ENV === 'production' || source.DEPLOYMENT_ENV === 'production'
   const emailEnabled = strictBoolean(source.NOTIFICATION_EMAIL_DELIVERY_ENABLED, false)
   const workerEnabled = strictBoolean(source.NOTIFICATION_DELIVERY_WORKER_ENABLED, false)
   const emailWebhookUrl = String(source.NOTIFICATION_EMAIL_WEBHOOK_URL ?? '').trim()
+  const emailWebhookSecret = String(source.NOTIFICATION_EMAIL_WEBHOOK_SECRET ?? '').trim()
+  const emailFrom = String(source.NOTIFICATION_EMAIL_FROM ?? '').trim()
+  const requireProviderReceipt = strictBoolean(source.NOTIFICATION_EMAIL_REQUIRE_PROVIDER_RECEIPT, production)
   if (emailWebhookUrl) {
     let parsed
     try { parsed = new URL(emailWebhookUrl) } catch { throw new Error('NOTIFICATION_EMAIL_WEBHOOK_URL must be a valid HTTPS URL') }
-    const local = source.NODE_ENV !== 'production' && ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)
+    const local = !production && ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)
     if (parsed.protocol !== 'https:' && !(local && parsed.protocol === 'http:')) {
       throw new Error('NOTIFICATION_EMAIL_WEBHOOK_URL must use HTTPS')
+    }
+    if (parsed.username || parsed.password || parsed.hash || (production && parsed.search)) {
+      throw new Error('NOTIFICATION_EMAIL_WEBHOOK_URL cannot contain credentials, fragments, or production query parameters')
     }
   }
   if (emailEnabled && !emailWebhookUrl) throw new Error('NOTIFICATION_EMAIL_DELIVERY_ENABLED requires NOTIFICATION_EMAIL_WEBHOOK_URL')
   if (workerEnabled && !emailEnabled) throw new Error('NOTIFICATION_DELIVERY_WORKER_ENABLED requires NOTIFICATION_EMAIL_DELIVERY_ENABLED=true')
+  if (emailEnabled && production && emailWebhookSecret.length < 32) {
+    throw new Error('Production notification email delivery requires NOTIFICATION_EMAIL_WEBHOOK_SECRET with at least 32 characters')
+  }
+  if (emailEnabled && production && (!notificationSenderPattern.test(emailFrom) || emailFrom.length > 254)) {
+    throw new Error('Production notification email delivery requires a valid NOTIFICATION_EMAIL_FROM address')
+  }
+  if (emailEnabled && production && !requireProviderReceipt) {
+    throw new Error('Production notification email delivery requires provider message receipts')
+  }
   return {
     email: {
       enabled: emailEnabled,
       available: emailEnabled && Boolean(emailWebhookUrl),
       webhookUrl: emailWebhookUrl || null,
-      secret: String(source.NOTIFICATION_EMAIL_WEBHOOK_SECRET ?? '').trim() || null,
-      from: String(source.NOTIFICATION_EMAIL_FROM ?? '').trim() || null,
+      secret: emailWebhookSecret || null,
+      from: emailFrom || null,
+      requireProviderReceipt,
       timeoutMs: positiveInteger(source.NOTIFICATION_EMAIL_TIMEOUT_SECONDS, 8, 30) * 1000,
     },
     workerEnabled,
@@ -408,11 +427,20 @@ export const createNotificationEmailClient = ({ source = process.env, fetchImpl 
         const response = await fetchImpl(config.email.webhookUrl, {
           method: 'POST', headers, body, signal: AbortSignal.timeout(config.email.timeoutMs),
         })
-        const receipt = response.headers?.get?.('x-message-id') ?? response.headers?.get?.('x-request-id') ?? null
-        if (response.ok) return {
-          outcome: 'sent',
-          statusCode: response.status,
-          receiptHash: receipt ? createHash('sha256').update(receipt).digest('hex') : null,
+        const messageId = String(response.headers?.get?.('x-message-id') ?? '').trim() || null
+        const requestId = String(response.headers?.get?.('x-request-id') ?? '').trim() || null
+        const receipt = messageId || requestId
+        const receiptHeader = messageId ? 'x-message-id' : requestId ? 'x-request-id' : null
+        if (response.ok) {
+          if (config.email.requireProviderReceipt && !receipt) {
+            return { outcome: 'permanent_failure', statusCode: response.status, errorCode: 'PROVIDER_RECEIPT_MISSING' }
+          }
+          return {
+            outcome: 'sent',
+            statusCode: response.status,
+            receiptHash: receipt ? createHash('sha256').update(receipt).digest('hex') : null,
+            receiptHeader,
+          }
         }
         const retryable = [408, 425, 429].includes(response.status) || response.status >= 500
         return { outcome: retryable ? 'retryable_failure' : 'permanent_failure', statusCode: response.status, errorCode: `HTTP_${response.status}` }

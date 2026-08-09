@@ -9,6 +9,7 @@ import type {
 } from '../services/contracts'
 import { creativeService } from '../services/creativeService'
 import { mediaService } from '../services/mediaService'
+import type { GenerationOperationFeedback } from './generationOperationFeedback'
 
 export type MusicGenerationState = {
   status: 'idle' | 'loading' | 'done' | 'error'
@@ -50,11 +51,12 @@ export type MusicGenerationWorkflow = {
   history: MusicGenerationHistoryState
   action: MusicGenerationActionState
   preview: MusicPreviewState
+  feedback: GenerationOperationFeedback | null
   refreshHistory: (cursor?: string | null) => Promise<void>
   selectGeneration: (id: string) => void
   runGeneration: (draft: MusicGenerationDraft) => Promise<void>
   cancelGeneration: (id: string) => Promise<void>
-  retryGeneration: (id: string) => Promise<void>
+  retryGeneration: (id: string) => Promise<boolean>
   downloadAsset: (assetId: string) => Promise<void>
   loadAudio: (assetId: string, contentType: string) => Promise<void>
   closePreview: () => void
@@ -84,18 +86,17 @@ export function useMusicGenerationWorkflow({
   accountKey,
   locale,
   requireAuth,
-  pushToast,
 }: {
   enabled: boolean
   accountKey: string
   locale: Locale
   requireAuth: () => void
-  pushToast: (message: string) => void
 }): MusicGenerationWorkflow {
   const [generation, setGeneration] = useState<MusicGenerationState>({ status: 'idle', result: null, error: null })
   const [history, setHistory] = useState<MusicGenerationHistoryState>(initialHistory)
   const [action, setAction] = useState<MusicGenerationActionState>({ type: null, targetId: null, error: null })
   const [preview, setPreview] = useState<MusicPreviewState>(initialPreview)
+  const [feedback, setFeedback] = useState<GenerationOperationFeedback | null>(null)
   const requests = useRef(new Map<string, CreateCreativeGenerationRequest>())
   const previewObjectUrl = useRef<string | null>(null)
 
@@ -154,6 +155,7 @@ export function useMusicGenerationWorkflow({
     closePreview()
     setGeneration({ status: 'idle', result: null, error: null })
     setAction({ type: null, targetId: null, error: null })
+    setFeedback(null)
     if (!enabled) {
       setHistory(initialHistory())
       return
@@ -221,13 +223,13 @@ export function useMusicGenerationWorkflow({
 
   const runGeneration = useCallback(async (draft: MusicGenerationDraft) => {
     const prompt = draft.prompt.trim()
+    setFeedback(null)
     if (!prompt) {
-      pushToast(locale === 'zh' ? '请先填写音乐提示词。' : 'Add a music prompt first.')
+      setGeneration({ status: 'error', result: null, error: locale === 'zh' ? '请先填写音乐提示词。' : 'Add a music prompt first.' })
       return
     }
     if (!enabled) {
       requireAuth()
-      pushToast(locale === 'zh' ? '请先登录后再创建音乐任务。' : 'Sign in before creating a music job.')
       return
     }
     const request: CreateCreativeGenerationRequest = {
@@ -250,16 +252,16 @@ export function useMusicGenerationWorkflow({
       } catch {
         void refreshHistory()
       }
-      pushToast(locale === 'zh' ? '音乐任务已创建。' : 'Music job created.')
+      setFeedback({ kind: 'success', text: locale === 'zh' ? '音乐任务已创建。' : 'Music job created.' })
     } catch (error) {
       if (isApiClientError(error) && error.code === 'AUTH_REQUIRED') requireAuth()
       const message = errorMessage(error, locale === 'zh' ? '音乐任务创建失败。' : 'Music generation failed.')
       setGeneration({ status: 'error', result: null, error: message })
-      pushToast(message)
     }
-  }, [enabled, locale, mergeGeneration, pushToast, refreshHistory, requireAuth])
+  }, [enabled, locale, mergeGeneration, refreshHistory, requireAuth])
 
   const cancelGeneration = useCallback(async (id: string) => {
+    setFeedback(null)
     setAction({ type: 'cancel', targetId: id, error: null })
     try {
       await creativeService.cancelGeneration(id, {
@@ -270,27 +272,24 @@ export function useMusicGenerationWorkflow({
       mergeGeneration(detail)
       setHistory((current) => ({ ...current, selected: detail }))
       setAction({ type: null, targetId: null, error: null })
-      pushToast(locale === 'zh' ? '音乐任务已取消。' : 'Music job cancelled.')
+      setFeedback({ kind: 'success', text: locale === 'zh' ? '音乐任务已取消。' : 'Music job cancelled.' })
     } catch (error) {
       const message = errorMessage(error, locale === 'zh' ? '取消失败。' : 'Cancellation failed.')
       setAction({ type: null, targetId: null, error: message })
       void refreshHistory()
-      pushToast(message)
     }
-  }, [locale, mergeGeneration, pushToast, refreshHistory])
+  }, [locale, mergeGeneration, refreshHistory])
 
   const retryGeneration = useCallback(async (id: string) => {
+    setFeedback(null)
     const request = requests.current.get(id)
     if (!request) {
       const message = locale === 'zh'
         ? '刷新后不会保留原始提示词；请根据安全预览重新填写。'
         : 'Raw prompts are not retained after refresh. Recreate the request from its safe preview.'
       setAction({ type: null, targetId: null, error: message })
-      pushToast(message)
-      return
+      return false
     }
-    const confirmed = window.confirm(locale === 'zh' ? '确认使用相同输入重试此音乐任务？' : 'Retry this music job with the same inputs?')
-    if (!confirmed) return
     setAction({ type: 'retry', targetId: id, error: null })
     try {
       const result = await creativeService.retryGeneration(id, {
@@ -305,13 +304,13 @@ export function useMusicGenerationWorkflow({
       mergeGeneration(detail)
       setHistory((current) => ({ ...current, selected: detail }))
       setAction({ type: null, targetId: null, error: null })
-      pushToast(locale === 'zh' ? '已创建音乐重试任务。' : 'Music retry job created.')
+      return true
     } catch (error) {
       const message = errorMessage(error, locale === 'zh' ? '重试失败。' : 'Retry failed.')
       setAction({ type: null, targetId: null, error: message })
-      pushToast(message)
+      return false
     }
-  }, [locale, mergeGeneration, pushToast])
+  }, [locale, mergeGeneration])
 
   const resolveDownload = useCallback(async (assetId: string) => {
     const contract = await mediaService.createDownload(assetId)
@@ -349,11 +348,12 @@ export function useMusicGenerationWorkflow({
   }, [closePreview, locale, resolveDownload])
 
   const downloadAsset = useCallback(async (assetId: string) => {
+    setFeedback(null)
     setAction({ type: 'download', targetId: assetId, error: null })
     try {
       const resolved = await resolveDownload(assetId)
       if (!resolved.url) {
-        pushToast(locale === 'zh' ? `下载合约已就绪：${resolved.contract.asset.fileName}` : `Download contract ready: ${resolved.contract.asset.fileName}`)
+        setFeedback({ kind: 'success', text: locale === 'zh' ? `下载合约已就绪：${resolved.contract.asset.fileName}` : `Download contract ready: ${resolved.contract.asset.fileName}` })
       } else {
         const link = document.createElement('a')
         link.href = resolved.url
@@ -362,20 +362,21 @@ export function useMusicGenerationWorkflow({
         if (!resolved.objectUrl) link.target = '_blank'
         link.click()
         if (resolved.objectUrl) URL.revokeObjectURL(resolved.url)
+        setFeedback({ kind: 'success', text: locale === 'zh' ? `已开始下载：${resolved.contract.asset.fileName}` : `Download started: ${resolved.contract.asset.fileName}` })
       }
       setAction({ type: null, targetId: null, error: null })
     } catch (error) {
       const message = errorMessage(error, locale === 'zh' ? '下载失败。' : 'Download failed.')
       setAction({ type: null, targetId: null, error: message })
-      pushToast(message)
     }
-  }, [locale, pushToast, resolveDownload])
+  }, [locale, resolveDownload])
 
   return {
     generation,
     history,
     action,
     preview,
+    feedback,
     refreshHistory,
     selectGeneration,
     runGeneration,

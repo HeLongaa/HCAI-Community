@@ -16,10 +16,11 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import type { InspirationItem, Page, PlaygroundMode, SimulateAction, Task } from '../../domain/types'
+import type { InspirationItem, Page, PlaygroundMode, Task } from '../../domain/types'
 import { isZhCopy, textFor } from '../../domain/utils'
 import { isApiClientError } from '../../services/apiClient'
 import { chatService } from '../../services/chatService'
+import type { ChatRuntimeReadinessState } from '../../hooks/useChatRuntimeReadiness'
 import type {
   ApiChatConversation,
   ApiChatInputAsset,
@@ -30,17 +31,19 @@ import type {
   ChatTurnStatus,
 } from '../../services/contracts'
 import { CreativeCostPreview } from './CreativeCostPreview'
+import { ActionFeedback, type ActionFeedbackMessage } from '../../components/ui/ActionFeedback'
+import { OperationConfirmation } from '../../components/ui/OperationConfirmation'
 
 type ChatPageProps = {
   t: Record<string, string>
   setPage: (page: Page) => void
   openWorkspace?: (workspace: PlaygroundMode) => void
   signedIn: boolean
+  runtimeReadiness: ChatRuntimeReadinessState
   requireAuth: () => void
   tasks: Task[]
   libraryItems: InspirationItem[]
   openModerationAppeal: (moderationDecisionId: string) => void
-  simulateAction: SimulateAction
 }
 
 type RequestState = {
@@ -100,11 +103,11 @@ export function ChatPage({
   setPage,
   openWorkspace,
   signedIn,
+  runtimeReadiness,
   requireAuth,
   tasks,
   libraryItems,
   openModerationAppeal,
-  simulateAction,
 }: ChatPageProps) {
   const isZh = isZhCopy(t)
   const [mode, setMode] = useState<ChatMode>('assistant')
@@ -132,15 +135,21 @@ export function ChatPage({
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [loadingAssets, setLoadingAssets] = useState(false)
   const [deletingConversationId, setDeletingConversationId] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<ApiChatConversation | null>(null)
+  const [deleteFeedback, setDeleteFeedback] = useState<ActionFeedbackMessage | null>(null)
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null)
   const [stopping, setStopping] = useState(false)
   const [requestState, setRequestState] = useState<RequestState>({ status: 'idle', error: null, moderationDecisionId: null })
+  const [historyOpen, setHistoryOpen] = useState(true)
+  const [contextOpen, setContextOpen] = useState(true)
   const abortRef = useRef<AbortController | null>(null)
   const streamGenerationRef = useRef(0)
   const latestMessageRef = useRef<HTMLDivElement>(null)
 
   const selectedConversation = conversations.find((item) => item.id === selectedConversationId) ?? null
   const isStreaming = requestState.status === 'streaming' || requestState.status === 'queued'
+  const runtimeReady = runtimeReadiness.status === 'ready' && runtimeReadiness.data?.availability !== 'unavailable'
+  const runtimeBlocksInteraction = signedIn && !runtimeReady
   const contextOptions = useMemo(() => [
     ...tasks.map((task) => ({
       reference: { type: 'task' as const, id: String(task.id) },
@@ -153,6 +162,20 @@ export function ChatPage({
       detail: textFor(t, `Library · ${item.type}`, `灵感库 · ${item.type}`),
     }]),
   ], [libraryItems, t, tasks])
+
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem('hcaiInspirationWorkspaceDraft')
+      if (!raw) return
+      const workspaceDraft = JSON.parse(raw) as { itemId?: string; seed?: string }
+      if (!workspaceDraft.itemId || !libraryItems.some((item) => String(item.id) === workspaceDraft.itemId)) return
+      setSelectedContext([{ type: 'library_item', id: workspaceDraft.itemId }])
+      setDraft(workspaceDraft.seed ?? '')
+      window.sessionStorage.removeItem('hcaiInspirationWorkspaceDraft')
+    } catch {
+      window.sessionStorage.removeItem('hcaiInspirationWorkspaceDraft')
+    }
+  }, [libraryItems])
 
   const promptStarters = isZh
     ? [
@@ -251,6 +274,7 @@ export function ChatPage({
       requireAuth()
       return null
     }
+    if (!runtimeReady) return null
     setRequestState({ status: 'idle', error: null, moderationDecisionId: null })
     try {
       const conversation = await chatService.createConversation(mode)
@@ -295,9 +319,8 @@ export function ChatPage({
   }
 
   const deleteConversation = async (conversation: ApiChatConversation) => {
-    const confirmed = window.confirm(textFor(t, `Delete “${conversation.title}”? This cannot be undone.`, `删除“${conversation.title}”？此操作无法撤销。`))
-    if (!confirmed) return
     setDeletingConversationId(conversation.id)
+    setDeleteFeedback(null)
     try {
       await chatService.deleteConversation(conversation.id)
       const remaining = conversations.filter((item) => item.id !== conversation.id)
@@ -306,13 +329,10 @@ export function ChatPage({
         setSelectedConversationId(remaining[0]?.id ?? null)
         setMessages([])
       }
-      simulateAction(textFor(t, 'Conversation deleted.', '对话已删除。'))
+      setPendingDelete(null)
+      setDeleteFeedback({ kind: 'success', text: textFor(t, 'Conversation deleted.', '对话已删除。') })
     } catch (error) {
-      setRequestState({
-        status: 'failed',
-        error: isApiClientError(error) ? error.message : textFor(t, 'Could not delete the conversation.', '无法删除对话。'),
-        moderationDecisionId: null,
-      })
+      setDeleteFeedback({ kind: 'error', text: isApiClientError(error) ? error.message : textFor(t, 'Could not delete the conversation.', '无法删除对话。') })
     } finally {
       setDeletingConversationId(null)
     }
@@ -373,6 +393,7 @@ export function ChatPage({
       requireAuth()
       return
     }
+    if (!runtimeReady) return
     const conversation = selectedConversation ?? await createConversation()
     if (!conversation) return
     const now = new Date().toISOString()
@@ -494,19 +515,22 @@ export function ChatPage({
 
   return (
     <section className="chat-workspace" data-testid="chat-workspace">
-      <aside className="chat-history-panel" aria-label={textFor(t, 'Conversation history', '对话历史')}>
+      {historyOpen && <aside className="chat-history-panel" aria-label={textFor(t, 'Conversation history', '对话历史')}>
         <div className="chat-panel-heading">
           <div>
             <span className="eyebrow">{textFor(t, 'History', '历史')}</span>
             <h2>{textFor(t, 'Conversations', '对话')}</h2>
           </div>
-          <button className="icon-button" type="button" title={textFor(t, 'New conversation', '新建对话')} aria-label={textFor(t, 'New conversation', '新建对话')} onClick={() => void createConversation()}>
+          <button className="icon-button" type="button" disabled={runtimeBlocksInteraction} title={textFor(t, 'Start chat from history', '从历史启动对话')} aria-label={textFor(t, 'Start chat from history', '从历史启动对话')} onClick={() => void createConversation()}>
             <MessageSquarePlus size={18} />
+          </button>
+          <button className="icon-button" type="button" title={textFor(t, 'Close history', '关闭历史')} aria-label={textFor(t, 'Close history', '关闭历史')} onClick={() => setHistoryOpen(false)}>
+            <X size={18} />
           </button>
         </div>
         <label className="chat-mode-field">
           <span>{textFor(t, 'New conversation mode', '新对话模式')}</span>
-          <select value={mode} onChange={(event) => setMode(event.target.value as ChatMode)} disabled={isStreaming}>
+          <select value={mode} onChange={(event) => setMode(event.target.value as ChatMode)} disabled={isStreaming || runtimeBlocksInteraction}>
             {(Object.entries(modeLabels) as Array<[ChatMode, [string, string]]>).map(([value, label]) => (
               <option value={value} key={value}>{textFor(t, label[0], label[1])}</option>
             ))}
@@ -532,14 +556,33 @@ export function ChatPage({
                 <strong>{conversation.title}</strong>
                 <span>{textFor(t, modeLabels[conversation.mode][0], modeLabels[conversation.mode][1])} · {formatDate(conversation.lastMessageAt, isZh)}</span>
               </button>
-              <button className="chat-delete-button" type="button" disabled={isStreaming || deletingConversationId === conversation.id} title={textFor(t, 'Delete conversation', '删除对话')} aria-label={textFor(t, `Delete ${conversation.title}`, `删除 ${conversation.title}`)} onClick={() => void deleteConversation(conversation)}>
+              <button className="chat-delete-button" type="button" disabled={isStreaming || deletingConversationId === conversation.id} title={textFor(t, 'Delete conversation', '删除对话')} aria-label={textFor(t, `Delete ${conversation.title}`, `删除 ${conversation.title}`)} onClick={() => {
+                setDeleteFeedback(null)
+                setPendingDelete(conversation)
+              }}>
                 {deletingConversationId === conversation.id ? <LoaderCircle className="spin" size={15} /> : <Trash2 size={15} />}
               </button>
             </div>
           ))}
+          {pendingDelete && (
+            <div className="chat-delete-confirmation">
+              <OperationConfirmation
+                ariaLabel={textFor(t, 'Confirm conversation deletion', '确认删除对话')}
+                title={textFor(t, `Delete “${pendingDelete.title}”?`, `删除“${pendingDelete.title}”？`)}
+                description={textFor(t, 'This permanently deletes the conversation and its messages. This action cannot be undone.', '这会永久删除该对话及其中的消息，且无法撤销。')}
+                confirmLabel={deletingConversationId === pendingDelete.id ? textFor(t, 'Deleting', '正在删除') : textFor(t, 'Delete conversation', '删除对话')}
+                cancelLabel={textFor(t, 'Back', '返回')}
+                onConfirm={() => void deleteConversation(pendingDelete)}
+                onCancel={() => setPendingDelete(null)}
+                busy={deletingConversationId === pendingDelete.id}
+                compact
+              />
+            </div>
+          )}
+          <ActionFeedback message={deleteFeedback} className="chat-delete-feedback" />
           {conversationCursor && <button className="chat-load-more" type="button" disabled={loadingConversations} onClick={() => void loadMoreConversations()}>{textFor(t, 'Load more', '加载更多')}</button>}
         </div>
-      </aside>
+      </aside>}
 
       <div className="chat-main-panel">
         <header className="chat-main-header">
@@ -547,10 +590,23 @@ export function ChatPage({
             <span className="eyebrow">{textFor(t, 'Chat workspace', '对话工作台')}</span>
             <h2>{selectedConversation?.title ?? t.chatTitle}</h2>
           </div>
-          <span className={`chat-connection-status ${isStreaming ? 'streaming' : ''}`} role="status" aria-live="polite">
-            {isStreaming && <LoaderCircle className="spin" size={14} />}
-            {isStreaming ? textFor(t, 'Streaming', '生成中') : textFor(t, 'Mock provider', 'Mock Provider')}
-          </span>
+          <div className="chat-main-actions">
+            <button type="button" disabled={runtimeBlocksInteraction} title={textFor(t, 'New conversation', '新建对话')} aria-label={textFor(t, 'New conversation', '新建对话')} onClick={() => void createConversation()}>
+              <MessageSquarePlus size={16} />{textFor(t, 'New', '新建')}
+            </button>
+            <button type="button" onClick={() => setHistoryOpen((current) => !current)}><History size={16} />{textFor(t, 'History', '历史')}</button>
+            <button type="button" onClick={() => setContextOpen((current) => !current)}><Paperclip size={16} />{textFor(t, 'Inputs', '输入')}</button>
+            <span className={`chat-connection-status ${isStreaming ? 'streaming' : ''}`} role="status" aria-live="polite">
+              {(isStreaming || runtimeReadiness.status === 'loading') && <LoaderCircle className="spin" size={14} />}
+              {isStreaming
+                ? textFor(t, 'Streaming', '生成中')
+                : runtimeReadiness.status === 'loading'
+                  ? textFor(t, 'Checking', '检查中')
+                  : runtimeReady
+                    ? textFor(t, 'Ready', '已就绪')
+                    : textFor(t, 'Unavailable', '不可用')}
+            </span>
+          </div>
         </header>
 
         <div className="chat-messages" role="log" aria-label={textFor(t, 'Chat messages', '对话消息列表')} aria-live="polite" aria-busy={isStreaming}>
@@ -558,11 +614,11 @@ export function ChatPage({
           {!loadingMessages && messages.length === 0 && (
             <div className="chat-welcome">
               <Bot size={28} />
-              <h3>{textFor(t, 'What are we making?', '今天想做什么？')}</h3>
-              <p>{textFor(t, 'Draft prompts, scripts, task briefs, or refine an idea with saved project context.', '可以起草提示词、脚本和任务需求，也可以结合已保存的项目上下文完善想法。')}</p>
+              <h3>{textFor(t, 'Describe what you need', '描述你要完成的事情')}</h3>
+              <p>{textFor(t, 'Refine a prompt, plan a task, or draft a storyboard. Add project inputs when context matters.', '可以优化提示词、规划任务或起草分镜；需要时再加入项目素材和上下文。')}</p>
               <div className="chat-starter-list">
                 {promptStarters.map(([title, text]) => (
-                  <button type="button" key={title} onClick={() => setDraft(text)}>
+                  <button type="button" disabled={runtimeBlocksInteraction} key={title} onClick={() => setDraft(text)}>
                     <strong>{title}</strong><span>{text}</span>
                   </button>
                 ))}
@@ -589,6 +645,22 @@ export function ChatPage({
           <div aria-hidden="true" ref={latestMessageRef} />
         </div>
 
+        {runtimeBlocksInteraction && (
+          <div className="chat-request-notice failed chat-runtime-notice" role="status">
+            <AlertTriangle size={18} />
+            <div>
+              <strong>{runtimeReadiness.status === 'loading'
+                ? textFor(t, 'Checking Chat runtime', '正在检查对话运行来源')
+                : textFor(t, 'Chat is unavailable', '对话暂不可用')}</strong>
+              <span>{runtimeReadiness.status === 'loading'
+                ? textFor(t, 'Verifying the current model route.', '正在验证当前模型路由。')
+                : runtimeReadiness.status === 'error'
+                  ? textFor(t, 'Runtime status could not be verified. Try again later.', '无法确认运行来源状态，请稍后重试。')
+                  : textFor(t, 'No approved Chat model is currently available.', '当前没有可用且已批准的对话模型。')}</span>
+            </div>
+          </div>
+        )}
+
         {(requestState.error || requestState.status === 'blocked' || requestState.status === 'interrupted') && (
           <div className={`chat-request-notice ${requestState.status}`} role="alert">
             {requestState.status === 'blocked' ? <ShieldAlert size={18} /> : <AlertTriangle size={18} />}
@@ -606,6 +678,15 @@ export function ChatPage({
                 <RefreshCcw size={16} />
               </button>
             )}
+            <button
+              className="icon-button chat-notice-dismiss"
+              type="button"
+              title={textFor(t, 'Dismiss message', '关闭提示')}
+              aria-label={textFor(t, 'Dismiss message', '关闭提示')}
+              onClick={() => setRequestState({ status: 'idle', error: null, moderationDecisionId: null })}
+            >
+              <X size={15} />
+            </button>
           </div>
         )}
 
@@ -635,9 +716,9 @@ export function ChatPage({
             }}
             placeholder={textFor(t, 'Ask for a prompt, script, brief, or revision...', '输入提示词、脚本、任务需求或修改意见...')}
             rows={2}
-            disabled={isStreaming}
+            disabled={isStreaming || runtimeBlocksInteraction}
           />
-          <CreativeCostPreview t={t} workspace="chat" mode={mode} />
+          {runtimeReady && <CreativeCostPreview t={t} workspace="chat" mode={mode} />}
           <div className="chat-composer-footer">
             <span id="chat-composer-count">{draft.length}/4000</span>
             {isStreaming ? (
@@ -646,7 +727,7 @@ export function ChatPage({
                 {textFor(t, 'Stop', '停止')}
               </button>
             ) : (
-              <button className="primary-button" type="button" disabled={!draft.trim()} onClick={() => void sendMessage()}>
+              <button className="primary-button" type="button" disabled={!draft.trim() || runtimeBlocksInteraction} onClick={() => void sendMessage()}>
                 <Send size={17} />
                 {textFor(t, 'Send', '发送')}
               </button>
@@ -655,13 +736,14 @@ export function ChatPage({
         </div>
       </div>
 
-      <aside className="chat-context-panel" aria-label={textFor(t, 'Chat inputs', '对话输入')}>
+      {contextOpen && <aside className="chat-context-panel" aria-label={textFor(t, 'Chat inputs', '对话输入')}>
         <div className="chat-panel-heading">
           <div>
             <span className="eyebrow">{textFor(t, 'Grounding', '上下文')}</span>
             <h2>{textFor(t, 'Inputs', '输入')}</h2>
           </div>
           <span className="chat-input-count">{selectedAssetIds.length + selectedContext.length}/10</span>
+          <button className="icon-button" type="button" title={textFor(t, 'Close inputs', '关闭输入')} aria-label={textFor(t, 'Close inputs', '关闭输入')} onClick={() => setContextOpen(false)}><X size={18} /></button>
         </div>
 
         <details open>
@@ -708,7 +790,7 @@ export function ChatPage({
         <button className="ghost-button chat-workspace-link" type="button" onClick={() => setPage('tasks')}>
           {textFor(t, 'Open Task Plaza', '打开任务广场')}
         </button>
-      </aside>
+      </aside>}
     </section>
   )
 }

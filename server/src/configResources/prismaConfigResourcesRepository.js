@@ -21,6 +21,7 @@ const taskRuleDto = (row) => row ? ({
   deletedAt: row.deletedAt?.toISOString() ?? null,
   updatedAt: row.updatedAt.toISOString(),
 }) : null
+const lockResource = (db, id) => db.$queryRawUnsafe('SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext($1))', `configuration-resource:${id}`)
 
 export const createPrismaConfigResourcesRepository = (client, { recordAudit } = {}) => ({
   list: async (kind, options) => {
@@ -180,6 +181,7 @@ export const createPrismaConfigResourcesRepository = (client, { recordAudit } = 
   publish: async (id, version, payload) => {
     try {
       return await client.$transaction(async (transaction) => {
+        await lockResource(transaction, String(id))
         const resource = await transaction.configResource.findUnique({ where: { id: String(id) } })
         if (!resource || resource.deletedAt || resource.version !== version) return null
         const snapshot = payload.snapshot ?? { title: resource.title, description: resource.description, value: resource.draftValue }

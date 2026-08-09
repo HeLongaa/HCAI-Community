@@ -72,3 +72,27 @@ test('seed operation leases recover expired leases', async () => {
   assert.equal(recovered.recoveredExpired, true)
   assert.equal(recovered.ownerId, 'worker-b')
 })
+
+test('seed operation lease retention prunes only a bounded expired or released prefix after seven days', async () => {
+  const repository = createSeedRepository()
+  const released = await repository.operationLeases.acquire({ key: 'retention-released', ownerId: 'worker-a', ttlSeconds: 60 })
+  await repository.operationLeases.release({ key: released.key, token: released.token })
+  await repository.operationLeases.acquire({ key: 'retention-expired', ownerId: 'worker-b', ttlSeconds: 1 })
+  await repository.operationLeases.acquire({ key: 'retention-fresh', ownerId: 'worker-c', ttlSeconds: 60 })
+  const base = new Date(released.releasedAt ?? Date.now())
+
+  const premature = await repository.operationLeases.sweepRetention({ now: new Date(base.getTime() + 6 * 86_400_000), limit: 10 })
+  assert.equal(premature.deleted, 0)
+
+  const first = await repository.operationLeases.sweepRetention({ now: new Date(base.getTime() + 8 * 86_400_000), limit: 1 })
+  assert.equal(first.policyId, 'lease_expiry_plus_7d')
+  assert.equal(first.deleted, 1)
+  const second = await repository.operationLeases.sweepRetention({ now: new Date(base.getTime() + 8 * 86_400_000), limit: 1 })
+  assert.equal(second.deleted, 1)
+  const third = await repository.operationLeases.sweepRetention({ now: new Date(base.getTime() + 8 * 86_400_000), limit: 1 })
+  assert.equal(third.deleted, 1)
+
+  const reacquired = await repository.operationLeases.acquire({ key: 'retention-released', ownerId: 'worker-d', ttlSeconds: 60 })
+  assert.equal(reacquired.acquired, true)
+  assert.equal(reacquired.recoveredExpired, false)
+})

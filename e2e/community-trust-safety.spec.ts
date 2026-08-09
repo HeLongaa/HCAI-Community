@@ -50,18 +50,28 @@ test('community UI reports a post and independent appeal review restores public 
 })
 
 test('community report form remains bounded on mobile', async ({ page, request }) => {
+  const owner = await login(request, 'taskops')
+  const post = await apiData<{ id: string }>(request.post(`${apiBaseUrl}/api/posts`, {
+    headers: authHeaders(owner.accessToken),
+    data: {
+      title: `Community mobile report ${Date.now()}`,
+      body: 'A public community post for the mobile report layout regression.',
+      category: 'Questions',
+      tag: 'Safety',
+      excerpt: 'Mobile report target.',
+    },
+  }))
   await page.setViewportSize({ width: 390, height: 844 })
   await signInPage(page, request, 'promptlin')
   await page.goto('/')
   await page.getByRole('button', { name: 'Toggle navigation' }).click()
   await page.getByTestId('nav-community').click()
-  const topics = page.locator('[data-testid^="community-topic-"]')
-  const count = await topics.count()
-  expect(count).toBeGreaterThan(0)
-  await topics.first().locator('.topic-title-button').click()
-  const reportButtons = page.locator('[data-testid^="community-report-post-"]')
-  expect(await reportButtons.count()).toBe(1)
-  await reportButtons.click()
+  const topic = page.getByTestId(`community-topic-${post.id}`)
+  await expect(topic).toBeVisible()
+  await topic.locator('.topic-title-button').click()
+  const reportButton = page.getByTestId(`community-report-post-${post.id}`)
+  await expect(reportButton).toBeVisible()
+  await reportButton.click()
   const panel = page.getByTestId('community-report-panel')
   await expect(panel).toBeVisible()
   const box = await panel.boundingBox()

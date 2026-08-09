@@ -4,8 +4,9 @@ This is the human-readable decision record for V1-04. The machine-readable sourc
 `config/v1-provider-matrix.json`, and `npm run test:v1-providers` prevents the provider, budget, legal, and runtime
 guardrails from drifting silently.
 
-Official provider pages were reviewed on **2026-07-11**. Prices are public list prices in USD and exclude taxes,
-negotiated discounts, storage, egress, residency uplifts, support, and other contract-specific charges unless stated.
+Provider evidence was reviewed through **2026-07-21**. Older unchanged sources retain their individual access dates.
+Prices are public list prices in USD unless explicitly marked unconfirmed; they exclude taxes, negotiated discounts,
+storage, egress, residency uplifts, support, and other contract-specific charges.
 
 ## Decision Status
 
@@ -25,8 +26,8 @@ The decision is **conditionally approved for implementation planning only**.
 | --- | --- | --- | --- |
 | Image | OpenAI GPT Image 2 (`openai-gpt-image-2`) | Replicate FLUX 1.1 Pro (`replicate-flux-1-1-pro`) | OpenAI has the clearer rights/data path and broader generation/editing surface. Replicate preserves the existing asynchronous staging-shell investment as a separately approved backup. |
 | Chat | OpenAI GPT-5.6 Terra (`openai-gpt-5-6-terra`) | Anthropic Claude Sonnet 5 (`anthropic-claude-sonnet-5`) | Terra is the cost/quality baseline for Responses streaming. Sonnet 5 is the independent prompt/tool/schema fallback. |
-| Video | Google Veo 3.1 Fast (`google-veo-3-1-fast`) | Runway Gen-4.5 (`runway-gen-4-5`) | Veo is GA, supports C2PA, and has a documented US region. Runway is blocked until enterprise no-training and retention terms exist. |
-| Music | ElevenLabs Music v2 Enterprise (`elevenlabs-music-v2-enterprise`) | Google Lyria 3 Pro Preview (`google-lyria-3-pro-preview`) | Eleven Music has the required full-song API, but only an Enterprise Music contract can grant the platform rights V1 needs. Lyria is a Preview-only backup with no SLA or indemnity. |
+| Video | HCAI Router Seedance 2.0 Fast (`hcai-router-seedance-2-fast`) | Runway Gen-4.5 (`runway-gen-4-5`) | Router task and private-content APIs are implemented, but rights, retention, training, region, provenance support, quota, and SLA remain unconfirmed. MiniMax Hailuo 2.3 has a successful staging transport receipt but is not an enabled production backup. Runway is independently blocked. |
+| Music | HCAI Router MiniMax Music 3.0 (`hcai-router-minimax-music-3`) | Google Lyria 3 Pro Preview (`google-lyria-3-pro-preview`) | Router exposes the required full-song API at USD 0.15/request. The adapter is complete, but the current MiniMax upstream account rejects Music 3.0 with plan error 2061. Lyria is a Preview-only backup with no SLA or indemnity. |
 
 ## Budget Envelope
 
@@ -36,7 +37,7 @@ The envelope is a launch guardrail, not a spending approval. Provider-side auto-
 | --- | ---: | --- | ---: | ---: | ---: | ---: |
 | Image | 4 | GPT Image 2, medium 1024x1024, about $0.053/output plus input | 100 | $0.25 | $8 | $200 |
 | Chat | 8 | 2K input + 1K output Terra turn, about $0.020 | 1,000 | $0.10 | $25 | $600 |
-| Video | 2 | Veo 3.1 Fast, 8 seconds, about $0.80 | 20 | $1.20 | $20 | $500 |
+| Video | 2 | Router price unconfirmed; reconcile actual usage after staging | 20 | $1.20 | $20 | $500 |
 | Music | 2 | Eleven Music, 3 minutes, about $0.45 | 20 | $0.60 | $10 | $250 |
 | **Total** |  |  |  |  | **$63** | **$1,550** |
 
@@ -118,20 +119,20 @@ conversation history, and error mapping must pass parity tests before backup act
 
 ## Video Decision
 
-### Primary: Google Veo 3.1 Fast
+### Primary: HCAI Router Seedance 2.0 Fast
 
-- Model: `veo-3.1-fast-generate-001`, selected for the $0.10/second 720p price and faster turnaround.
-- Lifecycle: provider operation polling must use the existing durable lease, bounded retry, and stop-condition design.
-  Current cancellation behavior must be verified during the adapter task.
-- Capability: text/image input, generated video with audio, and C2PA Content Credentials. C2PA metadata must be
-  preserved through application storage and delivery.
-- Region and limits: the reviewed GA model card documents `us-central1` and 50 regional online prediction requests per
-  minute. The app starts at two concurrent jobs.
-- Rights/data: Generated Output is Customer Data and Google does not assert ownership in new Output IP. Google does not
-  train on Customer Data without permission. Abuse logging and 24-hour in-memory caching rules still require explicit
-  configuration and review.
-- SLA: the reviewed Vertex AI SLA did not clearly identify the publisher generative-video model as a covered service.
-  Model-specific coverage, support, and Provisioned Throughput must be decided in writing.
+- Model: `seedance-2.0-fast` through `https://router.hctopup.com`.
+- Lifecycle: create with `POST /v1/video/generations`, poll with `GET /v1/video/generations/{task_id}`, and fetch bytes
+  only through `GET /v1/videos/{task_id}/content` before copying to the private media library.
+- Cancellation: Router exposes no public video cancellation endpoint. The application returns a real unsupported error
+  and must not change generation, operation, or billing state.
+- Price: no reliable public Router unit price is recorded. The USD caps are conservative application guards, and real
+  usage must be reconciled after the single staging call.
+- Rights/data/region: commercial use, output rights, training, retention, deletion, processing locations, and upstream
+  terms are unconfirmed. Sensitive content and production remain blocked.
+- Safety/SLA: native filters, media-safety enforcement, C2PA support, quota, support, and SLA require an archived
+  Router/upstream responsibility contract. Application rights checks, human review, closed response mapping, and
+  fail-closed behavior remain mandatory; the application does not duplicate upstream output/media scanning.
 
 ### Backup: Runway Gen-4.5
 
@@ -144,25 +145,37 @@ conversation history, and error mapping must pass parity tests before backup act
 - Attribution: the API terms require applicable customer UI to display Powered by Runway and require protective end-user
   terms. Product/legal must accept both.
 
+### Feasible candidate: HCAI Router MiniMax Hailuo 2.3
+
+- Models: `MiniMax-Hailuo-2.3` for text-to-video or image-to-video and `MiniMax-Hailuo-2.3-Fast` for image-to-video only.
+- API: create with Router `POST /v1/video/generations`, poll with `GET /v1/video/generations/:task_id`, and download
+  through authenticated `GET /v1/videos/:task_id/content`; Router performs the MiniMax-native conversion upstream.
+- Implemented boundary: one 6-second, 768P, 16:9 MP4 with response limits, authenticated proxy isolation, magic MIME
+  validation, SHA-256 projection, and no Provider CDN URL exposed to the application.
+- Decision: technically feasible, HTTP-adapted, lifecycle-registered, staging-transport accepted, and marked
+  `staging_available`. The 2026-07-30 acceptance produced one 2,241,258-byte H.264 MP4 at 1366x768 and used 136,986
+  Router quota units. On 2026-08-04, one six-second target-staging application call completed with real PostgreSQL and
+  S3-compatible storage, producing one 748,679-byte MP4 with exact byte-identity ingestion, owner isolation, and
+  accounting closure. Temporary output-safety and media-scan fixtures were explicitly scoped to this acceptance, and
+  the bounded credential was disabled immediately afterward. It is not production-approved or an automatic fallback.
+  Output-content and media-safety enforcement are owned by Router/upstream Provider per the 2026-08-04 product decision;
+  the application must archive that responsibility contract and fail closed on rejected, unknown, malformed, timed-out,
+  or unavailable upstream results. Rights/data/region/SLA evidence and cost reconciliation remain blockers.
+
 OpenAI Sora 2 is not a backup candidate. OpenAI has announced removal of the Videos API and Sora 2 models on
 2026-09-24 without a recommended replacement.
 
 ## Music Decision
 
-### Primary: ElevenLabs Music v2 Enterprise
+### Primary: HCAI Router MiniMax Music 3.0
 
-- API: `music_v2` compose or streaming response wrapped by an internal asynchronous application job. The app caps
-  tracks at three minutes and persists the returned audio immediately.
-- Price baseline: $0.15/minute, or about $0.45 for a three-minute track. Enterprise contract pricing may differ.
-- Capability: complete music with vocals or instrumentals, multilingual output, composition plans, section control,
-  streaming, and copyrighted-material prompt rejection.
-- Rights blocker: self-serve Music plans prohibit reseller rights and music libraries/repositories. Broad media rights,
-  10+ concurrency, and platform distribution require **Enterprise Music**, not merely a paid API subscription.
-- Training/data: public terms allow content use for model improvement until the account opts out. Standard storage is in
-  the US. EU, India, and Singapore isolated environments plus optional ZRM are enterprise features, and Music support
-  under the selected ZRM region must be confirmed.
-- SLA: Music is as-is under public terms. The Enterprise Music order must define SLA, support, deletion, region, price,
-  concurrency, streaming, reseller, media, and repository rights.
+- API: Router `POST /v1/music_generation` with MiniMax `music-3.0`, URL output, and immediate governed MP3 ingestion.
+- Price baseline: $0.15 per request, stored as a versioned Model Control price and copied into the immutable cost snapshot.
+- Capability: instrumental and supplied-lyrics song generation. Reference-audio cover/remix is not exposed in V1.
+- Current blocker: a real Router request reached MiniMax and returned error 2061 because the upstream token plan does not
+  support `music-3.0`. Router must upgrade or replace that upstream credential before another live acceptance.
+- Rights/data/SLA: Router and MiniMax terms, training behavior, retention, deletion, region, support, and application
+  distribution rights still require recorded approval before production.
 
 ### Backup: Google Lyria 3 Pro Preview
 
@@ -191,9 +204,9 @@ kill switches. The required behavior is:
 ## Production Blockers
 
 1. Complete provider agreements, DPAs, supported-country and cross-border review.
-2. Obtain ElevenLabs Enterprise Music platform/reseller/media rights.
+2. Resolve Router's MiniMax `music-3.0` upstream plan error 2061 and record Router/MiniMax production rights.
 3. Obtain Runway enterprise no-training and retention/deletion terms before backup use.
-4. Confirm Google Veo SLA/indemnity coverage and Lyria Preview region/quota/retention behavior.
+4. Confirm HCAI Router/upstream video pricing, rights, data handling, processing locations, quota, safety/provenance, and SLA; confirm Lyria Preview region/quota/retention behavior.
 5. Confirm OpenAI production geography, `gpt-image-2` residency, and selected ZDR/MAM controls.
 6. Accept Anthropic US storage or contract a compliant alternative deployment.
 7. Recheck price, model availability, quota, legal terms, and regions within 30 days of production launch.

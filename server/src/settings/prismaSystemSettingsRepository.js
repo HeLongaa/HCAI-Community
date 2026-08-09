@@ -11,6 +11,7 @@ const changeDto = (row) => row ? ({
   createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
 }) : null
 const revisionDto = (row) => row ? ({ ...row, createdAt: row.createdAt.toISOString() }) : null
+const lockSetting = (db, key) => db.$queryRawUnsafe('SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext($1))', `configuration-system-setting:${key}`)
 
 export const createPrismaSystemSettingsRepository = (client, { recordAudit } = {}) => {
   const getSettingWith = async (db, key) => {
@@ -83,6 +84,9 @@ export const createPrismaSystemSettingsRepository = (client, { recordAudit } = {
     publishChange: async (id, expectedVersion, payload) => {
       try {
         return await client.$transaction(async (transaction) => {
+          const target = await transaction.systemSettingChange.findUnique({ where: { id: String(id) }, select: { settingKey: true } })
+          if (!target) return null
+          await lockSetting(transaction, target.settingKey)
           const change = await transaction.systemSettingChange.findUnique({ where: { id: String(id) } })
           if (!change || change.version !== expectedVersion || change.status !== 'approved') return null
           const current = await getSettingWith(transaction, change.settingKey)

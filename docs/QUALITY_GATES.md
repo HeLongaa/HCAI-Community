@@ -1,16 +1,70 @@
 # Quality Gates
 
+## Final Production Go/No-Go Evidence
+
+`npm run test:production-release-evidence` verifies the machine contract, six-role Ed25519 signature runtime, source/artifact/rollback/receipt binding, safe persistence, CLI tooling, and Admin JSON bundle import. The gate is part of `check:quick`.
+
+This engineering gate proves that invalid evidence fails closed; it does not produce a Go decision. A production deployment additionally requires a current bundle signed by independent Platform, Security, Legal, Provider Governance, Supply Chain, and Operations owners for the exact release candidate. See `docs/PRODUCTION_RELEASE_EVIDENCE_AND_GO_NO_GO.md`.
+
+## Production Static Delivery
+
+`npm run build:release` builds the Vite artifact, generates Brotli/Gzip sidecars, verifies production asset budgets, and starts an isolated static server to execute the delivery contract in `config/production-static-delivery-contract.json`. The gate covers HTML revalidation, immutable content-hashed assets, JavaScript Brotli, stylesheet Gzip, point-cloud MIME and byte ranges, WebP MIME, SPA fallback, backend-route exclusion, missing-asset 404, security headers, and encoded path-traversal rejection.
+
+The runnable server is `npm run serve:production`; its operating boundary is documented in `docs/PRODUCTION_STATIC_DELIVERY.md`. A local pass does not prove external CDN, TLS, HSTS, reverse-proxy API routing, cross-region cache hits, or protected staging rollback. Those remain target-environment acceptance evidence.
+
+## Production Containers
+
+`npm run check:production-containers` expands `infra/production.compose.yml` as structured JSON and verifies the machine contract in `config/production-container-contract.json`. The gate covers pinned images, separate frontend/API/Worker/migration targets, non-root runtime users, read-only filesystems, capability controls, CPU/memory/PID limits, health dependencies, migration deploy mode, internal backend networking, same-origin routing, production PostgreSQL/S3/Redis configuration, and API/Worker SIGTERM wiring.
+
+`npm run rehearse:production-containers` is the full Docker integration run. It builds all targets, applies every migration, proves the permission seed without demo users, initializes MinIO, checks gateway deep links and unauthenticated Admin rejection, confirms both durable Worker jobs complete, verifies read-only runtime behavior, and requires clean API/Worker SIGTERM drain with exit code zero. See `docs/PRODUCTION_CONTAINER_DEPLOYMENT.md`.
+
+## Production Image Supply Chain
+
+Run the static contract on every pull request:
+
+```bash
+npm run check:production-supply-chain
+```
+
+It verifies digest-pinned base images, four governed targets, checksum-pinned Trivy packages, bounded vulnerability exceptions, complete-commit GitHub Action pins, dual-platform GHCR digest scanning, per-platform SBOMs, BuildKit max provenance, GitHub/OCI signed attestation receipts, and evidence retention. It also runs synthetic negative evidence tests for missing ARM64, missing SBOMs, failed platform scans, and missing platform attestations. This check does not require Docker or network access.
+
+For real local images, run:
+
+```bash
+npm run supply-chain:install-tools
+npm run supply-chain:scan
+node scripts/verify-production-supply-chain.mjs \
+  --evidence-dir .artifacts/production-supply-chain \
+  --write-manifest .artifacts/production-supply-chain/digest-manifest.json
+```
+
+The evidence gate requires non-empty SPDX/CycloneDX SBOMs, matching artifact hashes, a supported OS, one source revision, and zero unexcepted fixable `HIGH/CRITICAL` findings. Unfixed findings remain explicit tracked evidence. Registry release jobs add `--require-registry-digests`; a local image ID can never satisfy that release condition.
+
 ## Release Infrastructure Rehearsal
 
 RELEASE-01 contract and evidence controls must pass `npm run test:release-infrastructure`. The local integration command
 `npm run release:infrastructure:rehearse` then proves all Prisma migrations, permission seeds, custom-format PostgreSQL
 backup through S3, checksum-bound restore into a separate database, Redis AOF recovery across a real service restart,
-and primary/backup object deletion recovery. Sanitized evidence is bounded, recursively secret-free, SHA-256 receipt
+primary/backup object deletion recovery, and restore-negative expiry of database/media backup copies. Sanitized evidence is bounded, recursively secret-free, SHA-256 receipt
 bound, and evaluated against the RTO/RPO targets in `config/release-infrastructure-rehearsal-contract.json`.
 
 Local Docker evidence does not complete production release readiness. The protected target environment must first pass
 `npm run release:infrastructure:preflight`, then `npm run release:infrastructure:rehearse:env` against dedicated resources
-whose database names include `rehearsal`. See `docs/RELEASE_INFRASTRUCTURE_REHEARSAL.md`.
+from the same clean source snapshot. Preflight and execute are SHA-256 bound, and execute rejects a missing, modified,
+expired, dirty, or source-mismatched preflight before infrastructure mutation.
+whose database names include `rehearsal`. The target run must separately prove the real 35-day schedule and managed-key destruction; local simulated expiry cannot satisfy those claims. See `docs/RELEASE_INFRASTRUCTURE_REHEARSAL.md`.
+
+## Application Release Rehearsal
+
+`RELEASE-02` must pass `npm run test:release-application`. `npm run release:application:rehearse` exercises the
+candidate/rollback orchestrator against an in-process fixture only and produces source-, artifact-, phase-, and
+receipt-bound evidence. It does not deploy NewChat and does not count as staging acceptance.
+
+The protected staging job must run `npm run release:application:preflight` and then
+`npm run release:application:rehearse:env` from the same clean checkout. Both immutable artifact SHA-256 values and the
+HTTPS staging target are bound to a 30-minute preflight. Candidate and rollback phases must independently prove the
+served artifact identity, `/health`, OpenAPI, public policy access, and unauthenticated auth rejection. See
+`docs/RELEASE_APPLICATION_REHEARSAL.md`.
 
 ## Music Production UX Acceptance
 
@@ -50,6 +104,16 @@ V1-35 adds an owner-scoped safe projection across Image, Chat, Video, and Music 
 
 This document defines the productization quality gates used before local handoff, pull request review, and deployment.
 
+## Prisma Integration Gate
+
+Every pull request runs the 66 database-only `*.integration.test.js` files against PostgreSQL in two parallel shards.
+The gate applies every migration once per shard, clones a clean database for each test file, and fails on any skipped
+database path or cross-repository regression without allowing one test's global configuration to contaminate another.
+`prismaMediaStorage.integration.test.js` remains in the production-container and protected-environment S3/scanner
+rehearsals because untrusted pull-request code must not receive target object-storage credentials.
+The same runner accepts explicit integration-test basenames for focused local gates; the events/jobs command uses this
+mode so its two queue consumers cannot claim each other's rows from a shared database.
+
 ## Local Quick Check
 
 Run:
@@ -71,12 +135,15 @@ Includes:
 - `npm run test:v1-surfaces`
 - `npm run test:v1-providers`
 - `npm run test:v1-safety-policy`
+  Validates the frozen policy matrix and executes the fail-closed external classifier, multimodal input/output, and Chat safety boundary tests.
 - `npm run test:v1-data-governance`
 - `npm run test:v1-compliance`
 - `npm run test:v1-image-staging`
 - `npm run test:v1-video-staging`
+- `npm run test:oauth-staging`
 - `npm run test:sim`
 - `npm run test:release-infrastructure`
+- `npm run test:release-application`
 - API contract drift check through `scripts/verify-api-contracts.mjs`
 
 The V1 scope contract checks the frozen included domains, all four required real-provider modalities, explicit
@@ -85,7 +152,7 @@ runtime routes or Prisma models.
 
 The V1 runtime-surface contract checks the exact frontend `mockData` import set, visible fallback labels, server
 seed/mock/fixture boundaries, production dispositions, and downstream V1 owners. It deliberately reports the current
-release blockers; V1-39 may claim runtime-surface readiness only when the disposition matrix has zero blockers and the production bundle/negative persistence guards pass.
+release blockers; V1-39 may claim runtime-surface readiness only when the disposition matrix has zero blockers and the production bundle/negative persistence guards pass. The production bundle guard also requires independently loadable Tasks, Landing particle-enhancement, Admin core, and Model Control chunks; it caps the generated entry script at 125 KiB gzip, public Landing core at 20 KiB gzip, particle enhancement at 150 KiB gzip, Admin core at 60 KiB gzip, and Model Control at 25 KiB gzip. The delayed Three.js enhancement is validated with desktop/mobile framebuffer pixel checks and a no-Canvas reduced-motion test; these checks do not replace real-device Web Vitals.
 
 The V1 provider-decision contract checks the four primary/backup pairs, official-source register, pricing examples,
 budget sums, app concurrency and lifecycle bounds, rights/training/retention/region/SLA dispositions, replacement
@@ -117,6 +184,12 @@ safe failures, generated-minute costs, staging license evidence, private ingesti
 short-lived one-call approval envelope. Reference audio, remix, voice/TTS, Lyria failover, and production remain disabled.
 
 Use this before handing off small frontend, contract, or documentation changes.
+
+The real OAuth acceptance is an operator gate, not an unattended CI claim. From a protected Staging environment, run
+`npm run oauth-staging:preflight` and then `npm run oauth-staging:rehearse` once for Google and once for GitHub. The
+interactive browser permits manual MFA but stores no test-account password. Retain only the independently verified
+hash-only JSON evidence; this login check does not close account-linking/conflict/unlink/cancellation cases or approve
+production.
 
 For migration or repository changes in EVENT-01/JOB-01, also run the opt-in real PostgreSQL gate after `0043_domain_events_and_job_runs` is deployed:
 
@@ -151,7 +224,7 @@ npm run check:pr
 Includes:
 
 - Local quick check
-- production frontend build
+- production frontend build, asset budgets, precompression, and static-delivery rehearsal
 - backend Node test suite
 - Prisma schema validation
 - Playwright E2E workflow checks
@@ -183,11 +256,14 @@ Includes:
 - secure cookie and trusted origin validation
 - guard rail validation for rate limits, request body limits, and auth failure monitoring
 - Prometheus-compatible metrics exporter configuration validation
-- worker topology and lease renewal sanity checks
-- Chat message encryption configuration and the inactivity-retention worker required to enforce the 365-day lifecycle
+- worker topology and lease renewal sanity checks, including all eight core delivery/index/cleanup jobs
+- all 20 implemented retention workers, including account deletion, media asset metadata, audit archive-before-prune, Provider lifecycle,
+  configuration history, support, and Provider secret lifecycle; any disabled switch fails the environment smoke
+- external Provider deletion uses the same explicitly confirmed fixed-HTTPS gateway parser as the runtime deletion path
+- Chat message encryption configuration required to enforce the 365-day lifecycle
 - Chat selected-context and 512-character output safety buffering; Provider, classifier, and attachment-byte code is
   implemented but every Chat network/runtime switch remains off in production smoke, and tools remain unavailable
-- Video capability version, Veo/Runway model decision, closed modes/parameters, governed input bytes/lineage,
+- Video capability version, Router Seedance/Runway model decision, closed modes/parameters, governed input bytes/lineage,
   safe operation persistence, generated-second pricing, strict fixture lifecycle/replay, bounded MP4 ingestion,
   scanner isolation and terminal accounting; the Video UI consumes application capability/history/mutation/media APIs,
   preserves ordered image/audio roles, polls only application generation detail, gates private preview on clean MP4, and
@@ -204,6 +280,9 @@ Includes:
 - OAuth hardening validation: `npm run test:oauth-hardening` proves production fail-closed behavior, hashed single-use
   state, PKCE, bounded Provider failures, cookie-based callback recovery, transactional account lifecycle, governance,
   and opt-in PostgreSQL concurrency coverage without making a real Provider call
+- OAuth Staging contract validation: `npm run test:oauth-staging` proves the interactive runner remains restricted to
+  Google/GitHub, exact HTTPS API/browser origins, clean candidate source, an immutable artifact hash, ephemeral browser
+  profiles, hash-only evidence, and explicit non-production limitations. This gate does not make a Provider call.
 - creative provider safety validation: production smoke must keep staging provider preflight and the Provider HTTP
   client disabled, while client tests use injected fetch implementations and never expose real Provider tokens
 - provider decision validation: all four modalities retain a conditional primary and backup with explicit legal, data,
@@ -217,7 +296,8 @@ Includes:
 
 The environment profile does not print secrets. It reports booleans, counts, provider modes, and safe operational metadata only.
 For Chat, it reports only whether an encryption key is configured, whether the retention worker is enabled, and the
-bounded sweep limit. The encryption material itself must never appear in smoke output or application logs.
+bounded sweep limit. Worker and Provider-deletion gateway output is boolean-only. Encryption material, gateway URLs,
+tokens, and Provider operation references must never appear in smoke output or application logs.
 
 Use `docs/RELEASE_CHECKLIST.md` after the deployment gate passes to run the release execution, post-release operations, alert verification, and rollback checks.
 Use `docs/PHASE_3_TRACK_B_MULTI_INSTANCE_RUNBOOK.md` before scaling beyond one API or worker process so the deployment profile, smoke checks, metrics scrape, and rollback boundary are reviewed together.
@@ -269,8 +349,8 @@ For the real environment smoke, configure GitHub Environment variables and secre
 - Auth secrets: `ACCESS_TOKEN_SECRET` or `SESSION_SECRET`, plus optional `ACCESS_TOKEN_KEY_ID`.
 - Browser auth variables: `AUTH_COOKIE_SECURE`, `AUTH_COOKIE_SAMESITE`, `AUTH_COOKIE_DOMAIN`, `AUTH_TRUSTED_ORIGINS` or `CORS_ALLOWED_ORIGINS`.
 - Object storage: `STORAGE_DRIVER`, `STORAGE_ENDPOINT`, `STORAGE_REGION`, `STORAGE_BUCKET`, `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY`, optional `STORAGE_SESSION_TOKEN`, purpose-specific TTLs, and optional paired `STORAGE_PRIVATE_DOWNLOAD_*` settings.
-- Media scanner: `MEDIA_SCAN_PROVIDER`, `MEDIA_SCAN_WEBHOOK_SECRET`, `MEDIA_SCAN_REQUEST_ADAPTER`, `MEDIA_SCAN_REQUEST_URL`, `MEDIA_SCAN_REQUEST_SECRET`, `MEDIA_SCAN_CALLBACK_BASE_URL`, `MEDIA_SCAN_CALLBACK_SIGNATURE_SECRET`.
-- Media alert channels: `MEDIA_SCAN_ALERT_WEBHOOK_URL`, `MEDIA_SCAN_ALERT_WEBHOOK_SECRET`, `MEDIA_SCAN_ALERT_SLACK_WEBHOOK_URL`, `MEDIA_SCAN_ALERT_EMAIL_WEBHOOK_URL`, `MEDIA_SCAN_ALERT_EMAIL_WEBHOOK_SECRET`, `MEDIA_SCAN_ALERT_EMAIL_TO`, `MEDIA_SCAN_ALERT_EMAIL_FROM`.
+- Media boundary: `MEDIA_SCAN_PROVIDER=webhook` requires the scanner request/callback settings; `manual` is accepted only as fail-closed quarantine and never as scan success; `mock` is rejected.
+- Media alert channels in webhook mode: `MEDIA_SCAN_ALERT_WEBHOOK_URL`, `MEDIA_SCAN_ALERT_WEBHOOK_SECRET`, `MEDIA_SCAN_ALERT_SLACK_WEBHOOK_URL`, `MEDIA_SCAN_ALERT_EMAIL_WEBHOOK_URL`, `MEDIA_SCAN_ALERT_EMAIL_WEBHOOK_SECRET`, `MEDIA_SCAN_ALERT_EMAIL_TO`, `MEDIA_SCAN_ALERT_EMAIL_FROM`.
 - Security alert channels: `SECURITY_ALERT_WEBHOOK_URL`, `SECURITY_ALERT_WEBHOOK_SECRET`, `SECURITY_ALERT_SLACK_WEBHOOK_URL`, `SECURITY_ALERT_EMAIL_WEBHOOK_URL`, `SECURITY_ALERT_EMAIL_WEBHOOK_SECRET`, `SECURITY_ALERT_EMAIL_TO`, `SECURITY_ALERT_EMAIL_FROM`.
 - Guard rails: `RATE_LIMIT_*`, `REQUEST_BODY_*`, `AUTH_FAILURE_*`, `SECURITY_EVENT_MAX_ITEMS`.
 - Metrics exporter: `METRICS_EXPORTER_ENABLED`, `METRICS_EXPORTER_FORMAT`, optional secret `METRICS_EXPORTER_TOKEN`.

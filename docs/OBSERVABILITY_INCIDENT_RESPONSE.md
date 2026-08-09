@@ -6,7 +6,7 @@ OBS-03 extends the OBS-02 sanitized telemetry and burn-rate alert boundary. It a
 
 ## SLO And On-Call Controls
 
-- API availability and API latency remain the only supported SLO ids.
+- API availability and API latency are joined by generation success, first persisted result latency, retry-free rate, and abandonment-free rate. Generation SLOs are derived from durable generation/output-ingestion state and use no user-level dimensions.
 - Target, short and long burn thresholds, latency threshold, severity, owner, runbook, escalation delay, enabled state, and primary/secondary on-call handles are versioned with optimistic concurrency.
 - The database stores account handles, not phone numbers, external paging credentials, or notification Provider payloads.
 - Runtime defaults remain active until the first persisted control version is written. A stale update fails with `STATE_CONFLICT`.

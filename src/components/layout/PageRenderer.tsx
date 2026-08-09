@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
+import { useChatRuntimeReadiness } from '../../hooks/useChatRuntimeReadiness'
 import type {
   BillingViewModel,
   AdminPageViewModel,
   CommunityWorkflowViewModel,
-  HomeDataSourceViewModel,
   PageAccountViewModel,
   PageFeedbackViewModel,
   PageNavigationViewModel,
@@ -13,19 +13,28 @@ import type {
   TaskWorkflowViewModel,
   WorkspaceViewModel,
 } from './viewModels'
-import { HomePage } from '../prototype/PrototypeComponents'
-import { AdminPage } from '../../features/admin'
-import { CommunityPage } from '../../features/community'
-import { ExplorePage } from '../../features/explore'
-import { InspirationPage } from '../../features/inspiration'
-import { PlaylistPage, ProfilePage } from '../../features/profile'
-import { PointsPage } from '../../features/rewards'
-import { AboutPage, EarnPage, LegalPage, PricingPage, SupportPage } from '../../features/static-pages'
-import { DeveloperAccessPage } from '../../features/developer'
-import { MyTasksPage, PublishPage, TasksPage } from '../../features/tasks'
-import { ChatPage, PlaygroundPage } from '../../features/workspace'
-import { GenerationCenterPage } from '../../features/generations'
-import { AssetLibraryPage } from '../../features/assets'
+
+const HomePage = lazy(() => import('../prototype/PrototypeComponents').then((module) => ({ default: module.HomePage })))
+const AdminPage = lazy(() => import('../../features/admin').then((module) => ({ default: module.AdminPage })))
+const CommunityPage = lazy(() => import('../../features/community').then((module) => ({ default: module.CommunityPage })))
+const ExplorePage = lazy(() => import('../../features/explore').then((module) => ({ default: module.ExplorePage })))
+const InspirationPage = lazy(() => import('../../features/inspiration').then((module) => ({ default: module.InspirationPage })))
+const PlaylistPage = lazy(() => import('../../features/profile').then((module) => ({ default: module.PlaylistPage })))
+const ProfilePage = lazy(() => import('../../features/profile').then((module) => ({ default: module.ProfilePage })))
+const PointsPage = lazy(() => import('../../features/rewards').then((module) => ({ default: module.PointsPage })))
+const AboutPage = lazy(() => import('../../features/static-pages').then((module) => ({ default: module.AboutPage })))
+const EarnPage = lazy(() => import('../../features/static-pages').then((module) => ({ default: module.EarnPage })))
+const LegalPage = lazy(() => import('../../features/static-pages').then((module) => ({ default: module.LegalPage })))
+const PricingPage = lazy(() => import('../../features/static-pages').then((module) => ({ default: module.PricingPage })))
+const SupportPage = lazy(() => import('../../features/static-pages').then((module) => ({ default: module.SupportPage })))
+const DeveloperAccessPage = lazy(() => import('../../features/developer').then((module) => ({ default: module.DeveloperAccessPage })))
+const MyTasksPage = lazy(() => import('../../features/tasks').then((module) => ({ default: module.MyTasksPage })))
+const PublishPage = lazy(() => import('../../features/tasks').then((module) => ({ default: module.PublishPage })))
+const TasksPage = lazy(() => import('../../features/tasks').then((module) => ({ default: module.TasksPage })))
+const ChatPage = lazy(() => import('../../features/workspace').then((module) => ({ default: module.ChatPage })))
+const PlaygroundPage = lazy(() => import('../../features/workspace').then((module) => ({ default: module.PlaygroundPage })))
+const GenerationCenterPage = lazy(() => import('../../features/generations').then((module) => ({ default: module.GenerationCenterPage })))
+const AssetLibraryPage = lazy(() => import('../../features/assets').then((module) => ({ default: module.AssetLibraryPage })))
 
 type PageRendererProps = {
   t: Record<string, string>
@@ -36,11 +45,27 @@ type PageRendererProps = {
   tasks: TaskWorkflowViewModel
   community: CommunityWorkflowViewModel
   rewards: RewardsViewModel
-  homeDataSources: HomeDataSourceViewModel
   account: PageAccountViewModel
   billing: BillingViewModel
   profile: ProfileViewModel
   admin: AdminPageViewModel
+}
+
+function RouteLoading({ label }: { label: string }) {
+  return (
+    <div className="route-loading product-route-loading" role="status" aria-live="polite">
+      <header>
+        <span />
+        <strong>{label}</strong>
+        <i />
+      </header>
+      <div className="route-loading-grid" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </div>
+    </div>
+  )
 }
 
 export function PageRenderer({
@@ -52,7 +77,6 @@ export function PageRenderer({
   tasks,
   community,
   rewards,
-  homeDataSources,
   account,
   billing: billingState,
   profile,
@@ -64,6 +88,7 @@ export function PageRenderer({
     imageGeneration,
     imageGenerationHistory,
     imageGenerationAction,
+    imageGenerationFeedback,
     refreshImageGenerationHistory,
     selectImageGeneration,
     cancelImageGeneration,
@@ -73,6 +98,7 @@ export function PageRenderer({
     hasImageGenerationRetryRequest,
     imageProviderCatalog,
     imageProviderCatalogState,
+    refreshProviderCatalog,
     imageInputAssets,
     uploadImageInput,
     runImageGeneration,
@@ -81,6 +107,11 @@ export function PageRenderer({
     playgroundWorkspace,
     setPlaygroundWorkspace,
   } = workspace
+  const chatRuntimeReadiness = useChatRuntimeReadiness(
+    account.accountHandle && (page === 'chat' || (page === 'playground' && playgroundWorkspace === 'chat'))
+      ? account.accountHandle
+      : null,
+  )
   const { playTrack } = player
   const { requireAuth, simulateAction } = feedback
   const {
@@ -129,23 +160,41 @@ export function PageRenderer({
     publishPost,
     deletePost,
   } = community
-  const { ledgerItems, pointsSummary, pointsStatus } = rewards
+  const { pointsSummary } = rewards
   const { billing, setBilling } = billingState
-  const { selectedProfile, accountProfile, openProfile, onProfileUpdated } = profile
+  const { selectedProfile, accountProfile, profiles, openProfile, onProfileUpdated } = profile
   const openModerationAppeal = (moderationDecisionId: string) => {
     setSupportAppeal({ moderationDecisionId })
     navigateToPage('support')
   }
 
   return (
-    <>
-      {page === 'home' && <HomePage t={t} setPage={navigateToPage} playTrack={playTrack} dataSources={homeDataSources.sources} />}
+    <Suspense fallback={<RouteLoading label={t.loading ?? 'Loading'} />}>
+      {page === 'home' && (
+        <HomePage
+          t={t}
+          setPage={navigateToPage}
+          openWorkspace={(mode) => {
+            setPlaygroundWorkspace(mode)
+            navigateToPage('playground')
+          }}
+          tasks={taskList}
+          posts={postList}
+          accountHandle={account.accountHandle}
+          accountName={account.accountName}
+          generationCount={imageGenerationHistory.items.length}
+          reusableAssetCount={imageInputAssets.length}
+          latestGeneration={imageGenerationHistory.items[0] ?? null}
+          latestImageUrl={imageGeneration.result?.outputs.find((output) => output.type === 'image')?.url ?? null}
+        />
+      )}
       {page === 'playground' && (
         <PlaygroundPage
           t={t}
           imageGeneration={imageGeneration}
           imageGenerationHistory={imageGenerationHistory}
           imageGenerationAction={imageGenerationAction}
+          imageGenerationFeedback={imageGenerationFeedback}
           refreshImageGenerationHistory={refreshImageGenerationHistory}
           selectImageGeneration={selectImageGeneration}
           cancelImageGeneration={cancelImageGeneration}
@@ -155,17 +204,18 @@ export function PageRenderer({
           hasImageGenerationRetryRequest={hasImageGenerationRetryRequest}
           imageProviderCatalog={imageProviderCatalog}
           imageProviderCatalogState={imageProviderCatalogState}
+          refreshProviderCatalog={refreshProviderCatalog}
           imageInputAssets={imageInputAssets}
           uploadImageInput={uploadImageInput}
           runImageGeneration={runImageGeneration}
           musicWorkflow={musicWorkflow}
           videoWorkflow={videoWorkflow}
           signedIn={Boolean(account.accountHandle)}
+          chatRuntimeReadiness={chatRuntimeReadiness}
           tasks={taskList}
           libraryItems={libraryItems}
           openModerationAppeal={openModerationAppeal}
           requireAuth={requireAuth}
-          simulateAction={simulateAction}
           workspace={playgroundWorkspace}
           setWorkspace={setPlaygroundWorkspace}
           setPage={navigateToPage}
@@ -192,11 +242,11 @@ export function PageRenderer({
           t={t}
           setPage={navigateToPage}
           signedIn={Boolean(account.accountHandle)}
+          runtimeReadiness={chatRuntimeReadiness}
           requireAuth={requireAuth}
           tasks={taskList}
           libraryItems={libraryItems}
           openModerationAppeal={openModerationAppeal}
-          simulateAction={simulateAction}
         />
       )}
       {page === 'explore' && (
@@ -212,7 +262,6 @@ export function PageRenderer({
           selectedTask={selectedTask}
           setSelectedTask={setSelectedTask}
           status={taskStatus}
-          simulateAction={simulateAction}
         />
       )}
       {page === 'publish' && (
@@ -258,7 +307,6 @@ export function PageRenderer({
           savePostToLibrary={savePostToLibrary}
           likePost={likePost}
           replyToPost={replyToPost}
-          openProfile={openProfile}
           selectedPost={selectedPost}
           setSelectedPost={setSelectedPost}
           communityFilter={communityFilter}
@@ -277,8 +325,17 @@ export function PageRenderer({
           deletePost={deletePost}
         />
       )}
-      {page === 'inspiration' && <InspirationPage t={t} items={libraryItems} setPage={navigateToPage} simulateAction={simulateAction} />}
-      {page === 'points' && <PointsPage t={t} ledger={ledgerItems} summary={pointsSummary} status={pointsStatus} />}
+      {page === 'inspiration' && (
+        <InspirationPage
+          t={t}
+          items={libraryItems}
+          setPage={navigateToPage}
+          status={communityStatus}
+          signedIn={Boolean(account.accountHandle)}
+          requireAuth={requireAuth}
+        />
+      )}
+      {page === 'points' && <PointsPage t={t} summary={pointsSummary} />}
       {page === 'admin' && (
         <AdminPage
           t={t}
@@ -291,7 +348,7 @@ export function PageRenderer({
         />
       )}
       {page === 'pricing' && <PricingPage t={t} billing={billing} setBilling={setBilling} requireAuth={requireAuth} />}
-      {page === 'api' && <DeveloperAccessPage t={t} signedIn={Boolean(account.accountHandle)} requireAuth={requireAuth} notify={simulateAction} />}
+      {page === 'api' && <DeveloperAccessPage t={t} signedIn={Boolean(account.accountHandle)} requireAuth={requireAuth} />}
       {page === 'earn' && <EarnPage t={t} requireAuth={requireAuth} />}
       {page === 'about' && <AboutPage t={t} />}
       {page === 'playlist' && <PlaylistPage t={t} playTrack={playTrack} />}
@@ -300,6 +357,7 @@ export function PageRenderer({
           key={selectedProfile.id}
           t={t}
           profile={selectedProfile}
+          profiles={profiles}
           personalProfileId={accountProfile.id}
           tasks={taskList}
           setPage={navigateToPage}
@@ -324,6 +382,6 @@ export function PageRenderer({
           onInitialAppealConsumed={() => setSupportAppeal(null)}
         />
       )}
-    </>
+    </Suspense>
   )
 }

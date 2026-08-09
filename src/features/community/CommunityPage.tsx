@@ -1,8 +1,7 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import {
-  Bookmark,
   BriefcaseBusiness,
-  ChevronDown,
+  ChevronLeft,
   Heart,
   Flag,
   LoaderCircle,
@@ -11,17 +10,17 @@ import {
   Plus,
   Send,
   Save,
+  Search,
   Tags,
   Trash2,
   X,
 } from 'lucide-react'
-import type { AsyncResourceState, CommunityPostDraft, CommunityView, MarketplaceProfile, Post, SimulateAction } from '../../domain/types'
-import { SectionHeader } from '../../components/ui/SectionHeader'
-import { visualWorks } from '../../data/mockData'
-import { categoryLabel, findProfile, isZhCopy, localizedPosts, textFor } from '../../domain/utils'
+import type { AsyncResourceState, CommunityPostDraft, CommunityView, Post, SimulateAction } from '../../domain/types'
+import { categoryLabel, isZhCopy, localizedPosts, textFor } from '../../domain/utils'
 import { communityService } from '../../services/communityService'
 import { trustService } from '../../services/trustService'
 import type { ModerationReportCategory } from '../../services/contracts'
+import { OperationConfirmation } from '../../components/ui/OperationConfirmation'
 
 export function CommunityPage({
   t,
@@ -30,7 +29,6 @@ export function CommunityPage({
   savePostToLibrary,
   likePost,
   replyToPost,
-  openProfile,
   selectedPost,
   setSelectedPost,
   communityFilter,
@@ -54,9 +52,8 @@ export function CommunityPage({
   savePostToLibrary: (post: Post) => Promise<void>
   likePost: (post: Post) => Promise<void>
   replyToPost: (post: Post, replyText?: string) => Promise<void>
-  openProfile: (profile: MarketplaceProfile) => void
-  selectedPost: Post
-  setSelectedPost: (post: Post) => void
+  selectedPost: Post | null
+  setSelectedPost: (post: Post | null) => void
   communityFilter: string
   setCommunityFilter: (filter: string) => void
   communityView: CommunityView
@@ -74,43 +71,44 @@ export function CommunityPage({
 }) {
   const isZh = isZhCopy(t)
   const scopedPosts = localizedPosts(posts, t)
-  const [replyDraft, setReplyDraft] = useState(
-    textFor(
-      t,
-      'I would split acceptance into script approval, first preview, revision log, and final files, each with pass criteria.',
-      '建议把验收拆成脚本确认、首版预览、修改记录和最终文件四步，并明确每一步的通过标准。',
-    ),
-  )
+  const [replyDraft, setReplyDraft] = useState('')
   const [localReplies, setLocalReplies] = useState<Record<string, Array<{ author: string; text: string }>>>({})
   const [topicPage, setTopicPage] = useState(1)
+  const [communitySearch, setCommunitySearch] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('All')
   const emptyPostDraft: CommunityPostDraft = { title: '', body: '', category: 'Questions', tag: '', excerpt: '' }
   const [editorOpen, setEditorOpen] = useState(false)
+  const [myPostsOpen, setMyPostsOpen] = useState(false)
   const [editingPost, setEditingPost] = useState<Post | null>(null)
   const [postDraft, setPostDraft] = useState<CommunityPostDraft>(emptyPostDraft)
   const [postEditorError, setPostEditorError] = useState<string | null>(null)
+  const [postMutationFeedback, setPostMutationFeedback] = useState<string | null>(null)
+  const [pendingDeletePost, setPendingDeletePost] = useState<Post | null>(null)
+  const [deletePostError, setDeletePostError] = useState<string | null>(null)
   const [reportTarget, setReportTarget] = useState<{ targetType: 'post' | 'comment'; targetId: string; label: string } | null>(null)
   const [reportCategory, setReportCategory] = useState<ModerationReportCategory>('spam')
   const [reportStatement, setReportStatement] = useState('')
   const [reportBusy, setReportBusy] = useState(false)
   const [reportResult, setReportResult] = useState<string | null>(null)
   const [reportError, setReportError] = useState<string | null>(null)
-  const topicTabsRef = useRef<HTMLDivElement | null>(null)
-  const selectedLocalized = localizedPosts([selectedPost], t)[0] ?? selectedPost
-  const activeSelectedPost = selectedPost.id === selectedLocalized.id
-    ? selectedLocalized
-    : scopedPosts.find((post) => post.id === selectedPost.id) ?? scopedPosts[0] ?? selectedPost
+  const selectedLocalized = selectedPost ? localizedPosts([selectedPost], t)[0] ?? selectedPost : null
+  const activeSelectedPost = selectedPost && selectedLocalized
+    ? selectedPost.id === selectedLocalized.id
+      ? selectedLocalized
+      : scopedPosts.find((post) => post.id === selectedPost.id) ?? scopedPosts[0] ?? selectedPost
+    : scopedPosts[0] ?? null
+  const normalizedCommunitySearch = communitySearch.trim().toLocaleLowerCase()
   const filteredPosts = scopedPosts.filter((post) => {
-    if (communityFilter === 'Hot') return post.votes >= 80 || post.tag === 'Hot' || post.tag === 'Featured'
-    if (communityFilter === 'Latest') return true
-    if (communityFilter === 'Active') return post.replies >= 10
+    if (categoryFilter !== 'All' && post.category !== categoryFilter) return false
+    if (normalizedCommunitySearch && ![post.title, post.excerpt, post.author, post.category, post.tag]
+      .some((value) => value.toLocaleLowerCase().includes(normalizedCommunitySearch))) return false
     if (communityFilter === 'Unanswered') return post.replies === 0 || !post.solved
     if (communityFilter === 'Featured') return post.tag === 'Featured' || post.solved
-    if (communityFilter === 'Showcase') return post.category === 'Showcase'
-    if (communityFilter === 'Prompts') return post.category === 'Prompts'
-    if (communityFilter === 'Tutorials') return post.excerpt.includes('教程') || post.title.toLowerCase().includes('tutorial')
-    if (communityFilter === 'Questions') return post.category === 'Questions' || post.category === '提问'
-    if (communityFilter === 'Collaboration') return post.excerpt.toLowerCase().includes('collabor') || post.excerpt.includes('协作')
     return true
+  }).sort((a, b) => {
+    if (communityFilter === 'Hot') return b.votes - a.votes
+    if (communityFilter === 'Active') return b.replies - a.replies
+    return Date.parse(b.publishedAt ?? b.updatedAt ?? b.createdAt ?? '') - Date.parse(a.publishedAt ?? a.updatedAt ?? a.createdAt ?? '')
   })
   const topicsPerPage = 10
   const totalTopicPages = Math.max(1, Math.ceil(filteredPosts.length / topicsPerPage))
@@ -118,54 +116,20 @@ export function CommunityPage({
   const visibleTopics = filteredPosts.slice((safeTopicPage - 1) * topicsPerPage, safeTopicPage * topicsPerPage)
   const topicPages = Array.from({ length: totalTopicPages }, (_, index) => index + 1)
   const filterOptions = [
-    ['Hot', isZh ? '热门' : 'Hot'],
     ['Latest', isZh ? '最新' : 'Latest'],
+    ['Hot', isZh ? '热门' : 'Hot'],
     ['Active', isZh ? '活跃' : 'Active'],
     ['Unanswered', isZh ? '未回复' : 'Unanswered'],
     ['Featured', isZh ? '精选' : 'Featured'],
-    ['Showcase', isZh ? '作品' : 'Showcase'],
-    ['Prompts', isZh ? '提示词' : 'Prompts'],
-    ['Tutorials', isZh ? '教程' : 'Tutorials'],
-    ['Questions', isZh ? '问答' : 'Questions'],
-    ['Collaboration', isZh ? '协作' : 'Collaboration'],
   ]
+  const categoryOptions = ['All', ...Array.from(new Set(scopedPosts.map((post) => post.category)))]
   const filterLabel = (filter: string) => filterOptions.find(([key]) => key === filter)?.[1] ?? filter
-  const scrollTopicTabs = (direction: 'left' | 'right') => {
-    const el = topicTabsRef.current
-    if (!el) return
-    const delta = Math.max(240, Math.round(el.clientWidth * 0.7))
-    el.scrollBy({ left: direction === 'left' ? -delta : delta, behavior: 'smooth' })
-  }
-  const hotPosts = [...scopedPosts].sort((a, b) => b.votes - a.votes).slice(0, 5)
-  const sidebarTags = [
-    ['Latest', isZh ? '全部话题' : 'All topics', scopedPosts.length],
-    ['Questions', isZh ? '问答求助' : 'Q&A', scopedPosts.filter((post) => post.category === 'Questions' || post.category === '提问').length],
-    ['Tutorials', isZh ? '教程复盘' : 'Tutorials', scopedPosts.filter((post) => post.category === 'Tutorials').length],
-    ['Showcase', isZh ? '作品展示' : 'Showcase', scopedPosts.filter((post) => post.category === 'Showcase').length],
-    ['Collaboration', isZh ? '协作招募' : 'Collaboration', scopedPosts.filter((post) => post.category === 'Collaboration').length],
-  ] as const
 
   const chooseFilter = (filter: string) => {
     setCommunityFilter(filter)
     setTopicPage(1)
-    const matches = scopedPosts.filter((post) => {
-      if (filter === 'Hot') return post.votes >= 80 || post.tag === 'Hot' || post.tag === 'Featured'
-      if (filter === 'Latest') return true
-      if (filter === 'Active') return post.replies >= 10
-      if (filter === 'Unanswered') return post.replies === 0 || !post.solved
-      if (filter === 'Featured') return post.tag === 'Featured' || post.solved
-      if (filter === 'Showcase') return post.category === 'Showcase'
-      if (filter === 'Prompts') return post.category === 'Prompts'
-      if (filter === 'Tutorials') return post.excerpt.includes('教程') || post.title.toLowerCase().includes('tutorial')
-      if (filter === 'Questions') return post.category === 'Questions' || post.category === '提问'
-      if (filter === 'Collaboration') return post.excerpt.toLowerCase().includes('collabor') || post.excerpt.includes('协作')
-      return true
-    })
-    if (matches[0]) {
-      setSelectedPost(matches[0])
-    }
+    setSelectedPost(null)
     setCommunityView('list')
-    simulateAction(isZh ? `已切换社区筛选：${filterLabel(filter)}，匹配 ${matches.length} 个帖子` : `Community filter changed: ${filter}. ${matches.length} topics matched.`)
   }
 
   const goToTopicPage = (page: number) => {
@@ -176,7 +140,6 @@ export function CommunityPage({
       setSelectedPost(firstTopic)
     }
     setCommunityView('list')
-    simulateAction(isZh ? `已切换到话题列表第 ${target} 页` : `Topic list changed to page ${target}`)
   }
 
   const showTopicDetail = (post: Post) => {
@@ -187,11 +150,6 @@ export function CommunityPage({
   }
 
   const openAuthorProfile = (author: string) => {
-    const profile = findProfile(author)
-    if (profile) {
-      openProfile(profile)
-      return
-    }
     simulateAction(isZh ? `暂无 @${author} 的公开主页资料` : `No public profile is available for @${author}`)
   }
 
@@ -201,6 +159,7 @@ export function CommunityPage({
   }
 
   const submitReply = () => {
+    if (!activeSelectedPost) return
     const text = replyDraft.trim()
     if (!text) {
       simulateAction(isZh ? '请先输入回复内容' : 'Please enter a reply first')
@@ -264,6 +223,7 @@ export function CommunityPage({
   }
 
   const openPostEditor = (post?: Post) => {
+    setMyPostsOpen(false)
     setEditingPost(post ?? null)
     setPostDraft(post ? {
       title: post.title,
@@ -273,6 +233,7 @@ export function CommunityPage({
       excerpt: post.excerpt,
     } : emptyPostDraft)
     setPostEditorError(null)
+    setPostMutationFeedback(null)
     setEditorOpen(true)
   }
 
@@ -282,7 +243,13 @@ export function CommunityPage({
       return
     }
     setPostEditorError(null)
+    setPostMutationFeedback(null)
     try {
+      const successMessage = editingPost
+        ? (isZh ? '帖子修改已保存。' : 'Post changes saved.')
+        : target === 'draft'
+          ? (isZh ? '草稿已保存。' : 'Draft saved.')
+          : (isZh ? '帖子已发布。' : 'Post published.')
       if (!editingPost) {
         await createPost(postDraft, target)
       } else {
@@ -291,27 +258,35 @@ export function CommunityPage({
       }
       resetPostEditor()
       await refreshMyPosts()
+      setMyPostsOpen(true)
+      setPostMutationFeedback(successMessage)
     } catch (error) {
       console.info('[community-post-editor]', error)
       setPostEditorError(isZh ? '保存失败，请刷新后重试。' : 'Save failed. Refresh and try again.')
     }
   }
 
-  const removePost = async (post: Post) => {
-    if (!window.confirm(isZh ? `删除“${post.title}”？` : `Delete “${post.title}”?`)) return
+  const confirmPostDeletion = async () => {
+    if (!pendingDeletePost) return
+    setDeletePostError(null)
+    setPostMutationFeedback(null)
     try {
-      await deletePost(post)
-      if (editingPost?.id === post.id) resetPostEditor()
+      await deletePost(pendingDeletePost)
+      if (editingPost?.id === pendingDeletePost.id) resetPostEditor()
+      setPendingDeletePost(null)
+      setPostMutationFeedback(isZh ? '帖子已删除。' : 'Post deleted.')
     } catch (error) {
       console.info('[community-post-delete]', error)
-      setPostEditorError(isZh ? '删除失败，请刷新后重试。' : 'Delete failed. Refresh and try again.')
+      setDeletePostError(isZh ? '删除失败，帖子未发生变化。请重试。' : 'Delete failed and the post was not changed. Try again.')
     }
   }
 
   const publishDraftPost = async (post: Post) => {
     setPostEditorError(null)
+    setPostMutationFeedback(null)
     try {
       await publishPost(post)
+      setPostMutationFeedback(isZh ? '草稿已发布。' : 'Draft published.')
     } catch (error) {
       console.info('[community-post-publish]', error)
       setPostEditorError(isZh ? '发布失败，请刷新后重试。' : 'Publish failed. Refresh and try again.')
@@ -319,29 +294,52 @@ export function CommunityPage({
   }
 
   return (
-    <div className="stack">
-      <SectionHeader
-        eyebrow={textFor(t, 'Forum', '论坛')}
-        title={t.communityTitle}
-      />
-      <section className="community-author-workspace" data-testid="community-author-workspace">
-        <div className="community-author-toolbar">
-          <div>
-            <strong>{isZh ? '我的内容' : 'My posts'}</strong>
-            <span>{accountHandle ? `@${accountHandle}` : (isZh ? '登录后可创作' : 'Sign in to create')}</span>
-          </div>
-          <button className="primary-button" type="button" disabled={!accountHandle || postMutationBusy} onClick={() => editorOpen ? resetPostEditor() : openPostEditor()}>
-            {editorOpen ? <ChevronDown size={16} /> : <Plus size={16} />}
-            {editorOpen ? (isZh ? '收起' : 'Close') : (isZh ? '新建帖子' : 'New post')}
+    <div className="community-workbench">
+      <header className="community-workbench-header">
+        <div className="community-header-copy">
+          <span>{textFor(t, 'Community', '创作者社区')}</span>
+          <h1>{textFor(t, 'Share useful work. Build better ideas together.', '分享有用的经验，一起把想法做得更好。')}</h1>
+          <p>{textFor(t, 'Ask focused questions, show what you made, and turn promising discussions into real work.', '提出具体问题、展示创作成果，并把值得继续的讨论转成真实协作。')}</p>
+        </div>
+        <div className="community-header-actions">
+          <button
+            aria-pressed={myPostsOpen}
+            className={myPostsOpen ? 'active' : ''}
+            type="button"
+            disabled={!accountHandle || postMutationBusy}
+            onClick={() => {
+              if (editorOpen) resetPostEditor()
+              setMyPostsOpen((open) => !open)
+            }}
+          >
+            <MessageCircle size={17} />
+            {isZh ? '我的帖子' : 'My posts'}
+          </button>
+          <button
+            className={editorOpen ? 'active' : 'primary'}
+            type="button"
+            disabled={!accountHandle || postMutationBusy}
+            onClick={() => editorOpen ? resetPostEditor() : openPostEditor()}
+          >
+            {editorOpen ? <X size={17} /> : <Plus size={17} />}
+            {editorOpen ? (isZh ? '关闭编辑' : 'Close editor') : (isZh ? '新建帖子' : 'New post')}
           </button>
         </div>
+      </header>
+      <section className="community-author-workspace" data-testid="community-author-workspace">
         {postEditorError && <div className="inline-error" role="alert">{postEditorError}</div>}
+        {postMutationFeedback && <div className="inline-success" role="status">{postMutationFeedback}</div>}
         {editorOpen && (
           <div className="community-post-editor">
             <div className="community-editor-grid">
               <label>
                 <span>{isZh ? '标题' : 'Title'}</span>
-                <input maxLength={160} value={postDraft.title} onChange={(event) => setPostDraft((current) => ({ ...current, title: event.target.value }))} />
+                <input
+                  maxLength={160}
+                  placeholder={isZh ? '用一句话说明讨论主题' : 'Give the discussion a clear title'}
+                  value={postDraft.title}
+                  onChange={(event) => setPostDraft((current) => ({ ...current, title: event.target.value }))}
+                />
               </label>
               <label>
                 <span>{isZh ? '分类' : 'Category'}</span>
@@ -354,16 +352,31 @@ export function CommunityPage({
                 </select>
               </label>
               <label>
-                <span>{isZh ? '标签' : 'Tag'}</span>
-                <input maxLength={80} value={postDraft.tag} onChange={(event) => setPostDraft((current) => ({ ...current, tag: event.target.value }))} />
+                <span>{isZh ? '标签（选填）' : 'Tag (optional)'}</span>
+                <input
+                  maxLength={80}
+                  placeholder={isZh ? '例如：工作流' : 'For example: workflow'}
+                  value={postDraft.tag}
+                  onChange={(event) => setPostDraft((current) => ({ ...current, tag: event.target.value }))}
+                />
               </label>
               <label className="community-editor-wide">
                 <span>{isZh ? '摘要' : 'Excerpt'}</span>
-                <input maxLength={500} value={postDraft.excerpt} onChange={(event) => setPostDraft((current) => ({ ...current, excerpt: event.target.value }))} />
+                <input
+                  maxLength={500}
+                  placeholder={isZh ? '概括问题、作品或协作目标' : 'Summarize the question, work, or collaboration goal'}
+                  value={postDraft.excerpt}
+                  onChange={(event) => setPostDraft((current) => ({ ...current, excerpt: event.target.value }))}
+                />
               </label>
               <label className="community-editor-wide">
                 <span>{isZh ? '正文' : 'Body'}</span>
-                <textarea maxLength={20000} value={postDraft.body} onChange={(event) => setPostDraft((current) => ({ ...current, body: event.target.value }))} />
+                <textarea
+                  maxLength={20000}
+                  placeholder={isZh ? '补充背景、示例，以及你希望获得的回复' : 'Add context, examples, and the kind of response you need'}
+                  value={postDraft.body}
+                  onChange={(event) => setPostDraft((current) => ({ ...current, body: event.target.value }))}
+                />
               </label>
             </div>
             <div className="community-editor-actions">
@@ -380,36 +393,51 @@ export function CommunityPage({
             </div>
           </div>
         )}
-        {accountHandle && myPosts.length > 0 && (
-          <div className="community-owned-list">
-            {myPosts.map((post) => (
-              <article className="community-owned-row" key={post.id}>
-                <div>
-                  <strong>{post.title}</strong>
-                  <span>{post.status === 'draft' ? (isZh ? '草稿' : 'Draft') : post.status === 'deleted' ? (isZh ? '已删除' : 'Deleted') : (isZh ? '已发布' : 'Published')} · v{post.version ?? 1}</span>
-                </div>
-                <div className="community-owned-actions">
-                  {post.status !== 'deleted' && <button className="icon-button" type="button" disabled={postMutationBusy} onClick={() => openPostEditor(post)} title={isZh ? '编辑' : 'Edit'}><Pencil size={16} /></button>}
-                  {post.status === 'draft' && <button className="icon-button" type="button" disabled={postMutationBusy} onClick={() => void publishDraftPost(post)} title={isZh ? '发布' : 'Publish'}><Send size={16} /></button>}
-                  {post.status !== 'deleted' && <button className="icon-button danger" type="button" disabled={postMutationBusy} onClick={() => void removePost(post)} title={isZh ? '删除' : 'Delete'}><Trash2 size={16} /></button>}
-                </div>
-              </article>
-            ))}
+        {myPostsOpen && accountHandle && (
+          <div className="community-owned-panel">
+            <div className="community-owned-heading">
+              <strong>{isZh ? '我的帖子' : 'My posts'}</strong>
+              <span>{`${myPosts.filter((post) => post.status !== 'deleted').length} ${isZh ? '条内容' : 'items'}  /  @${accountHandle}`}</span>
+            </div>
+            {myPosts.length > 0 ? (
+              <div className="community-owned-list">
+                {myPosts.map((post) => (
+                  <article className={`community-owned-row${pendingDeletePost?.id === post.id ? ' confirming' : ''}`} key={post.id}>
+                    <div>
+                      <strong>{post.title}</strong>
+                      <span>{post.status === 'draft' ? (isZh ? '草稿' : 'Draft') : post.status === 'deleted' ? (isZh ? '已删除' : 'Deleted') : (isZh ? '已发布' : 'Published')}</span>
+                    </div>
+                    <div className="community-owned-actions">
+                      {post.status !== 'deleted' && <button className="community-row-action" type="button" disabled={postMutationBusy} onClick={() => openPostEditor(post)} title={isZh ? '编辑' : 'Edit'}><Pencil size={15} />{isZh ? '编辑' : 'Edit'}</button>}
+                      {post.status === 'draft' && <button className="community-row-action" type="button" disabled={postMutationBusy} onClick={() => void publishDraftPost(post)} title={isZh ? '发布' : 'Publish'}><Send size={15} />{isZh ? '发布' : 'Publish'}</button>}
+                      {post.status !== 'deleted' && <button className="community-row-action danger" type="button" disabled={postMutationBusy} onClick={() => { setPendingDeletePost(post); setDeletePostError(null); setPostMutationFeedback(null) }} title={isZh ? '删除' : 'Delete'}><Trash2 size={15} />{isZh ? '删除' : 'Delete'}</button>}
+                    </div>
+                    {pendingDeletePost?.id === post.id && <div className="community-delete-confirmation">
+                      <OperationConfirmation
+                        ariaLabel={isZh ? '确认删除社区帖子' : 'Confirm community post deletion'}
+                        title={isZh ? `删除“${post.title}”？` : `Delete “${post.title}”?`}
+                        description={isZh ? '帖子将从社区和你的公开内容中移除，已有审核记录仍会保留。' : 'The post will be removed from the community and your public content. Existing moderation records remain available.'}
+                        confirmLabel={isZh ? '删除帖子' : 'Delete post'}
+                        cancelLabel={isZh ? '返回' : 'Back'}
+                        onConfirm={() => void confirmPostDeletion()}
+                        onCancel={() => { setPendingDeletePost(null); setDeletePostError(null) }}
+                        busy={postMutationBusy}
+                        compact
+                      >
+                        {deletePostError && <span className="community-delete-error" role="alert">{deletePostError}</span>}
+                      </OperationConfirmation>
+                    </div>}
+                  </article>
+                ))}
+              </div>
+            ) : <div className="community-owned-empty">{isZh ? '你还没有发布或保存帖子。' : 'You have not published or saved a post yet.'}</div>}
           </div>
         )}
       </section>
-      <div className="community-strip">
-        {[
-          [isZh ? '话题总数' : 'Topics', scopedPosts.length, isZh ? '帖子、问答、复盘' : 'Posts and recaps'],
-          [isZh ? '待回复' : 'Unanswered', scopedPosts.filter((post) => post.replies === 0 || !post.solved).length, isZh ? '需要社区处理' : 'Need attention'],
-          [isZh ? '可转任务' : 'Task-ready', scopedPosts.filter((post) => post.category === 'Questions' || post.category === 'Task Recap').length, isZh ? '适合发布需求' : 'Ready to scope'],
-        ].map(([label, value, hint]) => (
-          <article className="community-kpi" key={label}>
-            <span>{label}</span>
-            <strong>{value}</strong>
-            <small>{hint}</small>
-          </article>
-        ))}
+      <div className="community-summary" aria-label={isZh ? '社区概览' : 'Community summary'}>
+        <span><strong>{scopedPosts.length}</strong>{isZh ? '全部帖子' : 'Posts'}</span>
+        <span><strong>{scopedPosts.filter((post) => post.replies === 0 || !post.solved).length}</strong>{isZh ? '待回复' : 'Unanswered'}</span>
+        <span><strong>{Math.max(categoryOptions.length - 1, 0)}</strong>{isZh ? '分类' : 'Categories'}</span>
       </div>
       <div className="community-layout">
         <section className={communityView === 'detail' ? 'forum-main detail-mode' : 'forum-main'}>
@@ -432,71 +460,72 @@ export function CommunityPage({
               )}
             </div>
           )}
-          {communityView === 'list' ? (
+          {communityView === 'list' || !activeSelectedPost ? (
             <>
-              <div className="topic-toolbar">
-                <strong>{isZh ? '全部话题' : 'All topics'}</strong>
-                <div className="topic-tabs-wrap">
-                  <button className="icon-button topic-tabs-nav" type="button" onClick={() => scrollTopicTabs('left')} aria-label={isZh ? '向左翻动标签' : 'Scroll tags left'}>
-                    <ChevronDown size={16} className="topic-tabs-nav-left" />
-                  </button>
-                  <div className="topic-tabs" ref={topicTabsRef} aria-label={isZh ? '社区筛选' : 'Community filters'}>
-                    {filterOptions.map(([filter, label]) => (
-                      <button
-                        className={communityFilter === filter ? 'chip active' : 'chip'}
-                        type="button"
-                        key={filter}
-                        onClick={() => chooseFilter(filter)}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <button className="icon-button topic-tabs-nav" type="button" onClick={() => scrollTopicTabs('right')} aria-label={isZh ? '向右翻动标签' : 'Scroll tags right'}>
-                    <ChevronDown size={16} className="topic-tabs-nav-right" />
-                  </button>
+              <section className="community-filters" aria-label={isZh ? '社区筛选' : 'Community filters'}>
+                <label className="community-search">
+                  <Search size={17} />
+                  <input
+                    type="search"
+                    value={communitySearch}
+                    placeholder={isZh ? '搜索标题、摘要或作者' : 'Search title, summary, or author'}
+                    onChange={(event) => { setCommunitySearch(event.target.value); setTopicPage(1) }}
+                  />
+                </label>
+                <label className="community-sort-select">
+                  <span>{isZh ? '排序' : 'Sort'}</span>
+                  <select value={communityFilter} onChange={(event) => chooseFilter(event.target.value)}>
+                    {filterOptions.map(([filter, label]) => <option value={filter} key={filter}>{label}</option>)}
+                  </select>
+                </label>
+                <div className="community-filter-chips" aria-label={isZh ? '社区排序快捷筛选' : 'Community sort shortcuts'}>
+                  {filterOptions.map(([filter, label]) => (
+                    <button
+                      className={communityFilter === filter ? 'active' : ''}
+                      type="button"
+                      key={filter}
+                      onClick={() => chooseFilter(filter)}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
-              </div>
+                <label>
+                  <span>{isZh ? '分类' : 'Category'}</span>
+                  <select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setTopicPage(1); setSelectedPost(null) }}>
+                    {categoryOptions.map((category) => <option value={category} key={category}>{category === 'All' ? (isZh ? '全部分类' : 'All categories') : categoryLabel(category, t)}</option>)}
+                  </select>
+                </label>
+              </section>
               <div className="topic-table">
                 <div className="topic-head">
                   <span>{isZh ? '话题' : 'Topic'}</span>
-                  <span>{isZh ? '赞' : 'Votes'}</span>
                   <span>{isZh ? '回复' : 'Replies'}</span>
                   <span>{isZh ? '浏览' : 'Views'}</span>
-                  <span>{isZh ? '状态' : 'Status'}</span>
                 </div>
                 <div className="topic-table-body">
                   {visibleTopics.map((post) => (
-                    <article className={activeSelectedPost.id === post.id ? 'topic-row active' : 'topic-row'} key={post.id} data-testid={`community-topic-${post.id}`}>
+                    <article className={activeSelectedPost?.id === post.id ? 'topic-row active' : 'topic-row'} key={post.id} data-testid={`community-topic-${post.id}`}>
                       <div className="topic-main">
+                        <div className="topic-row-kicker">
+                          <span>{categoryLabel(post.category, t)}</span>
+                          <span>{post.solved ? (isZh ? '已解决' : 'Solved') : (isZh ? '讨论中' : 'Open')}</span>
+                        </div>
                         <button
                           className="topic-title-button"
                           type="button"
-                          onClick={() => {
-                            showTopicDetail(post)
-                            simulateAction(isZh ? '已打开社区帖子：' + post.title : 'Opened community topic: ' + post.title)
-                          }}
+                          onClick={() => showTopicDetail(post)}
                         >
                           <span className="topic-title-text">{post.title}</span>
-                          <span className={post.solved ? 'topic-state solved' : 'topic-state'}>
-                            {post.solved ? (isZh ? '已解决' : 'Solved') : isZh ? '讨论中' : 'Open'}
-                          </span>
                         </button>
-                        <div className="task-meta forum-tags">
-                          <span className="tag">{post.tag}</span>
-                          <span className="tag">{categoryLabel(post.category, t)}</span>
-                        </div>
+                        <p>{post.excerpt}</p>
                         <span className="topic-meta-line">
                           <button className="profile-link topic-author-link" type="button" onClick={() => openAuthorProfile(post.author)}>
                             @{post.author}
-                          </button>{' '}
-                          / {post.excerpt}
+                          </button>
+                          {post.tag && <span>{post.tag}</span>}
                         </span>
                       </div>
-                      <span className="topic-stat">
-                        <strong>{post.votes}</strong>
-                        {isZh ? '赞' : 'votes'}
-                      </span>
                       <span className="topic-stat">
                         <strong>{post.replies}</strong>
                         {isZh ? '回复' : 'replies'}
@@ -505,13 +534,16 @@ export function CommunityPage({
                         <strong>{post.views}</strong>
                         {isZh ? '浏览' : 'views'}
                       </span>
-                      <span className="topic-stat">{post.solved ? (isZh ? '已解决' : 'Solved') : filterLabel(communityFilter)}</span>
                     </article>
                   ))}
                   {filteredPosts.length === 0 && (
                     <div className="topic-empty">
-                      <strong>{isZh ? '当前筛选暂无话题' : 'No topics in this filter'}</strong>
-                      <span>{isZh ? '切换筛选条件查看其他社区话题。' : 'Try another filter to browse more community topics.'}</span>
+                      <MessageCircle size={22} />
+                      <strong>{scopedPosts.length === 0 ? (isZh ? '社区还没有帖子' : 'No community posts yet') : (isZh ? '没有符合条件的帖子' : 'No posts match these filters')}</strong>
+                      <span>{scopedPosts.length === 0 ? (isZh ? '发布第一个具体问题、作品或经验。' : 'Publish the first focused question, work, or lesson.') : (isZh ? '调整搜索、排序或分类后再试。' : 'Adjust the search, sort, or category and try again.')}</span>
+                      {(communitySearch || categoryFilter !== 'All' || communityFilter !== 'Latest') && (
+                        <button type="button" onClick={() => { setCommunitySearch(''); setCategoryFilter('All'); chooseFilter('Latest') }}>{isZh ? '清除筛选' : 'Clear filters'}</button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -566,7 +598,8 @@ export function CommunityPage({
                   </span>
                   <h2>{activeSelectedPost.title}</h2>
                 </div>
-                <button className="chip back-to-list" type="button" onClick={backToTopicList}>
+                <button className="back-to-list" type="button" onClick={backToTopicList}>
+                  <ChevronLeft size={16} />
                   {isZh ? '返回列表' : 'Back to list'}
                 </button>
               </div>
@@ -592,29 +625,18 @@ export function CommunityPage({
                   {isZh ? '投票' : 'votes'}
                 </span>
               </div>
-              <div className="embedded-work">
-                <img src={visualWorks[1].image} alt="" />
-                <div>
-                  <strong>{isZh ? '关联作品' : 'Embedded work'}</strong>
-                  <span>{isZh ? '帖子可关联图片、视频、音频、提示词和任务编号。' : 'Attach image, video, audio, prompt, and task references.'}</span>
-                </div>
-              </div>
               <div className="post-action-bar">
                 <button className="compact-action" type="button" onClick={() => void likePost(activeSelectedPost)} title={isZh ? '点赞' : 'Like'}>
                   <Heart size={17} />
                   <span>{isZh ? '点赞' : 'Like'}</span>
                 </button>
-                <button className="compact-action" type="button" onClick={() => void savePostToLibrary(activeSelectedPost)} title={isZh ? '收藏' : 'Save'}>
-                  <Bookmark size={17} />
-                  <span>{isZh ? '收藏' : 'Save'}</span>
-                </button>
                 <button className="compact-action" type="button" onClick={() => void convertPostToTask(activeSelectedPost)} title={isZh ? '转成任务' : 'Turn into task'}>
                   <BriefcaseBusiness size={17} />
                   <span>{isZh ? '任务' : 'Task'}</span>
                 </button>
-                <button className="compact-action" type="button" onClick={() => void savePostToLibrary(activeSelectedPost)} title={isZh ? '收入灵感库' : 'Add to library'}>
+                <button className="compact-action" type="button" onClick={() => void savePostToLibrary(activeSelectedPost)} title={isZh ? '投稿到灵感库' : 'Submit to inspiration'}>
                   <Tags size={17} />
-                  <span>{isZh ? '入库' : 'Library'}</span>
+                  <span>{isZh ? '投稿灵感' : 'Submit'}</span>
                 </button>
                 <button className="compact-action" data-testid={`community-report-post-${activeSelectedPost.id}`} type="button" onClick={() => openReport('post', String(activeSelectedPost.id), activeSelectedPost.title)} title={isZh ? '举报帖子' : 'Report post'}>
                   <Flag size={17} />
@@ -671,51 +693,6 @@ export function CommunityPage({
             </article>
           )}
         </section>
-        <aside className="community-sidebar">
-          <section className="tag-panel">
-            <div className="panel-title">
-              <strong>{isZh ? '热门话题' : 'Hot right now'}</strong>
-              <span>{isZh ? '社区正在讨论' : 'Most discussed'}</span>
-            </div>
-            <div className="hot-list">
-              {hotPosts.map((post) => (
-                <button
-                  className="hot-item"
-                  type="button"
-                  key={post.id}
-                  onClick={() => {
-                    showTopicDetail(post)
-                    simulateAction(isZh ? '已选择热门话题：' + post.title : 'Hot topic selected: ' + post.title)
-                  }}
-                >
-                  <strong>{post.title}</strong>
-                  <span>
-                    {post.views} {isZh ? '浏览' : 'views'} / {post.replies} {isZh ? '回复' : 'replies'}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
-          <section className="tag-panel">
-            <div className="panel-title">
-              <strong>{isZh ? '标签' : 'Tags'}</strong>
-              <span>{isZh ? '按方向浏览' : 'Browse by lane'}</span>
-            </div>
-            <div className="tag-list compact">
-              {sidebarTags.map(([filter, label, count]) => (
-                <button
-                  className={communityFilter === filter ? 'tag-item active' : 'tag-item'}
-                  type="button"
-                  key={filter}
-                  onClick={() => chooseFilter(filter)}
-                >
-                  <strong>{label}</strong>
-                  <span>{count}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-        </aside>
       </div>
     </div>
   )

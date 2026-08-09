@@ -42,7 +42,12 @@ const createRateLimitTestServer = async (context = {}) => {
   const router = createRouter()
   const handler = async (_request, response) => ok(response, { ok: true })
   router.add('POST', '/api/auth/login', handler)
+  router.add('POST', '/api/auth/email/verification/resend', handler)
+  router.add('POST', '/api/auth/email/verify', handler)
+  router.add('POST', '/api/auth/password-reset/request', handler)
+  router.add('POST', '/api/auth/password-reset/confirm', handler)
   router.add('POST', '/api/media/uploads', handler)
+  router.add('POST', '/api/observability/client-errors', handler)
   router.add('PUT', '/api/admin/roles/member/permissions', handler)
   router.add('GET', '/api/admin/audit', handler)
   const server = createServer(router, context)
@@ -102,6 +107,29 @@ test('rate limiter protects authentication endpoints by client', async () => {
   })
 })
 
+test('rate limiter protects email verification and password recovery endpoints', async () => {
+  await withProcessEnv({ RATE_LIMIT_AUTH_MAX: '1', RATE_LIMIT_WINDOW_MS: '60000' }, async () => {
+    const server = await createRateLimitTestServer()
+    const paths = [
+      '/api/auth/email/verification/resend',
+      '/api/auth/email/verify',
+      '/api/auth/password-reset/request',
+      '/api/auth/password-reset/confirm',
+    ]
+    try {
+      for (const [index, path] of paths.entries()) {
+        const headers = { 'x-forwarded-for': `198.51.100.${20 + index}` }
+        assert.equal((await postJson(server.url, path, {}, headers)).status, 200)
+        const limited = await postJson(server.url, path, {}, headers)
+        assert.equal(limited.status, 429)
+        assert.equal((await limited.json()).error.details.bucket, 'auth')
+      }
+    } finally {
+      await server.close()
+    }
+  })
+})
+
 test('rate limiter protects media upload and admin mutation buckets separately', async () => {
   await withProcessEnv({
     RATE_LIMIT_UPLOAD_MAX: '1',
@@ -124,6 +152,20 @@ test('rate limiter protects media upload and admin mutation buckets separately',
 
       const auditList = await fetch(`${server.url}/api/admin/audit`, { headers: { accept: 'application/json' } })
       assert.equal(auditList.status, 200)
+    } finally {
+      await server.close()
+    }
+  })
+})
+
+test('rate limiter protects anonymous client telemetry independently', async () => {
+  await withProcessEnv({ RATE_LIMIT_CLIENT_TELEMETRY_MAX: '1', RATE_LIMIT_WINDOW_MS: '60000' }, async () => {
+    const server = await createRateLimitTestServer()
+    try {
+      assert.equal((await postJson(server.url, '/api/observability/client-errors')).status, 200)
+      const limited = await postJson(server.url, '/api/observability/client-errors')
+      assert.equal(limited.status, 429)
+      assert.equal((await limited.json()).error.details.bucket, 'client_telemetry')
     } finally {
       await server.close()
     }
@@ -225,6 +267,29 @@ test('redis rate limit store increments shared counters with prefixed keys', asy
     resetAt: 61_000,
   })
   assert.equal(commands[0][3], 'test-prefix:auth:198.51.100.50')
+})
+
+test('redis rate limit readiness uses a non-mutating PING command', async () => {
+  const commands = []
+  const store = createRedisRateLimitStore({
+    client: {
+      sendCommand: async (parts) => {
+        commands.push(parts)
+        return 'PONG'
+      },
+    },
+  })
+
+  assert.equal(await store.healthCheck(), true)
+  assert.deepEqual(commands, [['PING']])
+})
+
+test('redis rate limit readiness rejects unexpected responses', async () => {
+  const store = createRedisRateLimitStore({
+    client: { sendCommand: async () => 'LOADING' },
+  })
+
+  await assert.rejects(store.healthCheck(), /readiness check failed/)
 })
 
 test('rate limit store factory selects redis store with injected client', async () => {

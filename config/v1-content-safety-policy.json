@@ -7,10 +7,12 @@
   "runtimeStatus": {
     "enforcementComplete": false,
     "currentPromptGate": "limited_keyword_fixture_baseline",
-    "providerNativeSafety": "not_integrated",
-    "postOutputSafety": "media_scan_only",
-    "humanReview": "partial_media_governance_only",
-    "appealWorkflow": "not_implemented",
+    "multimodalInputSafety": "image_video_and_chat_attachment_classifier_fail_closed",
+    "providerNativeSafety": "assurance_contract_implemented_real_provider_evidence_pending",
+    "postOutputSafety": "independent_classifier_and_media_scan_fail_closed",
+    "chatStreamingSafety": "bounded_unclassified_buffer_and_segment_classifier_fail_closed",
+    "humanReview": "generation_review_decision_appeal_and_idempotent_resume_implemented",
+    "appealWorkflow": "owner_appeal_and_independent_review_implemented",
     "productionApproved": false,
     "realProviderCallsApproved": false,
     "ordinaryContinuationIsApproval": false
@@ -527,13 +529,13 @@
       "regionBehavior": "block_without_bypass"
     },
     {
-      "providerId": "google-veo-3-1-fast",
+      "providerId": "hcai-router-seedance-2-fast",
       "modality": "video",
       "role": "primary",
-      "policySourceIds": ["google-generative-ai-prohibited-use", "google-cloud-aup"],
-      "providerMatrixSourceIds": ["google-veo-model", "google-zero-retention", "google-service-terms"],
-      "nativeControls": ["safety filters", "prompt rewriting", "C2PA Content Credentials"],
-      "mandatoryAppControls": ["prompt/reference/rights gate", "provider lifecycle safety mapping", "frame/audio/media scan", "C2PA preservation", "human review"],
+      "policySourceIds": [],
+      "providerMatrixSourceIds": ["hcai-router-seedance-api"],
+      "nativeControls": ["not confirmed"],
+      "mandatoryAppControls": ["prompt/reference/rights gate", "provider lifecycle safety mapping", "frame/audio/media scan", "preserve provenance metadata when present", "human review"],
       "providerRefusalBehavior": "reject_job_and_record_safe_reason",
       "unknownSafetyResponse": "block",
       "regionBehavior": "block_without_bypass"
@@ -551,7 +553,7 @@
       "regionBehavior": "block_without_bypass"
     },
     {
-      "providerId": "elevenlabs-music-v2-enterprise",
+      "providerId": "hcai-router-minimax-music-3",
       "modality": "music",
       "role": "primary",
       "policySourceIds": ["elevenlabs-prohibited-use", "eleven-music-terms-policy"],
@@ -595,7 +597,7 @@
   "appealPolicy": {
     "implementationTaskId": "V1-63",
     "requiredForV1": true,
-    "implementationStatus": "not_implemented",
+    "implementationStatus": "implemented_for_generation_reviews_and_automated_blocks",
     "eligibleDecisions": ["prohibited", "block", "review", "reject"],
     "entryPointRequired": true,
     "submissionWindowDays": 30,
@@ -757,19 +759,35 @@
     ],
     "strengths": [
       "prompt moderation runs before quota reservation and provider execution",
+      "image and video reference assets are byte-verified and independently classified before quota, credit, Provider budget, or Provider dispatch",
+      "Chat text and attachments are classified before dispatch and streamed output remains buffered until semantic classification allows release",
       "review_required is a durable generation status",
       "generated media remains scan-gated before private download",
+      "generated outputs are independently classified before persistence and remain quarantined unless both output safety and media scanning allow release",
+      "classifier absence, failure, malformed responses, and unknown decisions fail closed to review in production",
+      "generation review cases retain original decisions and support owner appeals with an independent appeal reviewer",
+      "direct pre-dispatch blocks persist an automated original decision and are immediately eligible for owner appeal without quota, credit, or Provider dispatch",
+      "approved review dispositions resume once from a matching owner-resubmitted request and rerun risk, routing, entitlement, quota, credit, Provider budget, and Provider controls; block dispositions never resume",
       "generation records store prompt hash and bounded preview instead of the full prompt",
       "provider adapter metadata rejects secret-like keys"
+      ,"Provider adapters require closed status-consistent native safety evidence and preserve it through asynchronous lifecycle replay"
     ],
     "knownGaps": [
       "limited keyword rules are not the frozen policy implementation",
-      "no modality-specific classifier contracts",
-      "no real provider-native safety integration",
-      "no post-output semantic classifier for generated media or streams",
-      "no complete human review and appeal workflow",
+      "no approved production deployment evidence for the multimodal input classifier",
+      "no target-environment evidence confirming real Provider native safety outcomes and policy versions",
+      "no approved production deployment evidence for the Chat semantic classifier",
       "no finalized retention schedule until V1-45"
-    ]
+    ],
+    "inputSafetyFile": "server/src/creative/inputSafety.js",
+    "outputSafetyFile": "server/src/creative/outputSafety.js",
+    "outputIngestionFile": "server/src/creative/providerOutputIngestion.js",
+    "chatSafetyFile": "server/src/chat/chatService.js",
+    "trustRoutesFile": "server/src/modules/trust/routes.js",
+    "appealRepositoryFile": "server/src/trust/prismaModerationCaseRepository.js",
+    "creativeRoutesFile": "server/src/modules/creative/routes.js"
+    ,"providerNativeSafetyFile": "server/src/creative/providerNativeSafety.js"
+    ,"providerOutputSafetyAssuranceFile": "server/src/creative/providerOutputSafetyAssurance.js"
   },
   "implementationHandoff": [
     {
@@ -823,7 +841,7 @@
       "official": true,
       "accessed": "2026-07-11",
       "url": "https://policies.google.com/terms/generative-ai/use-policy",
-      "providerIds": ["google-veo-3-1-fast", "google-lyria-3-pro-preview"],
+      "providerIds": ["google-lyria-3-pro-preview"],
       "dimensions": ["prohibited_use", "harm", "privacy", "misrepresentation"]
     },
     {
@@ -831,7 +849,7 @@
       "official": true,
       "accessed": "2026-07-11",
       "url": "https://cloud.google.com/terms/aup",
-      "providerIds": ["google-veo-3-1-fast", "google-lyria-3-pro-preview"],
+      "providerIds": ["google-lyria-3-pro-preview"],
       "dimensions": ["acceptable_use", "abuse", "security"]
     },
     {
@@ -863,7 +881,7 @@
       "official": true,
       "accessed": "2026-07-11",
       "url": "https://elevenlabs.io/use-policy",
-      "providerIds": ["elevenlabs-music-v2-enterprise"],
+      "providerIds": ["hcai-router-minimax-music-3"],
       "dimensions": ["prohibited_use", "voice", "impersonation", "safety"]
     },
     {
@@ -871,7 +889,7 @@
       "official": true,
       "accessed": "2026-07-11",
       "url": "https://elevenlabs.io/music-terms",
-      "providerIds": ["elevenlabs-music-v2-enterprise"],
+      "providerIds": ["hcai-router-minimax-music-3"],
       "dimensions": ["music_rights", "lyrics", "artist", "commercial_use"]
     }
   ]

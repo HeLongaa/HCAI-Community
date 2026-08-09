@@ -2,6 +2,7 @@ import { HttpError } from '../common/errors/httpError.js'
 import { buildCreativeProviderConfig } from '../config/env.js'
 import { chatCapabilityForProvider } from './chatCapabilityContract.js'
 import { imageCapabilityForProvider } from './imageCapabilityContract.js'
+import { configuredOpenAIImageDisplayName } from './openaiImageProvider.js'
 import { musicCapabilityForProvider } from './musicCapabilityContract.js'
 import { videoCapabilityForProvider } from './videoCapabilityContract.js'
 
@@ -58,6 +59,7 @@ const buildReplicateStagingProvider = (configProvider, config) => ({
     pollingWorkerEnabled: config.polling.workerEnabled,
     statusClientImplemented: config.polling.statusClientImplemented,
     statusClientEnabled: config.polling.statusClientEnabled,
+    providerNativeSafetyRequired: true,
   },
 })
 
@@ -73,7 +75,7 @@ const buildOpenAIImageProvider = (source) => {
   const runtimeEnabled = stagingRuntime && stagingConfirmed && credentialConfigured && clientRequested && networkRequested
   return {
     id: 'openai-gpt-image-2',
-    label: 'OpenAI GPT Image 2',
+    label: configuredOpenAIImageDisplayName(source),
     mode: 'openai_image',
     enabled: runtimeEnabled,
     configured: runtimeEnabled,
@@ -98,6 +100,7 @@ const buildOpenAIImageProvider = (source) => {
       pollingEnabled: false,
       mutationClientImplemented: false,
       outputFetchClientImplemented: false,
+      providerNativeSafetyRequired: true,
     },
   }
 }
@@ -132,17 +135,117 @@ const buildChatProvider = ({ id, label, mode, role }) => ({
 })
 
 const buildVideoProvider = ({ id, label, mode, role, source }) => {
-  const credentialConfigured = role === 'primary' && Boolean(String(source.CREATIVE_GOOGLE_VEO_ACCESS_TOKEN ?? '').trim())
-  const configurationComplete = role === 'primary' && [
-    source.CREATIVE_GOOGLE_VEO_PROJECT_ID,
-    source.CREATIVE_GOOGLE_VEO_OUTPUT_GCS_URI,
-  ].every((value) => Boolean(String(value ?? '').trim()))
+  const credentialConfigured = role === 'primary' && Boolean(String(source.CREATIVE_ROUTER_VIDEO_API_KEY ?? '').trim())
+  const configurationComplete = role === 'primary' && Boolean(String(source.CREATIVE_ROUTER_VIDEO_BASE_URL ?? '').trim())
   const stagingRuntime = source.NODE_ENV === 'production' &&
     String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? '').trim().toLowerCase() === 'staging'
-  const stagingConfirmed = String(source.CREATIVE_GOOGLE_VEO_CONFIRMATION ?? '').trim().toLowerCase() === 'staging-only'
+  const stagingConfirmed = String(source.CREATIVE_ROUTER_VIDEO_CONFIRMATION ?? '').trim().toLowerCase() === 'staging-only'
   const runtimeEnabled = role === 'primary' && stagingRuntime && stagingConfirmed && credentialConfigured && configurationComplete &&
-    enabledFlag(source, 'CREATIVE_GOOGLE_VEO_HTTP_CLIENT_ENABLED') &&
-    enabledFlag(source, 'CREATIVE_GOOGLE_VEO_NETWORK_CALLS_ENABLED')
+    enabledFlag(source, 'CREATIVE_ROUTER_VIDEO_HTTP_CLIENT_ENABLED') &&
+    enabledFlag(source, 'CREATIVE_ROUTER_VIDEO_NETWORK_CALLS_ENABLED')
+  return {
+    id,
+    label,
+    mode,
+    enabled: runtimeEnabled,
+    configured: runtimeEnabled,
+    default: false,
+    fixtureInjectable: role === 'primary' && !runtimeEnabled,
+    capabilities: [videoCapabilityForProvider(id)],
+    safeMetadata: {
+      externalCredentialsConfigured: credentialConfigured,
+      persistsOutputs: true,
+      costMetered: true,
+      asynchronous: true,
+      stagingOnly: true,
+      productionDenied: true,
+      approvalRequired: true,
+      role,
+      adapterImplemented: role === 'primary',
+      adapterRegistered: runtimeEnabled,
+      fixtureAdapterOnly: role === 'primary' && !runtimeEnabled,
+      inputResolverImplemented: role === 'primary',
+      inputBytesReaderImplemented: role === 'primary',
+      requestMapperImplemented: role === 'primary',
+      lifecycleProjectionImplemented: role === 'primary',
+      operationStatePersistenceImplemented: role === 'primary',
+      lifecycleRegistered: role === 'primary',
+      lifecycleEnabled: runtimeEnabled && enabledFlag(source, 'CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED'),
+      fixtureStatusReaderOnly: false,
+      outputIngestionImplemented: role === 'primary',
+      providerCostCloseoutImplemented: role === 'primary',
+      httpClientImplemented: role === 'primary',
+      httpClientEnabled: runtimeEnabled,
+      networkCallsEnabled: runtimeEnabled,
+      callbackEnabled: false,
+      pollingEnabled: runtimeEnabled && enabledFlag(source, 'CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED'),
+      mutationClientImplemented: false,
+      outputFetchClientImplemented: role === 'primary',
+      automaticFailoverAllowed: false,
+      cancellationUnsupported: role === 'primary',
+      c2paExpected: false,
+      providerNativeSafetyRequired: role === 'primary',
+    },
+  }
+}
+
+const buildMiniMaxVideoProvider = (source) => {
+  const credentialConfigured = Boolean(String(source.CREATIVE_ROUTER_MINIMAX_VIDEO_API_KEY ?? '').trim())
+  const stagingRuntime = source.NODE_ENV === 'production' &&
+    String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? '').trim().toLowerCase() === 'staging'
+  const stagingConfirmed = String(source.CREATIVE_ROUTER_MINIMAX_VIDEO_CONFIRMATION ?? '').trim().toLowerCase() === 'staging-only'
+  const runtimeEnabled = stagingRuntime && stagingConfirmed && credentialConfigured &&
+    enabledFlag(source, 'CREATIVE_ROUTER_MINIMAX_VIDEO_HTTP_CLIENT_ENABLED') &&
+    enabledFlag(source, 'CREATIVE_ROUTER_MINIMAX_VIDEO_NETWORK_CALLS_ENABLED')
+  return {
+    id: 'hcai-router-minimax-hailuo-2-3',
+    label: 'HCAI Router MiniMax Hailuo 2.3',
+    mode: 'router_minimax_video',
+    enabled: runtimeEnabled,
+    configured: runtimeEnabled,
+    default: false,
+    fixtureInjectable: !runtimeEnabled,
+    capabilities: [videoCapabilityForProvider('hcai-router-minimax-hailuo-2-3')],
+    safeMetadata: {
+      externalCredentialsConfigured: credentialConfigured,
+      authenticatedOutputProxy: true,
+      persistsOutputs: true,
+      costMetered: true,
+      asynchronous: true,
+      stagingOnly: true,
+      productionDenied: true,
+      approvalRequired: true,
+      role: 'candidate',
+      adapterImplemented: true,
+      adapterRegistered: runtimeEnabled,
+      fixtureAdapterOnly: !runtimeEnabled,
+      lifecycleRegistered: true,
+      lifecycleEnabled: runtimeEnabled && enabledFlag(source, 'CREATIVE_ROUTER_VIDEO_LIFECYCLE_ENABLED'),
+      httpClientImplemented: true,
+      httpClientEnabled: runtimeEnabled,
+      networkCallsEnabled: runtimeEnabled,
+      outputIngestionImplemented: true,
+      providerCostCloseoutImplemented: true,
+      automaticFailoverAllowed: false,
+      providerNativeSafetyRequired: true,
+    },
+  }
+}
+
+const buildMusicProvider = ({ id, label, mode, role, source }) => {
+  const credentialConfigured = role === 'primary' && Boolean(String(source.CREATIVE_ROUTER_MUSIC_API_KEY ?? '').trim())
+  const evidenceConfigured = role === 'primary' && [
+    source.CREATIVE_ROUTER_MUSIC_LICENSE_ID,
+    source.CREATIVE_ROUTER_MUSIC_TERMS_VERSION,
+  ].every((value) => Boolean(String(value ?? '').trim()))
+  const runtimeEnabled = role === 'primary' && source.NODE_ENV === 'production' &&
+    String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? '').trim().toLowerCase() === 'staging' &&
+    String(source.CREATIVE_ROUTER_MUSIC_CONFIRMATION ?? '').trim().toLowerCase() === 'staging-only' &&
+    credentialConfigured && evidenceConfigured &&
+    enabledFlag(source, 'CREATIVE_ROUTER_MUSIC_HTTP_CLIENT_ENABLED') &&
+    enabledFlag(source, 'CREATIVE_ROUTER_MUSIC_NETWORK_CALLS_ENABLED') &&
+    enabledFlag(source, 'CREATIVE_ROUTER_MUSIC_STAGING_RIGHTS_ACKNOWLEDGED') &&
+    enabledFlag(source, 'CREATIVE_ROUTER_MUSIC_TRAINING_OPT_OUT_CONFIRMED')
   return {
     id,
     label,
@@ -151,91 +254,34 @@ const buildVideoProvider = ({ id, label, mode, role, source }) => {
     configured: runtimeEnabled,
     default: false,
     fixtureInjectable: role === 'primary',
-    capabilities: [videoCapabilityForProvider(id)],
+    capabilities: [musicCapabilityForProvider(id)],
     safeMetadata: {
-    externalCredentialsConfigured: credentialConfigured,
-    persistsOutputs: true,
-    costMetered: true,
-    asynchronous: true,
-    stagingOnly: true,
-    productionDenied: true,
-    approvalRequired: true,
-    role,
-    adapterImplemented: role === 'primary',
-    adapterRegistered: runtimeEnabled,
-    fixtureAdapterOnly: role === 'primary' && !runtimeEnabled,
-    inputResolverImplemented: role === 'primary',
-    inputBytesReaderImplemented: role === 'primary',
-    requestMapperImplemented: role === 'primary',
-    lifecycleProjectionImplemented: role === 'primary',
-    operationStatePersistenceImplemented: role === 'primary',
-    lifecycleRegistered: role === 'primary',
-    lifecycleEnabled: runtimeEnabled && enabledFlag(source, 'CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED'),
-    fixtureStatusReaderOnly: false,
-    outputIngestionImplemented: role === 'primary',
-    providerCostCloseoutImplemented: role === 'primary',
-    httpClientImplemented: role === 'primary',
-    httpClientEnabled: runtimeEnabled,
-    networkCallsEnabled: runtimeEnabled,
-    callbackEnabled: false,
-    pollingEnabled: runtimeEnabled && enabledFlag(source, 'CREATIVE_GOOGLE_VEO_LIFECYCLE_ENABLED'),
-    mutationClientImplemented: role === 'primary',
-    outputFetchClientImplemented: role === 'primary',
-    automaticFailoverAllowed: false,
-    c2paExpected: role === 'primary',
+      externalCredentialsConfigured: credentialConfigured,
+      persistsOutputs: true,
+      costMetered: true,
+      asynchronousApplicationJob: true,
+      stagingOnly: true,
+      productionDenied: true,
+      approvalRequired: true,
+      role,
+      adapterImplemented: role === 'primary',
+      adapterRegistered: runtimeEnabled,
+      fixtureAdapterOnly: role === 'primary' && !runtimeEnabled,
+      httpClientImplemented: role === 'primary',
+      httpClientEnabled: runtimeEnabled,
+      networkCallsEnabled: runtimeEnabled,
+      lifecycleImplemented: false,
+      lifecycleEnabled: false,
+      outputIngestionImplemented: role === 'primary',
+      providerCostCloseoutImplemented: role === 'primary',
+      requestMapperImplemented: role === 'primary',
+      responseValidationImplemented: role === 'primary',
+      licenseMetadataProjectionImplemented: role === 'primary',
+      automaticFailoverAllowed: false,
+      providerNativeSafetyRequired: role === 'primary',
+      routerAndUpstreamTermsRequired: role === 'primary',
+      previewRiskAcceptanceRequired: role === 'backup',
     },
-  }
-}
-
-const buildMusicProvider = ({ id, label, mode, role, source }) => {
-  const credentialConfigured = role === 'primary' && Boolean(String(source.CREATIVE_ELEVENLABS_MUSIC_API_KEY ?? '').trim())
-  const evidenceConfigured = role === 'primary' && [
-    source.CREATIVE_ELEVENLABS_MUSIC_LICENSE_ID,
-    source.CREATIVE_ELEVENLABS_MUSIC_TERMS_VERSION,
-  ].every((value) => Boolean(String(value ?? '').trim()))
-  const runtimeEnabled = role === 'primary' && source.NODE_ENV === 'production' &&
-    String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? '').trim().toLowerCase() === 'staging' &&
-    String(source.CREATIVE_ELEVENLABS_MUSIC_CONFIRMATION ?? '').trim().toLowerCase() === 'staging-only' &&
-    credentialConfigured && evidenceConfigured &&
-    enabledFlag(source, 'CREATIVE_ELEVENLABS_MUSIC_HTTP_CLIENT_ENABLED') &&
-    enabledFlag(source, 'CREATIVE_ELEVENLABS_MUSIC_NETWORK_CALLS_ENABLED') &&
-    enabledFlag(source, 'CREATIVE_ELEVENLABS_MUSIC_ENTERPRISE_RIGHTS_CONFIRMED') &&
-    enabledFlag(source, 'CREATIVE_ELEVENLABS_MUSIC_TRAINING_OPT_OUT_CONFIRMED')
-  return {
-  id,
-  label,
-  mode,
-  enabled: runtimeEnabled,
-  configured: runtimeEnabled,
-  default: false,
-  fixtureInjectable: role === 'primary',
-  capabilities: [musicCapabilityForProvider(id)],
-  safeMetadata: {
-    externalCredentialsConfigured: credentialConfigured,
-    persistsOutputs: true,
-    costMetered: true,
-    asynchronousApplicationJob: true,
-    stagingOnly: true,
-    productionDenied: true,
-    approvalRequired: true,
-    role,
-    adapterImplemented: role === 'primary',
-    adapterRegistered: runtimeEnabled,
-    fixtureAdapterOnly: role === 'primary' && !runtimeEnabled,
-    httpClientImplemented: role === 'primary',
-    httpClientEnabled: runtimeEnabled,
-    networkCallsEnabled: runtimeEnabled,
-    lifecycleImplemented: false,
-    lifecycleEnabled: false,
-    outputIngestionImplemented: role === 'primary',
-    providerCostCloseoutImplemented: role === 'primary',
-    requestMapperImplemented: role === 'primary',
-    responseValidationImplemented: role === 'primary',
-    licenseMetadataProjectionImplemented: role === 'primary',
-    automaticFailoverAllowed: false,
-    enterpriseMusicContractRequired: role === 'primary',
-    previewRiskAcceptanceRequired: role === 'backup',
-  },
   }
 }
 
@@ -262,9 +308,9 @@ export const createCreativeProviderRegistry = (source = process.env) => {
         role: 'backup',
       }),
       buildVideoProvider({
-        id: 'google-veo-3-1-fast',
-        label: 'Google Veo 3.1 Fast',
-        mode: 'google_video',
+        id: 'hcai-router-seedance-2-fast',
+        label: 'HCAI Router Seedance 2.0 Fast',
+        mode: 'router_video',
         role: 'primary',
         source,
       }),
@@ -275,10 +321,11 @@ export const createCreativeProviderRegistry = (source = process.env) => {
         role: 'backup',
         source,
       }),
+      buildMiniMaxVideoProvider(source),
       buildMusicProvider({
-        id: 'elevenlabs-music-v2-enterprise',
-        label: 'ElevenLabs Music v2 Enterprise',
-        mode: 'elevenlabs_music',
+        id: 'hcai-router-minimax-music-3',
+        label: 'HCAI Router MiniMax Music 3.0',
+        mode: 'router_music',
         role: 'primary',
         source,
       }),
@@ -314,6 +361,31 @@ export const getCreativeProvider = (providerId, registry = createCreativeProvide
   }
   if (!provider.enabled || !provider.configured) {
     throw new HttpError(503, 'CREATIVE_PROVIDER_UNAVAILABLE', `Creative provider is not available: ${id}`)
+  }
+  return provider
+}
+
+export const getCreativeProviderForWorkspace = (
+  providerId,
+  workspace,
+  registry = createCreativeProviderRegistry(),
+) => {
+  if (providerId) return getCreativeProvider(providerId, registry)
+
+  const candidates = registry.providers.filter((provider) =>
+    provider.enabled &&
+    provider.configured &&
+    provider.capabilities.some((capability) =>
+      capability.workspace === workspace &&
+      (capability.modeContracts ?? []).some((contract) => contract.available),
+    ),
+  )
+  const realCandidates = candidates.filter((candidate) => candidate.id !== 'mock' && candidate.mode !== 'mock')
+  const configuredRealDefault = realCandidates.find((provider) => provider.id === registry.config.defaultProviderId)
+  const configuredDefault = candidates.find((provider) => provider.id === registry.config.defaultProviderId)
+  const provider = configuredRealDefault ?? realCandidates[0] ?? configuredDefault ?? candidates[0]
+  if (!provider) {
+    throw new HttpError(503, 'CREATIVE_PROVIDER_UNAVAILABLE', `No creative provider is available for workspace: ${workspace}`)
   }
   return provider
 }

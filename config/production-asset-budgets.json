@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "entryStyle": {
+    "maximumRawBytes": 560000,
+    "maximumGzipBytes": 90000
+  },
+  "initialScripts": {
+    "maximumRawBytes": 380000,
+    "maximumGzipBytes": 120000
+  },
+  "allStyles": {
+    "maximumRawBytes": 630000,
+    "maximumGzipBytes": 105000
+  },
+  "largestLazyScript": {
+    "maximumRawBytes": 540000,
+    "maximumGzipBytes": 140000
+  },
+  "particleModels": {
+    "desktopMaximumBytesEach": 336000,
+    "mobileMaximumBytesEach": 216000,
+    "maximumTotalBytes": 1656000,
+    "requiredDesktopFiles": ["1111.pcloud.bin", "2222.pcloud.bin", "3333.pcloud.bin"],
+    "requiredMobileFiles": ["1111-mobile.pcloud.bin", "2222-mobile.pcloud.bin", "3333-mobile.pcloud.bin"]
+  },
+  "particleStaticImage": {
+    "file": "landing-particles-static.webp",
+    "maximumBytes": 80000
+  },
+  "adminStyleChunks": {
+    "maximumRawBytesEach": 14000,
+    "requiredPrefixes": [
+      "AdminOverviewPanel-",
+      "UserAdminPanel-",
+      "EntitlementAdminPanel-"
+    ]
+  }
+}

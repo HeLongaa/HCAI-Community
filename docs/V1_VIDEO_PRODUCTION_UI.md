@@ -17,7 +17,7 @@ V1-28 replaces the local Video Studio simulation with an application-API workflo
 ## Runtime Labels
 
 - The deterministic application provider is visibly labeled `Mock`.
-- Google Veo is visibly labeled `Fixture only` and cannot be selected for product generation.
+- HCAI Router Seedance is visibly labeled `Fixture only` and cannot be selected for product generation.
 - Runway is visibly labeled `Unavailable`.
 - Provider catalog failure disables generation instead of falling back silently.
 
@@ -39,5 +39,5 @@ not enable any Video Provider HTTP client, lifecycle worker, real traffic, produ
 
 V1-29 defines and executes the fixture-only staging acceptance matrix for request mapping, long-job lifecycle, ordered
 inputs, accounting, scan/review release, user-visible failure handling, operational evidence, and rollback. The source
-of truth is `config/v1-video-staging-gate.json`; run it with `npm run test:v1-video-staging`. Real Veo HTTP, credentials,
+of truth is `config/v1-video-staging-gate.json`; run it with `npm run test:v1-video-staging`. Real Router HTTP, credentials,
 paid traffic, and production enablement still require separate explicit approval.

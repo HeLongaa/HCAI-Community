@@ -1,10 +1,71 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
+import { createInjectedRouteTestServer, createRouteTestServer, requestJson } from '../../common/testing/httpTestClient.js'
 import { registerTrustRoutes } from './routes.js'
 import { registerPostRoutes } from '../posts/routes.js'
 import { registerNotificationRoutes } from '../notifications/routes.js'
+import { createSeedRepository } from '../../repositories/seedRepository.js'
+
+test('authenticated runtime generation owners can create moderation cases outside the seed account list', async () => {
+  const repositories = createSeedRepository()
+  const actor = {
+    id: 'runtime-generation-owner',
+    handle: 'runtime-generation-owner',
+    displayName: 'Runtime generation owner',
+    role: 'creator',
+    permissions: [],
+  }
+  const generationId = 'runtime-owned-generation'
+  await repositories.creativeGenerations.create({
+    id: generationId,
+    actorId: actor.id,
+    actorHandle: actor.handle,
+    workspace: 'image',
+    mode: 'text_to_image',
+    providerId: 'openai-gpt-image-2',
+    status: 'review_required',
+    promptHash: 'runtime-owned-generation-prompt-hash',
+  }, actor)
+  const findDemoAccountByAccessToken = repositories.auth.findDemoAccountByAccessToken
+  repositories.auth.findDemoAccountByAccessToken = (token) =>
+    token === 'runtime-owner-token' ? actor : findDemoAccountByAccessToken(token)
+
+  const server = await createInjectedRouteTestServer(repositories, (router) => registerTrustRoutes(router, { repositories }))
+  try {
+    const report = await requestJson(server.url, '/api/trust/reports', {
+      token: 'runtime-owner-token',
+      body: {
+        targetType: 'creative_generation',
+        targetId: generationId,
+        category: 'other',
+        subject: 'Automated generation safety review',
+        statement: 'The generation was persisted before the automated review case was opened.',
+        locale: 'en',
+        sourceKey: `runtime-generation-review-${generationId}`,
+      },
+    })
+    assert.equal(report.status, 201)
+    assert.equal(report.payload.data.item.affectedUser.id, actor.id)
+
+    const foreignReport = await requestJson(server.url, '/api/trust/reports', {
+      token: 'demo-access.launchteam',
+      body: {
+        targetType: 'creative_generation',
+        targetId: generationId,
+        category: 'other',
+        subject: 'Guessed generation identifier',
+        statement: 'A different account must not confirm that this generation exists.',
+        locale: 'en',
+        sourceKey: `foreign-runtime-generation-review-${generationId}`,
+      },
+    })
+    assert.equal(foreignReport.status, 404)
+    assert.equal(foreignReport.payload.error.code, 'MODERATION_TARGET_NOT_FOUND')
+  } finally {
+    await server.close()
+  }
+})
 
 test('community report targets enforce the reporter content visibility boundary', async () => {
   const server = await createRouteTestServer(registerPostRoutes, registerTrustRoutes)

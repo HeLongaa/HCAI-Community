@@ -11,7 +11,7 @@ export const providerBillingUnits = Object.freeze({
   image: Object.freeze(['request', 'image']),
   chat: Object.freeze(['request', 'input_tokens', 'output_tokens', 'total_tokens']),
   video: Object.freeze(['generated_seconds']),
-  music: Object.freeze(['generated_seconds', 'generated_minutes']),
+  music: Object.freeze(['request']),
 })
 
 const fail = (code, reasonCode, statusCode = 503) => {
@@ -169,9 +169,10 @@ export const buildProviderCostReservation = ({
     billingUnit,
     unitPrice,
     sourceType: model.pricingSource ?? 'fixture_config',
-    sourceRef: `${providerCost.providerId}:${workspace}:configured-estimate`,
-    effectiveAt: model.pricingSnapshotAt ?? now,
+    sourceRef: model.pricingSourceRef ?? `${providerCost.providerId}:${workspace}:configured-estimate`,
+    effectiveAt: model.pricingEffectiveAt ?? model.pricingSnapshotAt ?? now,
     capturedAt: model.pricingSnapshotAt ?? now,
+    expiresAt: model.pricingExpiresAt ?? null,
   })
   const calculatedEstimate = calculateProviderEstimate({ snapshot, quantity, now })
   if (calculatedEstimate.estimateMicros !== estimateMicros.toString()) {

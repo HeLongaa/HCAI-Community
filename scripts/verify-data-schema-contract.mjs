@@ -17,7 +17,7 @@ for (const reference of contract.normalizedReferences) {
   add(`${reference.table} migration exists`, migration.includes(`CREATE TABLE "${reference.table}"`), reference.legacy)
   const model = blocks.get(reference.model) ?? ''
   add(`${reference.model} has MediaAsset FK`, /MediaAsset\s+@relation\(fields: \[assetId\]/.test(model), reference.target)
-  add(`${reference.model} has owner FK`, /User\s+@relation\(fields: \[ownerId\]/.test(model), 'personal owner')
+  add(`${reference.model} has owner FK`, /User\??\s+@relation\(fields: \[ownerId\]/.test(model), 'personal owner')
 }
 
 const discovered = []

@@ -36,6 +36,7 @@ test('signMediaUpload builds S3-compatible presigned PUT URLs', () => {
       STORAGE_ENDPOINT: 'https://storage.example.com',
       STORAGE_REGION: 'us-east-1',
       STORAGE_BUCKET: 'hcai-media',
+      STORAGE_KEY_PREFIX: '/images/',
       STORAGE_ACCESS_KEY_ID: 'access-key',
       STORAGE_SECRET_ACCESS_KEY: 'secret-key',
       STORAGE_UPLOAD_TTL_SECONDS: '600',
@@ -49,7 +50,7 @@ test('signMediaUpload builds S3-compatible presigned PUT URLs', () => {
   assert.equal(upload.headers['content-length'], '2048')
   assert.equal(upload.headers['x-amz-checksum-sha256'], Buffer.from('a'.repeat(64), 'hex').toString('base64'))
   assert.equal(url.origin, 'https://storage.example.com')
-  assert.equal(url.pathname, '/hcai-media/taskops/task_attachment/media-1-brief.pdf')
+  assert.equal(url.pathname, '/hcai-media/images/taskops/task_attachment/media-1-brief.pdf')
   assert.equal(url.searchParams.get('X-Amz-Algorithm'), 'AWS4-HMAC-SHA256')
   assert.equal(url.searchParams.get('X-Amz-Credential'), 'access-key/20260630/us-east-1/s3/aws4_request')
   assert.equal(url.searchParams.get('X-Amz-Date'), '20260630T000000Z')
@@ -89,6 +90,11 @@ test('buildStorageConfig requires S3 settings when explicitly enabled', () => {
     () => buildStorageConfig({ STORAGE_DRIVER: 's3', STORAGE_BUCKET: 'bucket' }),
     /STORAGE_ENDPOINT is required/,
   )
+})
+
+test('buildStorageConfig normalizes safe object prefixes and rejects traversal', () => {
+  assert.equal(buildStorageConfig({ STORAGE_KEY_PREFIX: '/images/generated/' }).keyPrefix, 'images/generated/')
+  assert.throws(() => buildStorageConfig({ STORAGE_KEY_PREFIX: 'images/../private' }), /relative path segments/)
 })
 
 test('storage operation contracts use bounded purpose-specific TTLs', () => {

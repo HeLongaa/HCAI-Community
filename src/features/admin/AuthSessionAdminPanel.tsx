@@ -5,20 +5,26 @@ import { SectionHeader } from '../../components/ui/SectionHeader'
 import { textFor } from '../../domain/utils'
 import { adminService } from '../../services/adminService'
 import type { AdminAuthFailure, AdminAuthMetrics, AdminAuthRiskPolicy, AdminAuthSession } from '../../services/contracts'
+import { AdminActionFeedback, type AdminActionFeedbackMessage } from './AdminActionFeedback'
+import { AdminOperationConfirmation } from './AdminOperationConfirmation'
 
 type Props = {
   t: Record<string, string>
   canRead: boolean
   canManage: boolean
-  notify: (message: string) => void
 }
+
+type PendingSessionOperation =
+  | { kind: 'compromise'; session: AdminAuthSession; riskStatus: AdminAuthSession['riskStatus']; reasonCode: string }
+  | { kind: 'session'; session: AdminAuthSession }
+  | { kind: 'user'; session: AdminAuthSession }
 
 const errorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback
 const isoDate = (date: Date) => date.toISOString().slice(0, 10)
 const initialDateTo = () => isoDate(new Date(Date.now() + 86_400_000))
 const initialDateFrom = () => isoDate(new Date(Date.now() - 29 * 86_400_000))
 
-export function AuthSessionAdminPanel({ t, canRead, canManage, notify }: Props) {
+export function AuthSessionAdminPanel({ t, canRead, canManage }: Props) {
   const [sessions, setSessions] = useState<AdminAuthSession[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [status, setStatus] = useState('active')
@@ -40,6 +46,8 @@ export function AuthSessionAdminPanel({ t, canRead, canManage, notify }: Props) 
   const [policy, setPolicy] = useState<AdminAuthRiskPolicy | null>(null)
   const [policyDraft, setPolicyDraft] = useState<AdminAuthRiskPolicy | null>(null)
   const [operationsBusy, setOperationsBusy] = useState(false)
+  const [feedback, setFeedback] = useState<AdminActionFeedbackMessage | null>(null)
+  const [pendingOperation, setPendingOperation] = useState<PendingSessionOperation | null>(null)
 
   const load = useCallback(async (append = false) => {
     if (!canRead) return
@@ -130,6 +138,7 @@ export function AuthSessionAdminPanel({ t, canRead, canManage, notify }: Props) 
     if (!canManage || !policyDraft || !policy) return
     setOperationsBusy(true)
     setError('')
+    setFeedback(null)
     try {
       const updated = await adminService.updateAuthRiskPolicy({
         enabled: policyDraft.enabled,
@@ -141,10 +150,11 @@ export function AuthSessionAdminPanel({ t, canRead, canManage, notify }: Props) 
       })
       setPolicy(updated)
       setPolicyDraft(updated)
-      notify(textFor(t, 'Authentication risk policy saved.', '认证风险策略已保存。'))
+      setFeedback({ kind: 'success', text: textFor(t, 'Authentication risk policy saved.', '认证风险策略已保存。') })
     } catch (actionError) {
-      setError(errorMessage(actionError, textFor(t, 'Could not save authentication policy.', '无法保存认证策略。')))
+      const message = errorMessage(actionError, textFor(t, 'Could not save authentication policy.', '无法保存认证策略。'))
       await loadOperations(false)
+      setError(message)
     } finally {
       setOperationsBusy(false)
     }
@@ -155,52 +165,67 @@ export function AuthSessionAdminPanel({ t, canRead, canManage, notify }: Props) 
     setDraftRisks((current) => ({ ...current, [updated.id]: updated.riskStatus }))
   }
 
-  const disposition = async (session: AdminAuthSession) => {
-    if (!canManage) return
-    const nextRisk = draftRisks[session.id] ?? session.riskStatus
-    const reasonCode = reasons[session.id]?.trim() || (nextRisk === 'normal' ? 'operator_reviewed' : 'operator_risk_disposition')
-    if (nextRisk === 'compromised' && !window.confirm(textFor(t, 'Mark this session compromised and revoke it?', '将此会话标记为已攻陷并撤销？'))) return
+  const saveDisposition = async (session: AdminAuthSession, nextRisk: AdminAuthSession['riskStatus'], reasonCode: string) => {
     setBusyId(session.id)
     setError('')
+    setFeedback(null)
     try {
       const result = await adminService.dispositionAuthSession(session.id, { riskStatus: nextRisk, expectedVersion: session.version, reasonCode })
       updateSession(result.session)
-      notify(textFor(t, 'Session risk disposition saved.', '会话风险处置已保存。'))
+      setPendingOperation(null)
+      setFeedback({ kind: 'success', text: textFor(t, 'Session risk disposition saved.', '会话风险处置已保存。') })
     } catch (actionError) {
-      setError(errorMessage(actionError, textFor(t, 'Could not update session risk.', '无法更新会话风险。')))
+      const message = errorMessage(actionError, textFor(t, 'Could not update session risk.', '无法更新会话风险。'))
       await load(false)
+      setError(message)
     } finally {
       setBusyId(null)
     }
   }
 
+  const disposition = (session: AdminAuthSession) => {
+    if (!canManage) return
+    const nextRisk = draftRisks[session.id] ?? session.riskStatus
+    const reasonCode = reasons[session.id]?.trim() || (nextRisk === 'normal' ? 'operator_reviewed' : 'operator_risk_disposition')
+    if (nextRisk === 'compromised') {
+      setPendingOperation({ kind: 'compromise', session, riskStatus: nextRisk, reasonCode })
+      return
+    }
+    void saveDisposition(session, nextRisk, reasonCode)
+  }
+
   const revoke = async (session: AdminAuthSession) => {
-    if (!canManage || !window.confirm(textFor(t, 'Revoke this session now?', '立即撤销此会话？'))) return
+    if (!canManage) return
     setBusyId(session.id)
     setError('')
+    setFeedback(null)
     try {
       const result = await adminService.revokeAuthSession(session.id, {
         expectedVersion: session.version,
         reasonCode: reasons[session.id]?.trim() || 'operator_revoked',
       })
       updateSession(result.session)
-      notify(textFor(t, 'Session revoked.', '会话已撤销。'))
+      setPendingOperation(null)
+      setFeedback({ kind: 'success', text: textFor(t, 'Session revoked.', '会话已撤销。') })
     } catch (actionError) {
-      setError(errorMessage(actionError, textFor(t, 'Could not revoke session.', '无法撤销会话。')))
+      const message = errorMessage(actionError, textFor(t, 'Could not revoke session.', '无法撤销会话。'))
       await load(false)
+      setError(message)
     } finally {
       setBusyId(null)
     }
   }
 
   const revokeUser = async (session: AdminAuthSession) => {
-    if (!canManage || !window.confirm(textFor(t, 'Revoke every active session for this user?', '撤销该用户的全部活跃会话？'))) return
+    if (!canManage) return
     setBusyId(`user:${session.user.id}`)
     setError('')
+    setFeedback(null)
     try {
       const result = await adminService.revokeUserAuthSessions(session.user.id, reasons[session.id]?.trim() || 'operator_account_containment')
-      notify(textFor(t, `Revoked ${result.revoked} sessions.`, `已撤销 ${result.revoked} 个会话。`))
       await load(false)
+      setPendingOperation(null)
+      setFeedback({ kind: 'success', text: textFor(t, `Revoked ${result.revoked} sessions.`, `已撤销 ${result.revoked} 个会话。`) })
     } catch (actionError) {
       setError(errorMessage(actionError, textFor(t, 'Could not revoke user sessions.', '无法撤销用户会话。')))
     } finally {
@@ -217,6 +242,23 @@ export function AuthSessionAdminPanel({ t, canRead, canManage, notify }: Props) 
         title={textFor(t, 'Session lifecycle', '会话生命周期')}
         action={<button className="ghost-button" type="button" onClick={() => void load(false)} disabled={loading}><RefreshCw size={17} />{textFor(t, 'Refresh', '刷新')}</button>}
       />
+      <AdminActionFeedback message={feedback} />
+      {pendingOperation && <AdminOperationConfirmation
+        ariaLabel={textFor(t, 'Confirm session security operation', '确认会话安全操作')}
+        title={pendingOperation.kind === 'compromise'
+          ? textFor(t, 'Mark this session compromised?', '将此会话标记为已攻陷？')
+          : pendingOperation.kind === 'session'
+            ? textFor(t, 'Revoke this session?', '撤销此会话？')
+            : textFor(t, `Revoke all sessions for ${pendingOperation.session.user.handle ?? pendingOperation.session.user.displayName}?`, `撤销 ${pendingOperation.session.user.handle ?? pendingOperation.session.user.displayName} 的全部会话？`)}
+        description={pendingOperation.kind === 'user'
+          ? textFor(t, 'Every active session for this user will stop authenticating immediately.', '该用户的全部活跃会话将立即停止认证。')
+          : textFor(t, 'This session will stop authenticating immediately. Other sessions for the same user remain active.', '此会话将立即停止认证，同一用户的其他会话保持有效。')}
+        confirmLabel={pendingOperation.kind === 'compromise' ? textFor(t, 'Mark compromised', '标记已攻陷') : pendingOperation.kind === 'session' ? textFor(t, 'Revoke session', '撤销会话') : textFor(t, 'Revoke all sessions', '撤销全部会话')}
+        cancelLabel={textFor(t, 'Back', '返回')}
+        onConfirm={() => void (pendingOperation.kind === 'compromise' ? saveDisposition(pendingOperation.session, pendingOperation.riskStatus, pendingOperation.reasonCode) : pendingOperation.kind === 'session' ? revoke(pendingOperation.session) : revokeUser(pendingOperation.session))}
+        onCancel={() => setPendingOperation(null)}
+        busy={pendingOperation.kind === 'user' ? busyId === `user:${pendingOperation.session.user.id}` : busyId === pendingOperation.session.id}
+      />}
       <div className="auth-risk-operations">
         <div className="auth-risk-toolbar">
           <div><Activity size={17} /><strong>{textFor(t, 'Authentication activity', '认证活动')}</strong></div>
@@ -276,8 +318,8 @@ export function AuthSessionAdminPanel({ t, canRead, canManage, notify }: Props) 
             <select aria-label={`${session.id} risk status`} value={draftRisks[session.id] ?? session.riskStatus} onChange={(event) => setDraftRisks((current) => ({ ...current, [session.id]: event.target.value as AdminAuthSession['riskStatus'] }))} disabled={!canManage}><option value="normal">normal</option><option value="suspicious">suspicious</option><option value="compromised">compromised</option></select>
             <div className="auth-session-row-actions">
               <button className="icon-button" type="button" title={textFor(t, 'Save risk disposition', '保存风险处置')} aria-label={textFor(t, 'Save risk disposition', '保存风险处置')} onClick={() => void disposition(session)} disabled={!canManage || busyId === session.id}>{session.riskStatus === 'normal' ? <ShieldCheck size={16} /> : <ShieldAlert size={16} />}</button>
-              <button className="icon-button" type="button" title={textFor(t, 'Revoke session', '撤销会话')} aria-label={textFor(t, 'Revoke session', '撤销会话')} onClick={() => void revoke(session)} disabled={!canManage || session.status !== 'active' || busyId === session.id}><Ban size={16} /></button>
-              <button className="ghost-button small" type="button" onClick={() => void revokeUser(session)} disabled={!canManage || busyId === `user:${session.user.id}`}>{textFor(t, 'Revoke user', '用户下线')}</button>
+              <button className="icon-button" type="button" title={textFor(t, 'Revoke session', '撤销会话')} aria-label={textFor(t, 'Revoke session', '撤销会话')} onClick={() => setPendingOperation({ kind: 'session', session })} disabled={!canManage || session.status !== 'active' || busyId === session.id}><Ban size={16} /></button>
+              <button className="ghost-button small" type="button" onClick={() => setPendingOperation({ kind: 'user', session })} disabled={!canManage || busyId === `user:${session.user.id}`}>{textFor(t, 'Revoke user', '用户下线')}</button>
             </div>
           </article>
         ))}

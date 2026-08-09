@@ -1,0 +1,40 @@
+name: newchat-staging
+
+x-staging-application-environment: &staging-application-environment
+  DEPLOYMENT_ENV: staging
+  RELEASE_ARTIFACT_SHA256: ${RELEASE_ARTIFACT_SHA256:?RELEASE_ARTIFACT_SHA256 is required}
+  MEDIA_SCAN_PROVIDER: ${MEDIA_SCAN_PROVIDER:-manual}
+  AUTH_COOKIE_SECURE: "true"
+  AUTH_COOKIE_SAMESITE: Lax
+  AUTH_TRUSTED_ORIGINS: ${AUTH_TRUSTED_ORIGINS:?AUTH_TRUSTED_ORIGINS is required}
+
+services:
+  gateway:
+    ports: !override
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8080}:8080"
+
+  frontend:
+    build: !reset null
+    image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE is required}
+
+  api:
+    build: !reset null
+    image: ${API_IMAGE:?API_IMAGE is required}
+    env_file:
+      - path: ${STAGING_RUNTIME_ENV_FILE:-/dev/null}
+        required: true
+    environment:
+      <<: *staging-application-environment
+
+  worker:
+    build: !reset null
+    image: ${WORKER_IMAGE:?WORKER_IMAGE is required}
+    env_file:
+      - path: ${STAGING_RUNTIME_ENV_FILE:-/dev/null}
+        required: true
+    environment:
+      <<: *staging-application-environment
+
+  migration:
+    build: !reset null
+    image: ${MIGRATION_IMAGE:?MIGRATION_IMAGE is required}

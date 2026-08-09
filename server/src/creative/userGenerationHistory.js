@@ -97,8 +97,15 @@ export const serializeUserCreativeGeneration = async (generation, { mediaReposit
       legacy: !generation.policy?.version,
       quotaUnits: Number(generation.usage?.quotaUnits ?? generation.usage?.estimatedCredits ?? 0),
       providerCost: generation.usage?.providerCost?.ledger
-        ? { availability: 'available', ledgerStatus: String(generation.usage.providerCost.ledger.status ?? 'unknown') }
-        : { availability: 'unavailable', ledgerStatus: null },
+        ? {
+            availability: generation.usage.providerCost.ledger.status === 'reconciliation_required' ? 'reconciliation_required' : 'available',
+            ledgerStatus: String(generation.usage.providerCost.ledger.status ?? 'unknown'),
+            estimateAmount: generation.usage.providerCost.ledger.estimateMicros == null ? null : Number(generation.usage.providerCost.ledger.estimateMicros) / 1_000_000,
+            actualAmount: generation.usage.providerCost.ledger.actualMicros == null ? null : Number(generation.usage.providerCost.ledger.actualMicros) / 1_000_000,
+            currency: generation.usage.providerCost.ledger.currency ? String(generation.usage.providerCost.ledger.currency) : null,
+            reasonCode: generation.usage.providerCost.ledger.reasonCode ? String(generation.usage.providerCost.ledger.reasonCode) : null,
+          }
+        : { availability: 'unavailable', ledgerStatus: null, estimateAmount: null, actualAmount: null, currency: null, reasonCode: 'provider_cost_ledger_missing' },
     },
     safety: {
       reviewRequired: generation.safety?.reviewRequired === true || generation.status === 'review_required',

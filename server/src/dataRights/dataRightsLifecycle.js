@@ -8,6 +8,7 @@ export const dataRightsStatuses = Object.freeze([...contract.statuses])
 export const dataRightsDeletionDomains = Object.freeze([...contract.deletion.domains])
 export const dataRightsRequiredBackupClasses = Object.freeze([...contract.deletion.requiredBackupClasses])
 export const dataRightsExportDownloadTtlSeconds = contract.export.downloadTtlSeconds
+export const dataRightsLegalHoldAuthorityRoles = Object.freeze(['legal_hold_admin', 'security_legal_incident_owner'])
 
 const reasonCodePattern = /^[a-z0-9][a-z0-9._:-]{2,63}$/
 const transitions = Object.freeze({
@@ -32,6 +33,17 @@ const exactObject = (body, allowed, label) => {
 const safeCode = (value, name) => {
   if (typeof value !== 'string' || !reasonCodePattern.test(value)) fail(`${name} must be a bounded machine-readable code`)
   return value
+}
+
+const sha256 = (value, name) => {
+  if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) fail(`${name} must be a SHA-256 hash`)
+  return value
+}
+
+const timestamp = (value, name) => {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) fail(`${name} must be an ISO timestamp`)
+  return parsed
 }
 
 export const parseDataRightsRequest = (body = {}) => {
@@ -73,18 +85,46 @@ export const parseDataRightsAdminQuery = (query = {}) => {
   return { status: query.status ?? null, requestType: query.requestType ?? null, limit }
 }
 
+export const parseDataRightsLegalHold = (body = {}) => {
+  exactObject(body, new Set(['subjectId', 'scopeDomain', 'reasonCode', 'authorityRole', 'authorityReferenceHash', 'reviewAt', 'expiresAt']), 'data rights legal hold')
+  if (typeof body.subjectId !== 'string' || !/^[A-Za-z0-9._:-]{3,128}$/.test(body.subjectId)) fail('subjectId must be a bounded identifier')
+  if (!dataRightsDeletionDomains.includes(body.scopeDomain)) fail(`scopeDomain must be one of: ${dataRightsDeletionDomains.join(', ')}`)
+  if (!dataRightsLegalHoldAuthorityRoles.includes(body.authorityRole)) fail(`authorityRole must be one of: ${dataRightsLegalHoldAuthorityRoles.join(', ')}`)
+  return {
+    subjectId: body.subjectId,
+    scopeDomain: body.scopeDomain,
+    reasonCode: safeCode(body.reasonCode, 'reasonCode'),
+    authorityRole: body.authorityRole,
+    authorityReferenceHash: sha256(body.authorityReferenceHash, 'authorityReferenceHash'),
+    reviewAt: timestamp(body.reviewAt, 'reviewAt'),
+    expiresAt: timestamp(body.expiresAt, 'expiresAt'),
+  }
+}
+
+export const parseDataRightsLegalHoldRelease = (body = {}) => {
+  exactObject(body, new Set(['expectedVersion', 'reasonCode']), 'data rights legal hold release')
+  if (!Number.isInteger(body.expectedVersion) || body.expectedVersion < 1) fail('expectedVersion must be a positive integer')
+  return { expectedVersion: body.expectedVersion, reasonCode: safeCode(body.reasonCode, 'reasonCode') }
+}
+
+export const parseDataRightsLegalHoldQuery = (query = {}) => {
+  const allowed = new Set(['subjectId', 'status', 'limit'])
+  const unknown = Object.keys(query).filter((key) => !allowed.has(key))
+  if (unknown.length) fail(`unsupported legal hold query fields: ${unknown.sort().join(', ')}`)
+  if (query.subjectId != null && (typeof query.subjectId !== 'string' || !/^[A-Za-z0-9._:-]{3,128}$/.test(query.subjectId))) fail('subjectId must be a bounded identifier')
+  if (query.status != null && !['active', 'released', 'expired', 'all'].includes(query.status)) fail('status must be one of: active, released, expired, all')
+  const limit = query.limit == null ? 50 : Number(query.limit)
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) fail('limit must be between 1 and 100')
+  return { subjectId: query.subjectId ?? null, status: query.status ?? 'active', limit }
+}
+
 export const parseBackupExpiryReceipt = (body = {}) => {
   exactObject(body, new Set(['backupClass', 'objectRefHash', 'evidenceHash', 'expiredAt', 'verifiedByRef']), 'backup expiry receipt')
-  const hash = (value, name) => {
-    if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) fail(`${name} must be a SHA-256 hash`)
-    return value
-  }
-  const expiredAt = new Date(body.expiredAt)
-  if (Number.isNaN(expiredAt.getTime())) fail('expiredAt must be an ISO timestamp')
+  const expiredAt = timestamp(body.expiredAt, 'expiredAt')
   return {
     backupClass: safeCode(body.backupClass, 'backupClass'),
-    objectRefHash: hash(body.objectRefHash, 'objectRefHash'),
-    evidenceHash: hash(body.evidenceHash, 'evidenceHash'),
+    objectRefHash: sha256(body.objectRefHash, 'objectRefHash'),
+    evidenceHash: sha256(body.evidenceHash, 'evidenceHash'),
     expiredAt,
     verifiedByRef: safeCode(body.verifiedByRef, 'verifiedByRef'),
   }
@@ -105,6 +145,18 @@ export const assertDataRightsIdentity = ({ actor, account, payload, sessionIssue
 
 export const assertDataRightsTransition = (fromStatus, toStatus) => {
   if (!transitions[fromStatus]?.has(toStatus)) throw new HttpError(409, 'DATA_RIGHTS_TRANSITION_INVALID', `Data rights request cannot transition from ${fromStatus} to ${toStatus}`)
+  return true
+}
+
+export const assertDataRightsLegalHoldWindow = (payload, now = new Date()) => {
+  const maximumReviewAt = new Date(now.getTime() + 90 * 86400_000)
+  const maximumExpiresAt = new Date(now.getTime() + 365 * 86400_000)
+  if (payload.reviewAt <= now || payload.reviewAt > maximumReviewAt) {
+    throw new HttpError(400, 'DATA_RIGHTS_LEGAL_HOLD_REVIEW_INVALID', 'Legal hold review must be scheduled within 90 days')
+  }
+  if (payload.expiresAt <= payload.reviewAt || payload.expiresAt > maximumExpiresAt) {
+    throw new HttpError(400, 'DATA_RIGHTS_LEGAL_HOLD_EXPIRY_INVALID', 'Legal hold expiry must follow review and be within 365 days')
+  }
   return true
 }
 

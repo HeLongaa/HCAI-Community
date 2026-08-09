@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { buildHttpTelemetry, buildIncidentMetrics, buildObservabilityExport, buildSloSummary, defaultObservabilitySloControls } from './observabilityRuntime.js'
+import { buildFrontendSloSummary, buildGenerationSloSummary, buildHttpTelemetry, buildIncidentMetrics, buildObservabilityExport, buildSloSummary, defaultObservabilitySloControls } from './observabilityRuntime.js'
+import { buildRetentionAggregates, observabilityRetentionContract, retentionCutoff, retentionSweepLimit } from './observabilityRetention.js'
+import { projectPersistedObservabilityLog } from './structuredLogging.js'
 
 const asIso = (value) => value?.toISOString?.() ?? String(value ?? '')
 const logDto = (row) => ({ ...row, timestamp: asIso(row.timestamp) })
@@ -35,9 +37,10 @@ const pageByCursor = (items, options) => {
   }
 }
 
-export const createSeedObservabilityRepository = ({ notifyOnCall = async () => {} } = {}) => {
+export const createSeedObservabilityRepository = ({ notifyOnCall = async () => {}, generationRows = [] } = {}) => {
   const logs = []
   const spans = []
+  const retentionAggregates = []
   const alerts = []
   const controls = defaultObservabilitySloControls.map((item) => ({ ...item, id: `observability-slo-${item.sloId}`, createdAt: new Date(), updatedAt: new Date(), updatedBy: 'system' }))
   const events = []
@@ -52,7 +55,10 @@ export const createSeedObservabilityRepository = ({ notifyOnCall = async () => {
   const listLogs = (options) => pageByCursor(logs.filter((row) => matches(row, options)).map(logDto), options)
 
   const evaluate = (now = new Date()) => {
-    const summary = buildSloSummary(logs, now, controls)
+    const apiSummary = buildSloSummary(logs, now, controls)
+    const generationSummary = buildGenerationSloSummary(generationRows, now, controls)
+    const frontendSummary = buildFrontendSloSummary(logs, now, controls)
+    const summary = { ...apiSummary, generationWindows: generationSummary.windows, frontendWindows: frontendSummary.windows, frontendErrorGroups: frontendSummary.groups, slos: [...apiSummary.slos, ...generationSummary.slos, ...frontendSummary.slos] }
     for (const slo of summary.slos) {
       const alertKey = `${slo.id}:multi-window`
       const existing = alerts.find((item) => item.alertKey === alertKey)
@@ -70,7 +76,7 @@ export const createSeedObservabilityRepository = ({ notifyOnCall = async () => {
           existing.version += 1
           existing.updatedAt = now
           if (previousState === 'resolved') {
-            appendEvent(existing, 'fired', { fromState: previousState, toState: existing.state, reasonCode: 'slo_burn_rate_firing', actorRef: 'system' })
+            appendEvent(existing, 'fired', { fromState: previousState, toState: existing.state, reasonCode: 'slo_burn_rate_firing', actorRef: 'system', metadata: { controlVersion: slo.controlVersion, affectedReleases: slo.affectedReleases ?? [], rollbackRecommendation: slo.rollbackRecommendation ?? null } })
             void notifyOnCall([slo.primaryOnCallHandle], existing, 'fired')
           }
         } else {
@@ -100,7 +106,7 @@ export const createSeedObservabilityRepository = ({ notifyOnCall = async () => {
             updatedAt: now,
           }
           alerts.unshift(alert)
-          appendEvent(alert, 'fired', { toState: 'firing', reasonCode: 'slo_burn_rate_firing', actorRef: 'system', metadata: { controlVersion: slo.controlVersion } })
+          appendEvent(alert, 'fired', { toState: 'firing', reasonCode: 'slo_burn_rate_firing', actorRef: 'system', metadata: { controlVersion: slo.controlVersion, affectedReleases: slo.affectedReleases ?? [], rollbackRecommendation: slo.rollbackRecommendation ?? null } })
           void notifyOnCall([slo.primaryOnCallHandle], alert, 'fired')
         }
       } else if (existing && existing.state !== 'resolved') {
@@ -119,14 +125,70 @@ export const createSeedObservabilityRepository = ({ notifyOnCall = async () => {
   return {
     recordHttp: async (input) => {
       const { log, span } = buildHttpTelemetry(input)
-      logs.unshift(log)
+      const persistedLog = projectPersistedObservabilityLog(log)
+      logs.unshift(persistedLog)
       spans.push(span)
-      return { log: logDto(log), span: spanDto(span) }
+      return { log: logDto(persistedLog), span: spanDto(span) }
     },
     record: async ({ log, span = null }) => {
-      logs.unshift({ ...log, timestamp: log.timestamp instanceof Date ? log.timestamp : new Date(log.timestamp) })
+      logs.unshift(projectPersistedObservabilityLog(log))
       if (span) spans.push({ ...span, startedAt: new Date(span.startedAt), endedAt: new Date(span.endedAt) })
       return logDto(logs[0])
+    },
+    sweepRetention: async ({ now = new Date(), limit = observabilityRetentionContract.defaultSweepLimit } = {}) => {
+      const sweepLimit = retentionSweepLimit(limit)
+      const rawLogCutoff = retentionCutoff(now, observabilityRetentionContract.rawLogDays)
+      const traceCutoff = retentionCutoff(now, observabilityRetentionContract.traceDays)
+      const aggregateCutoff = retentionCutoff(now, observabilityRetentionContract.aggregateDays)
+      const expiredLogs = logs
+        .filter((item) => item.timestamp <= rawLogCutoff)
+        .sort((left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id))
+        .slice(0, sweepLimit)
+      const expiredTraces = spans
+        .filter((item) => item.startedAt <= traceCutoff)
+        .sort((left, right) => left.startedAt - right.startedAt || left.id.localeCompare(right.id))
+        .slice(0, sweepLimit)
+      const expiredAggregates = retentionAggregates
+        .filter((item) => item.bucketStart <= aggregateCutoff)
+        .sort((left, right) => left.bucketStart - right.bucketStart || left.id.localeCompare(right.id))
+        .slice(0, sweepLimit)
+      const grouped = buildRetentionAggregates(expiredLogs.filter((log) => log.timestamp > aggregateCutoff))
+      for (const aggregate of grouped) {
+        const current = retentionAggregates.find((item) => (
+          item.bucketStart.getTime() === aggregate.bucketStart.getTime()
+          && item.service === aggregate.service
+          && item.module === aggregate.module
+          && item.event === aggregate.event
+          && item.outcome === aggregate.outcome
+          && item.statusClass === aggregate.statusClass
+        ))
+        if (current) {
+          current.requestCount += aggregate.requestCount
+          current.durationTotalMs += aggregate.durationTotalMs
+        } else {
+          retentionAggregates.push({ id: `observability-retention-${randomUUID()}`, ...aggregate })
+        }
+      }
+      const remove = (items, candidates) => {
+        const ids = new Set(candidates.map((item) => item.id))
+        for (let index = items.length - 1; index >= 0; index -= 1) {
+          if (ids.has(items[index].id)) items.splice(index, 1)
+        }
+      }
+      remove(logs, expiredLogs)
+      remove(spans, expiredTraces)
+      remove(retentionAggregates, expiredAggregates)
+      return {
+        policyId: observabilityRetentionContract.policyId,
+        inspected: { logs: expiredLogs.length, traces: expiredTraces.length, aggregates: expiredAggregates.length },
+        deleted: { logs: expiredLogs.length, traces: expiredTraces.length, aggregates: expiredAggregates.length },
+        aggregateBucketsUpdated: grouped.length,
+        cutoffs: {
+          logs: rawLogCutoff.toISOString(),
+          traces: traceCutoff.toISOString(),
+          aggregates: aggregateCutoff.toISOString(),
+        },
+      }
     },
     list: async (options) => listLogs(options),
     find: async (id) => {
@@ -142,7 +204,13 @@ export const createSeedObservabilityRepository = ({ notifyOnCall = async () => {
       const page = listLogs({ ...options, cursor: null })
       return buildObservabilityExport({ logs: page.items, query: options })
     },
-    slos: async () => buildSloSummary(logs, new Date(), controls),
+    slos: async () => {
+      const now = new Date()
+      const apiSummary = buildSloSummary(logs, now, controls)
+      const generationSummary = buildGenerationSloSummary(generationRows, now, controls)
+      const frontendSummary = buildFrontendSloSummary(logs, now, controls)
+      return { ...apiSummary, generationWindows: generationSummary.windows, frontendWindows: frontendSummary.windows, frontendErrorGroups: frontendSummary.groups, slos: [...apiSummary.slos, ...generationSummary.slos, ...frontendSummary.slos] }
+    },
     evaluateSlos: async () => evaluate(),
     listAlerts: async () => alerts.map(alertDto),
     listSloControls: async () => controls.map(controlDto),

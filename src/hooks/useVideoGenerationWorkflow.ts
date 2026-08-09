@@ -12,6 +12,7 @@ import type {
 import { creativeService } from '../services/creativeService'
 import { mediaService } from '../services/mediaService'
 import { uploadMediaFile } from '../services/mediaUpload'
+import type { GenerationOperationFeedback } from './generationOperationFeedback'
 
 export type VideoGenerationState = {
   status: 'idle' | 'loading' | 'done' | 'error'
@@ -57,11 +58,12 @@ export type VideoGenerationWorkflow = {
   preview: VideoPreviewState
   inputAssets: ApiMediaAsset[]
   inputAssetsState: 'idle' | 'loading' | 'ready' | 'error'
+  feedback: GenerationOperationFeedback | null
   refreshHistory: (cursor?: string | null) => Promise<void>
   selectGeneration: (id: string) => void
   runGeneration: (draft: VideoGenerationDraft) => Promise<void>
   cancelGeneration: (id: string) => Promise<void>
-  retryGeneration: (id: string) => Promise<void>
+  retryGeneration: (id: string) => Promise<boolean>
   downloadAsset: (assetId: string) => Promise<void>
   openPreview: (assetId: string, contentType: string) => Promise<void>
   closePreview: () => void
@@ -87,19 +89,47 @@ const initialPreview = (): VideoPreviewState => ({
 })
 
 const errorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback
+const generationErrorMessage = (error: unknown, locale: Locale) => {
+  if (!isApiClientError(error)) return errorMessage(error, locale === 'zh' ? '视频任务创建失败。' : 'Video generation failed.')
+  const copy = locale === 'zh'
+    ? {
+        unavailable: '视频服务暂时不可用，本次不会消耗额度，请稍后重试。',
+        rejected: '视频服务未接受此请求，本次不会消耗额度。请检查内容或联系管理员。',
+        limited: '视频服务当前请求过多，本次不会消耗额度，请稍后重试。',
+        timeout: '视频服务响应超时，本次不会消耗额度，请稍后重试。',
+        balance: '视频服务暂时无法生成，本次不会消耗额度，管理员已收到处理提醒。',
+        budget: '当前模型预算已达上限，本次不会消耗额度，请联系管理员。',
+        configuration: '当前模型尚未就绪，本次不会消耗额度，请联系管理员。',
+      }
+    : {
+        unavailable: 'The video service is temporarily unavailable. No credits were consumed; try again later.',
+        rejected: 'The video service did not accept this request. No credits were consumed; review the content or contact an administrator.',
+        limited: 'The video service is receiving too many requests. No credits were consumed; try again later.',
+        timeout: 'The video service timed out. No credits were consumed; try again later.',
+        balance: 'The video service cannot generate right now. No credits were consumed, and an administrator has been notified.',
+        budget: 'This model has reached its budget limit. No credits were consumed; contact an administrator.',
+        configuration: 'This model is not ready. No credits were consumed; contact an administrator.',
+      }
+  if (['PROVIDER_UNAVAILABLE', 'PROVIDER_INCIDENT'].includes(error.code)) return copy.unavailable
+  if (['PROVIDER_REJECTED', 'PROVIDER_INVALID_REQUEST', 'PROVIDER_CONTENT_POLICY_REJECTED'].includes(error.code)) return copy.rejected
+  if (error.code === 'PROVIDER_RATE_LIMITED') return copy.limited
+  if (error.code === 'PROVIDER_TIMEOUT') return copy.timeout
+  if (error.code === 'PROVIDER_BALANCE_INSUFFICIENT') return copy.balance
+  if (['CREATIVE_PROVIDER_BUDGET_EXCEEDED', 'CREATIVE_PROVIDER_BUDGET_BLOCKED'].includes(error.code)) return copy.budget
+  if (error.code.includes('CONFIGURATION') || error.code.includes('MODEL_RUNTIME')) return copy.configuration
+  return error.message || (locale === 'zh' ? '视频任务创建失败。' : 'Video generation failed.')
+}
 
 export function useVideoGenerationWorkflow({
   enabled,
   accountKey,
   locale,
   requireAuth,
-  pushToast,
 }: {
   enabled: boolean
   accountKey: string
   locale: Locale
   requireAuth: () => void
-  pushToast: (message: string) => void
 }): VideoGenerationWorkflow {
   const [generation, setGeneration] = useState<VideoGenerationState>({ status: 'idle', result: null, error: null })
   const [history, setHistory] = useState<VideoGenerationHistoryState>(initialHistory)
@@ -107,6 +137,7 @@ export function useVideoGenerationWorkflow({
   const [preview, setPreview] = useState<VideoPreviewState>(initialPreview)
   const [inputAssets, setInputAssets] = useState<ApiMediaAsset[]>([])
   const [inputAssetsState, setInputAssetsState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [feedback, setFeedback] = useState<GenerationOperationFeedback | null>(null)
   const requests = useRef(new Map<string, CreateCreativeGenerationRequest>())
   const previewObjectUrl = useRef<string | null>(null)
 
@@ -180,6 +211,7 @@ export function useVideoGenerationWorkflow({
     closePreview()
     setGeneration({ status: 'idle', result: null, error: null })
     setAction({ type: null, targetId: null, error: null })
+    setFeedback(null)
     if (!enabled) {
       setHistory(initialHistory())
       setInputAssets([])
@@ -250,13 +282,13 @@ export function useVideoGenerationWorkflow({
 
   const runGeneration = useCallback(async (draft: VideoGenerationDraft) => {
     const prompt = draft.prompt.trim()
+    setFeedback(null)
     if (!prompt) {
-      pushToast(locale === 'zh' ? '请先填写视频提示词。' : 'Add a video prompt first.')
+      setGeneration({ status: 'error', result: null, error: locale === 'zh' ? '请先填写视频提示词。' : 'Add a video prompt first.' })
       return
     }
     if (!enabled) {
       requireAuth()
-      pushToast(locale === 'zh' ? '请先登录后再创建视频任务。' : 'Sign in before creating a video job.')
       return
     }
     const request: CreateCreativeGenerationRequest = {
@@ -279,16 +311,17 @@ export function useVideoGenerationWorkflow({
       } catch {
         void refreshHistory()
       }
-      pushToast(locale === 'zh' ? '视频任务已创建。' : 'Video job created.')
+      setFeedback({ kind: 'success', text: locale === 'zh' ? '视频任务已创建。' : 'Video job created.' })
     } catch (error) {
       if (isApiClientError(error) && error.code === 'AUTH_REQUIRED') requireAuth()
-      const message = errorMessage(error, locale === 'zh' ? '视频任务创建失败。' : 'Video generation failed.')
+      const message = generationErrorMessage(error, locale)
       setGeneration({ status: 'error', result: null, error: message })
-      pushToast(message)
+      void refreshHistory()
     }
-  }, [enabled, locale, mergeGeneration, pushToast, refreshHistory, requireAuth])
+  }, [enabled, locale, mergeGeneration, refreshHistory, requireAuth])
 
   const cancelGeneration = useCallback(async (id: string) => {
+    setFeedback(null)
     setAction({ type: 'cancel', targetId: id, error: null })
     try {
       await creativeService.cancelGeneration(id, {
@@ -299,27 +332,24 @@ export function useVideoGenerationWorkflow({
       mergeGeneration(detail)
       setHistory((current) => ({ ...current, selected: detail }))
       setAction({ type: null, targetId: null, error: null })
-      pushToast(locale === 'zh' ? '视频任务已取消。' : 'Video job cancelled.')
+      setFeedback({ kind: 'success', text: locale === 'zh' ? '视频任务已取消。' : 'Video job cancelled.' })
     } catch (error) {
       const message = errorMessage(error, locale === 'zh' ? '取消失败。' : 'Cancellation failed.')
       setAction({ type: null, targetId: null, error: message })
       void refreshHistory()
-      pushToast(message)
     }
-  }, [locale, mergeGeneration, pushToast, refreshHistory])
+  }, [locale, mergeGeneration, refreshHistory])
 
   const retryGeneration = useCallback(async (id: string) => {
+    setFeedback(null)
     const request = requests.current.get(id)
     if (!request) {
       const message = locale === 'zh'
         ? '刷新后不会保留原始提示词；请根据安全预览重新填写。'
         : 'Raw prompts are not retained after refresh. Recreate the request from its safe preview.'
       setAction({ type: null, targetId: null, error: message })
-      pushToast(message)
-      return
+      return false
     }
-    const confirmed = window.confirm(locale === 'zh' ? '确认使用相同输入重试此视频任务？' : 'Retry this video job with the same inputs?')
-    if (!confirmed) return
     setAction({ type: 'retry', targetId: id, error: null })
     try {
       const result = await creativeService.retryGeneration(id, {
@@ -334,20 +364,21 @@ export function useVideoGenerationWorkflow({
       mergeGeneration(detail)
       setHistory((current) => ({ ...current, selected: detail }))
       setAction({ type: null, targetId: null, error: null })
-      pushToast(locale === 'zh' ? '已创建视频重试任务。' : 'Video retry job created.')
+      return true
     } catch (error) {
       const message = errorMessage(error, locale === 'zh' ? '重试失败。' : 'Retry failed.')
       setAction({ type: null, targetId: null, error: message })
-      pushToast(message)
+      return false
     }
-  }, [locale, mergeGeneration, pushToast])
+  }, [locale, mergeGeneration])
 
   const downloadAsset = useCallback(async (assetId: string) => {
+    setFeedback(null)
     setAction({ type: 'download', targetId: assetId, error: null })
     try {
       const contract = await mediaService.createDownload(assetId)
       if (contract.download.url.startsWith('mock://')) {
-        pushToast(locale === 'zh' ? `下载合约已就绪：${contract.asset.fileName}` : `Download contract ready: ${contract.asset.fileName}`)
+        setFeedback({ kind: 'success', text: locale === 'zh' ? `下载合约已就绪：${contract.asset.fileName}` : `Download contract ready: ${contract.asset.fileName}` })
       } else if (Object.keys(contract.download.headers).length > 0) {
         const response = await fetch(contract.download.url, { headers: contract.download.headers })
         if (!response.ok) throw new Error(`Download failed with status ${response.status}`)
@@ -364,14 +395,17 @@ export function useVideoGenerationWorkflow({
         link.rel = 'noopener'
         link.target = '_blank'
         link.click()
+        setFeedback({ kind: 'success', text: locale === 'zh' ? `已开始下载：${contract.asset.fileName}` : `Download started: ${contract.asset.fileName}` })
+      }
+      if (!contract.download.url.startsWith('mock://') && Object.keys(contract.download.headers).length > 0) {
+        setFeedback({ kind: 'success', text: locale === 'zh' ? `已开始下载：${contract.asset.fileName}` : `Download started: ${contract.asset.fileName}` })
       }
       setAction({ type: null, targetId: null, error: null })
     } catch (error) {
       const message = errorMessage(error, locale === 'zh' ? '下载失败。' : 'Download failed.')
       setAction({ type: null, targetId: null, error: message })
-      pushToast(message)
     }
-  }, [locale, pushToast])
+  }, [locale])
 
   const openPreview = useCallback(async (assetId: string, contentType: string) => {
     closePreview()
@@ -416,6 +450,7 @@ export function useVideoGenerationWorkflow({
   }, [closePreview, locale])
 
   const uploadInput = useCallback(async (file: File, purpose: MediaAssetPurpose = 'submission_asset') => {
+    setFeedback(null)
     if (!enabled) {
       requireAuth()
       return
@@ -428,13 +463,12 @@ export function useVideoGenerationWorkflow({
       })
       await refreshInputAssets()
       setAction({ type: null, targetId: null, error: null })
-      pushToast(locale === 'zh' ? '素材已上传；扫描通过后可用于视频任务。' : 'Asset uploaded. It becomes selectable after a clean scan.')
+      setFeedback({ kind: 'success', text: locale === 'zh' ? '素材已上传；扫描通过后可用于视频任务。' : 'Asset uploaded. It becomes selectable after a clean scan.' })
     } catch (error) {
       const message = errorMessage(error, locale === 'zh' ? '素材上传失败。' : 'Asset upload failed.')
       setAction({ type: null, targetId: null, error: message })
-      pushToast(message)
     }
-  }, [enabled, locale, pushToast, refreshInputAssets, requireAuth])
+  }, [enabled, locale, refreshInputAssets, requireAuth])
 
   return {
     generation,
@@ -443,6 +477,7 @@ export function useVideoGenerationWorkflow({
     preview,
     inputAssets,
     inputAssetsState,
+    feedback,
     refreshHistory,
     selectGeneration,
     runGeneration,

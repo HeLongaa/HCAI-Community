@@ -19,11 +19,13 @@ import type {
 } from './contracts'
 
 export const creativeService = {
-  accountingPreview(workspace: CreateCreativeGenerationRequest['workspace'], mode: string, providerId?: string | null) {
+  accountingPreview(workspace: CreateCreativeGenerationRequest['workspace'], mode: string, providerId?: string | null, parameters: { aspectRatio?: string; quality?: string } = {}) {
     return api.get<ApiCreativeAccountingPreview>(withQuery('/creative/accounting-policy/preview', {
       workspace,
       mode,
       providerId: providerId || undefined,
+      aspectRatio: parameters.aspectRatio,
+      quality: parameters.quality,
     }))
   },
   listProviders() {

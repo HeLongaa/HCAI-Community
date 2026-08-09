@@ -26,6 +26,14 @@ const conflict = (error, message) => {
 const dateFields = (input, fields) => Object.fromEntries(Object.entries(input).map(([key, value]) => [key, fields.includes(key) && value ? new Date(value) : value]))
 
 export const createPrismaModelControlRepository = (client, { recordAudit } = {}) => {
+  const hydrateVersion = async (row, db = client) => {
+    if (!row) return null
+    const model = await db.model.findUnique({ where: { id: row.modelId }, include: { provider: true } })
+    const capabilities = await db.modelCapability.findMany({ where: { modelVersionId: row.id }, orderBy: { modality: 'asc' } })
+    const deployments = await db.modelDeployment.findMany({ where: { modelVersionId: row.id }, orderBy: [{ environment: 'asc' }, { key: 'asc' }] })
+    const prices = await db.pricingVersion.findMany({ where: { modelVersionId: row.id }, orderBy: [{ effectiveFrom: 'desc' }, { versionKey: 'desc' }] })
+    return versionDto({ ...row, model, capabilities, deployments, prices })
+  }
   const find = async (type, id, db = client) => {
     if (type === 'provider') {
       const row = await db.provider.findUnique({ where: { id: String(id) }, include: { _count: { select: { models: true } } } })
@@ -35,10 +43,7 @@ export const createPrismaModelControlRepository = (client, { recordAudit } = {})
       const row = await db.model.findUnique({ where: { id: String(id) }, include: { provider: true, _count: { select: { versions: true } } } })
       return row ? modelDto({ ...row, versionCount: row._count.versions, _count: undefined }) : null
     }
-    if (type === 'version') return versionDto(await db.modelVersion.findUnique({
-      where: { id: String(id) },
-      include: { model: { include: { provider: true } }, capabilities: { orderBy: { modality: 'asc' } }, deployments: { orderBy: [{ environment: 'asc' }, { key: 'asc' }] }, prices: { orderBy: [{ effectiveFrom: 'desc' }, { versionKey: 'desc' }] } },
-    }))
+    if (type === 'version') return hydrateVersion(await db.modelVersion.findUnique({ where: { id: String(id) } }), db)
     if (type === 'deployment') return deploymentDto(await db.modelDeployment.findUnique({ where: { id: String(id) } }))
     if (type === 'pricing') return pricingDto(await db.pricingVersion.findUnique({ where: { id: String(id) } }))
     return null
@@ -47,7 +52,7 @@ export const createPrismaModelControlRepository = (client, { recordAudit } = {})
     try {
       if (type === 'provider') return providerDto(await client.provider.create({ data: input }))
       if (type === 'model') return modelDto(await client.model.create({ data: input, include: { provider: true } }))
-      if (type === 'version') return versionDto(await client.modelVersion.create({ data: dateFields(input, ['releaseDate']), include: { model: { include: { provider: true } }, capabilities: true, deployments: true, prices: true } }))
+      if (type === 'version') return hydrateVersion(await client.modelVersion.create({ data: dateFields(input, ['releaseDate']) }))
       if (type === 'deployment') return deploymentDto(await client.modelDeployment.create({ data: input }))
       if (type === 'pricing') return pricingDto(await client.pricingVersion.create({ data: dateFields(input, ['effectiveFrom', 'effectiveTo']) }))
       throw new Error(`Unsupported model control resource type: ${type}`)
@@ -90,12 +95,13 @@ export const createPrismaModelControlRepository = (client, { recordAudit } = {})
       const sort = options.sort === 'name' || options.sort === 'key' ? 'versionKey' : options.sort
       const rows = await client.modelVersion.findMany({
         where: { ...(options.status ? { status: options.status } : {}), ...(options.modelId ? { modelId: options.modelId } : {}), ...(options.search ? { versionKey: { contains: options.search, mode: 'insensitive' } } : {}) },
-        include: { model: { include: { provider: true } }, capabilities: true, deployments: true, prices: true },
         orderBy: [{ [sort]: options.order }, { id: options.order }], take: options.limit + 1,
         ...(cursor ? { cursor: { id: cursor.id }, skip: 1 } : {}),
       })
       const selected = rows.slice(0, options.limit)
-      return { items: selected.map(versionDto), limit: options.limit, nextCursor: rows.length > options.limit ? selected.at(-1)?.id ?? null : null }
+      const items = []
+      for (const row of selected) items.push(await hydrateVersion(row))
+      return { items, limit: options.limit, nextCursor: rows.length > options.limit ? selected.at(-1)?.id ?? null : null }
     },
     listDeployments: async (options) => {
       const cursor = options.cursor ? await client.modelDeployment.findUnique({ where: { id: options.cursor }, select: { id: true } }) : null
@@ -117,6 +123,15 @@ export const createPrismaModelControlRepository = (client, { recordAudit } = {})
       where: { modelVersionId, status: 'active', effectiveFrom: { lte: now }, AND: [{ OR: [{ modelDeploymentId }, { modelDeploymentId: null }] }, { OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] }] },
       orderBy: [{ modelDeploymentId: { sort: 'desc', nulls: 'last' } }, { effectiveFrom: 'desc' }],
     })),
+    findRuntimePricings: async ({ modelVersionId, modelDeploymentId, now = new Date() }) => {
+      const rows = await client.pricingVersion.findMany({
+        where: { modelVersionId, status: 'active', effectiveFrom: { lte: now }, AND: [{ OR: [{ modelDeploymentId }, { modelDeploymentId: null }] }, { OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] }] },
+        orderBy: [{ modelDeploymentId: { sort: 'desc', nulls: 'last' } }, { effectiveFrom: 'desc' }],
+      })
+      const byUnit = new Map()
+      for (const item of rows) if (!byUnit.has(item.unit)) byUnit.set(item.unit, pricingDto(item))
+      return [...byUnit.values()]
+    },
     setPromotionTrafficEligibility: async (id, eligible, actor) => {
       const updated = await client.modelDeployment.updateMany({
         where: { id: String(id), environment: 'production', ...(eligible ? { status: 'active' } : {}) },

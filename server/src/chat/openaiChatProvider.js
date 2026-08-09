@@ -61,25 +61,26 @@ const runtimeError = (status, code, message, reasonCode, details = {}) => new Ht
 })
 
 const parseFlag = (source, key) => String(source[key] ?? '').trim().toLowerCase() === 'true'
+const valueOrDefault = (value, fallback) => String(value ?? '').trim() || fallback
 
 export const buildOpenAIChatRuntimeConfig = (source = process.env) => {
-  const providerType = String(source.CHAT_PROVIDER_TYPE ?? 'openai-compatible').trim().toLowerCase()
+  const providerType = valueOrDefault(source.CHAT_PROVIDER_TYPE, 'openai-compatible').toLowerCase()
   if (providerType !== 'openai-compatible') throw new Error('CHAT_PROVIDER_TYPE must be openai-compatible')
-  const mode = String(source.CHAT_PROVIDER_MODE ?? (source.NODE_ENV === 'production' ? 'disabled' : 'mock')).trim().toLowerCase()
-  const runtimeEnv = String(source.CREATIVE_PROVIDER_RUNTIME_ENV ?? source.DEPLOYMENT_ENV ?? source.NODE_ENV ?? 'development').trim().toLowerCase()
+  const mode = valueOrDefault(source.CHAT_PROVIDER_MODE, source.NODE_ENV === 'production' ? 'disabled' : 'mock').toLowerCase()
+  const runtimeEnv = valueOrDefault(source.CREATIVE_PROVIDER_RUNTIME_ENV, valueOrDefault(source.DEPLOYMENT_ENV, valueOrDefault(source.NODE_ENV, 'development'))).toLowerCase()
   const clientEnabled = parseFlag(source, 'CHAT_OPENAI_HTTP_CLIENT_ENABLED')
   const networkCallsEnabled = parseFlag(source, 'CHAT_OPENAI_NETWORK_CALLS_ENABLED')
   const safetyClassifierEnabled = parseFlag(source, 'CHAT_OPENAI_SAFETY_CLASSIFIER_ENABLED')
   const attachmentBytesEnabled = parseFlag(source, 'CHAT_ATTACHMENT_BYTES_ENABLED')
   const confirmation = String(source.CHAT_OPENAI_CONFIRMATION ?? '').trim().toLowerCase()
   const token = String(source.CHAT_OPENAI_API_TOKEN ?? '').trim()
-  const configuredModelId = String(source.CHAT_OPENAI_MODEL ?? defaultModelId).trim()
-  const apiDialect = String(source.CHAT_OPENAI_API_DIALECT ?? 'responses').trim().toLowerCase()
-  const safetyResponseFormat = String(source.CHAT_OPENAI_SAFETY_RESPONSE_FORMAT ?? 'json_schema').trim().toLowerCase()
+  const configuredModelId = valueOrDefault(source.CHAT_OPENAI_MODEL, defaultModelId)
+  const apiDialect = valueOrDefault(source.CHAT_OPENAI_API_DIALECT, 'responses').toLowerCase()
+  const safetyResponseFormat = valueOrDefault(source.CHAT_OPENAI_SAFETY_RESPONSE_FORMAT, 'json_schema').toLowerCase()
   const productionApproval = readProductionRuntimeApproval(source)
   let configuredBaseUrl
   try {
-    const url = new URL(String(source.CHAT_OPENAI_BASE_URL ?? defaultBaseUrl).trim())
+    const url = new URL(valueOrDefault(source.CHAT_OPENAI_BASE_URL, defaultBaseUrl))
     if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new Error('unsafe')
     configuredBaseUrl = url.toString().replace(/\/+$/, '')
   } catch {

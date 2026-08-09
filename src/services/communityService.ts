@@ -1,13 +1,15 @@
 import { api, withQuery } from './apiClient'
 import type { CommunityPostDraft, InspirationItem, Post, PublishDraft } from '../domain/types'
 import type {
+  ApiInspirationCategory,
+  ApiInspirationEntry,
   ApiLibraryItem,
   ApiPost,
   ConvertToTaskRequest,
   CreateCommentRequest,
   CreatePostRequest,
-  CreateLibraryItemRequest,
   LibraryListQuery,
+  InspirationSubmissionRequest,
   PostListQuery,
   UpdatePostRequest,
 } from './contracts'
@@ -46,13 +48,12 @@ const toPost = (post: ApiPost): Post => ({
   })),
 })
 
-const toLibraryItem = (item: ApiLibraryItem): InspirationItem => ({
-  id: item.id,
-  title: item.title,
-  type: item.type,
-  source: item.source,
-  saves: item.saves,
-  text: item.text,
+const toInspirationItem = (item: ApiInspirationEntry): InspirationItem => ({
+  ...item,
+  type: item.category?.nameEn ?? item.contentType,
+  source: item.sourceKind === 'official' ? 'Official' : item.author?.displayName ?? 'Community',
+  saves: String(item.favoriteCount),
+  text: item.summary,
 })
 
 export const communityService = {
@@ -84,8 +85,43 @@ export const communityService = {
     }))
   },
   async listLibrary(query?: LibraryListQuery) {
-    const items = await api.get<ApiLibraryItem[]>(withQuery('/library', query))
-    return items.map(toLibraryItem)
+    const items = await api.get<ApiInspirationEntry[]>(withQuery('/inspiration', query))
+    return items.map(toInspirationItem)
+  },
+  async listInspirationCategories() {
+    return api.get<ApiInspirationCategory[]>('/inspiration/categories')
+  },
+  async getInspiration(id: string | number) {
+    return toInspirationItem(await api.get<ApiInspirationEntry>(`/inspiration/${id}`))
+  },
+  async listInspirationFavorites() {
+    return (await api.get<ApiInspirationEntry[]>('/inspiration/favorites/mine')).map(toInspirationItem)
+  },
+  async favoriteInspiration(id: string | number, active: boolean) {
+    const item = active
+      ? await api.post<ApiInspirationEntry>(`/inspiration/${id}/favorite`)
+      : await api.del<ApiInspirationEntry>(`/inspiration/${id}/favorite`)
+    return toInspirationItem(item)
+  },
+  async listMyInspirationSubmissions() {
+    return (await api.get<ApiInspirationEntry[]>('/inspiration/submissions/mine')).map(toInspirationItem)
+  },
+  async createInspirationSubmission(request: InspirationSubmissionRequest) {
+    return toInspirationItem(await api.post<ApiInspirationEntry>('/inspiration/submissions', request))
+  },
+  async updateInspirationSubmission(id: string | number, request: Partial<InspirationSubmissionRequest>) {
+    return toInspirationItem(await api.patch<ApiInspirationEntry>(`/inspiration/submissions/${id}`, request))
+  },
+  async submitInspiration(id: string | number) {
+    return toInspirationItem(await api.post<ApiInspirationEntry>(`/inspiration/submissions/${id}/submit`))
+  },
+  async withdrawInspiration(id: string | number) {
+    return toInspirationItem(await api.post<ApiInspirationEntry>(`/inspiration/submissions/${id}/withdraw`))
+  },
+  async removeInspirationFavorites(ids: Array<string | number>) {
+    return api.del<{ removed: number; ids: string[] }>('/inspiration/favorites', {
+      body: JSON.stringify({ ids: ids.map(String) }),
+    })
   },
   async likePost(id: string | number) {
     await api.post(`/posts/${id}/like`)
@@ -106,17 +142,6 @@ export const communityService = {
     }
     return api.post(`/posts/${id}/convert-to-task`, request)
   },
-  async savePostToLibrary(post: Post) {
-    const request: CreateLibraryItemRequest = {
-      title: post.title,
-      text: post.excerpt,
-      type: post.category,
-      source: 'Community',
-      sourceId: String(post.id),
-      metadata: { postId: post.id, category: post.category, tag: post.tag },
-    }
-    return api.post<ApiLibraryItem>('/library/items', request)
-  },
   async convertLibraryItemToTask(id: string | number) {
     const request: ConvertToTaskRequest = {
       acceptanceRules: 'Review the idea and provide a draft delivery plan.',
@@ -126,7 +151,22 @@ export const communityService = {
     }
     return api.post(`/library/items/${id}/convert-to-task`, request)
   },
+  async deleteLibraryItem(item: ApiLibraryItem) {
+    return api.del<ApiLibraryItem>(`/library/items/${item.id}`, {
+      body: JSON.stringify({ expectedVersion: item.version, reasonCode: 'owner_requested' }),
+    })
+  },
+  async restoreLibraryItem(item: ApiLibraryItem) {
+    return api.post<ApiLibraryItem>(`/library/items/${item.id}/restore`, {
+      expectedVersion: item.version,
+      reasonCode: 'owner_restore',
+    })
+  },
   async sendLibraryItemToWorkspace(id: string | number) {
-    return api.post(`/library/items/${id}/send-to-workspace`)
+    const result = await api.post<{
+      item: ApiInspirationEntry
+      workspaceDraft: { title: string; seed: string; entryId: string; version: number }
+    }>(`/inspiration/${id}/use`)
+    return { ...result, item: toInspirationItem(result.item) }
   },
 }

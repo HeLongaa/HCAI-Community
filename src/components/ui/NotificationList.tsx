@@ -1,7 +1,7 @@
-import { CheckCircle, ExternalLink } from 'lucide-react'
+import { Check, CheckCircle, ExternalLink } from 'lucide-react'
 import type { ApiNotification } from '../../services/contracts'
-import { StatusBadge } from '../../features/tasks'
 import { textFor } from '../../domain/utils'
+import { StatusBadge } from './StatusBadge'
 
 type NotificationListProps = {
   t: Record<string, string>
@@ -18,6 +18,15 @@ type NotificationListProps = {
   emptyTitle?: string
   emptyBody?: string
   errorTitle?: string
+}
+
+const notificationCategory = (type: string, t: Record<string, string>) => {
+  if (type.startsWith('task.')) return textFor(t, 'Task update', '任务动态')
+  if (type.startsWith('creative.')) return textFor(t, 'Generation', '生成任务')
+  if (type.startsWith('community.')) return textFor(t, 'Community', '社区')
+  if (type.startsWith('security.') || type.startsWith('trust.')) return textFor(t, 'Security', '安全')
+  if (type.startsWith('billing.') || type.startsWith('points.')) return textFor(t, 'Account', '账户')
+  return textFor(t, 'System', '系统')
 }
 
 export function NotificationList({
@@ -61,7 +70,7 @@ export function NotificationList({
       )}
       {!loading && !error && notifications.map((notification) => (
         variant === 'popover' ? (
-          <article className="notification-item" key={notification.id}>
+          <article className={notification.readAt ? 'notification-item read' : 'notification-item unread'} key={notification.id}>
             <button
               type="button"
               onClick={() => onOpen?.(notification)}
@@ -69,16 +78,24 @@ export function NotificationList({
               <strong>{notification.title}</strong>
               <span>{notification.body}</span>
               <small>
-                {notification.type} · {formatTime(notification.createdAt)}
+                {!notification.readAt && <i aria-hidden="true" />}
+                {notificationCategory(notification.type, t)}
+                <time dateTime={notification.createdAt}>{formatTime(notification.createdAt)}</time>
               </small>
             </button>
-            <button
-              className="ghost-button small"
-              type="button"
-              onClick={() => void onMarkRead(notification)}
-            >
-              {textFor(t, 'Read', '已读')}
-            </button>
+            {notification.readAt ? (
+              <CheckCircle className="notification-read-state" aria-label={textFor(t, 'Read', '已读')} size={17} />
+            ) : (
+              <button
+                className="notification-mark-read"
+                type="button"
+                title={textFor(t, 'Mark as read', '标为已读')}
+                aria-label={textFor(t, `Mark “${notification.title}” as read`, `将“${notification.title}”标为已读`)}
+                onClick={() => void onMarkRead(notification)}
+              >
+                <Check size={16} />
+              </button>
+            )}
           </article>
         ) : (
           <div className="admin-row" key={notification.id}>

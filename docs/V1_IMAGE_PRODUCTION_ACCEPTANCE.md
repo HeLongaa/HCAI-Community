@@ -13,8 +13,25 @@ real Provider for production.
 - `server/src/creative/imageProductionAcceptance.test.js` proves closed quality mapping, one-output and prompt limits,
   per-job and daily budget guards, and staging-client rollback without network dispatch or Mock fallback.
 - The focused server gate also runs generation execution concurrency/idempotency/recovery and Provider timeout/failure
-  taxonomy tests. Playwright proves high-quality request mapping, keyboard generation, internal history scrolling, and
-  no page overflow at 390x844.
+taxonomy tests. Playwright proves high-quality request mapping, keyboard generation, internal history scrolling, and
+no page overflow at 390x844.
+
+## Database pricing and reconciliation
+
+- Model Control stores nine output-price units covering all supported size/quality combinations plus text-input,
+  image-input, and image-output Token units. Every row has its own version, effective window, deployment scope, and
+  immutable database identity.
+- Runtime routing selects the exact output price for the request and passes the complete active component-price set to
+  the Image adapter. The generation references the selected price version and the Provider ledger stores an immutable
+  pricing snapshot, so later price changes do not rewrite history.
+- Provider usage is priced only when all required Token components are present. Missing prices or incomplete usage stay
+  `reconciliation_required`; they are never shown as zero or as a successful settlement.
+- The HCAI Router MiniMax Image 01 Live deployment is separately constrained to a versioned fixed per-image price.
+  A successful single-output response settles that contractual charge directly; this exception is bound to the exact
+  Provider and model identifiers and does not apply to token-priced or unknown deployments.
+- Image Studio shows the database estimate before generation and the safe ledger estimate/actual state afterward.
+  Existing protected Admin reconciliation actions remain the only manual settlement path and retain hashed evidence,
+  permissions, and audit records.
 
 Run the focused gate with:
 

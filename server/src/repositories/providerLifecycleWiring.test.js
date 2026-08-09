@@ -185,6 +185,35 @@ test('provider lifecycle repositories route failed facts to owner and operations
   assert.ok(created.every((item) => item.metadata.audience === 'owner_and_operations'))
 })
 
+test('Provider operational alerts notify operations with safe balance and quota evidence', async () => {
+  const repository = createSeedRepository()
+  for (const [type, reasonCode] of [
+    ['creative.provider_balance.insufficient', 'provider_balance_insufficient'],
+    ['creative.provider_quota.dispatch_blocked', 'quota_exceeded'],
+    ['creative.provider_status.dispatch_blocked', 'provider_health_expired'],
+  ]) {
+    await repository.providerLifecycleNotifications.create({
+      sourceKey: `${type}:gen-operational`,
+      generationId: 'gen-operational',
+      actorHandle: 'promptlin',
+      type,
+      metadata: {
+        providerId: 'hcai-router-seedance-2-fast',
+        providerStatus: 403,
+        providerCategory: 'provider_balance',
+        nextStatus: 'failed',
+        errorCode: 'PROVIDER_BALANCE_INSUFFICIENT',
+        reasonCode,
+      },
+    })
+  }
+  const operations = await repository.notifications.list({ handle: 'opsplus' }, { readState: 'all' })
+  assert.ok(operations.items.some((item) => item.type === 'creative.provider_balance.insufficient'))
+  assert.ok(operations.items.some((item) => item.type === 'creative.provider_quota.dispatch_blocked'))
+  assert.ok(operations.items.some((item) => item.type === 'creative.provider_status.dispatch_blocked'))
+  assert.equal(JSON.stringify(operations.items).includes('insufficient balance'), false)
+})
+
 test('serializeAuditEvent allowlists Provider retry metadata for legacy rows', () => {
   const event = serializeAuditEvent({
     id: 'audit-provider-retry-legacy',

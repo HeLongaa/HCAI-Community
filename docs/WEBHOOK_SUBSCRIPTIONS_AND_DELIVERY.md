@@ -83,6 +83,8 @@ npm --prefix server run worker
 
 The Admin surface exposes the global kill switch and bounded limits, subscription search and emergency disable, delivery status and attempts, DLQ replay, and aggregate metrics. It never displays a raw signing or encryption secret.
 
+Provider budget alerts use a separate durable delivery queue and the same Admin read/manage permissions. The Admin list and replay APIs expose only status, channel, action, source/audit references, attempt counts, bounded error evidence, hash-only receipt evidence, and timestamps. Outbound payloads, destination URLs, recipients, and signing secrets remain inside the delivery Worker boundary and are never returned by these APIs.
+
 Verification:
 
 ```bash

@@ -26,17 +26,53 @@ The email boundary is an HTTPS JSON webhook suitable for an approved mail relay.
 escaped HTML, and text. `NOTIFICATION_EMAIL_WEBHOOK_SECRET` signs the exact body with HMAC-SHA256 in
 `x-notification-signature`. The endpoint URL and secret are never stored in PostgreSQL or returned by API/UI.
 
+Production refuses to enable this channel unless the webhook secret contains at least 32 characters, a syntactically
+valid `NOTIFICATION_EMAIL_FROM` address is configured, and Provider receipts are required. Production webhook URLs
+cannot contain credentials, fragments, or query parameters. A successful HTTP response must include `x-message-id` or
+`x-request-id`; the application stores only its SHA-256. A `2xx` response without that receipt is dead-lettered as
+`PROVIDER_RECEIPT_MISSING` and is not automatically retried, because the relay may already have accepted the message.
+
 Required enablement order:
 
 1. Set `NOTIFICATION_EMAIL_WEBHOOK_URL` and secret in the worker runtime.
 2. Set `NOTIFICATION_EMAIL_DELIVERY_ENABLED=true`.
-3. Set `NOTIFICATION_DELIVERY_WORKER_ENABLED=true` only on the dedicated worker process.
-4. Verify Admin reports Email available and the worker enabled.
-5. Send a test template, verify one sent attempt, then exercise retry, DLQ, cancellation, and recovery.
+3. Set `NOTIFICATION_EMAIL_FROM` and keep `NOTIFICATION_EMAIL_REQUIRE_PROVIDER_RECEIPT=true` in production.
+4. Set `NOTIFICATION_DELIVERY_WORKER_ENABLED=true` only on the dedicated worker process.
+5. Verify Admin reports Email available and the worker enabled.
+6. Send a test template, verify one sent attempt with a receipt hash, then exercise retry, DLQ, cancellation, and recovery.
 
 Without these values, Email is explicitly unavailable and no external request is made.
 
+## Bounce And Complaint Events
+
+The relay posts a closed `notification.email.provider-event.v1`-equivalent JSON contract to
+`POST /api/notifications/email/provider-events`. Enable it with `NOTIFICATION_EMAIL_EVENT_WEBHOOK_ENABLED=true`, a
+dedicated `NOTIFICATION_EMAIL_EVENT_WEBHOOK_SECRET` of at least 32 characters, and a separate stable
+`NOTIFICATION_EMAIL_RECIPIENT_FINGERPRINT_SECRET` of at least 32 characters. Do not rotate the fingerprint secret
+without a controlled suppression re-key migration. The relay signs `timestamp.rawBody` using HMAC-SHA256 in
+`x-notification-event-signature`; timestamps outside the bounded replay window are rejected.
+
+The API accepts only `bounce` and `complaint`. Permanent bounces and complaints create an account-bound suppression
+only when the hashed Provider message ID matches a receipt from a sent email and the current recipient fingerprint
+also matches. Transient bounces remain evidence but do not suppress. Event IDs are idempotent, conflicting reuse is
+rejected, and PostgreSQL stores only hashes, bounded status evidence, and stable reason codes. Workers check
+suppression while claiming and immediately before the Provider call. Provider event evidence expires through the
+180-day notification retention worker; active suppression survives until explicit recovery or account deletion.
+
+## Staging Relay Acceptance
+
+Before enabling production traffic, run `npm run notification-email:preflight` and then execute the controlled canary
+with `npm run notification-email:rehearse`. Execution requires an exact Staging confirmation, a clean Git commit, a
+bound release artifact SHA-256, a dedicated test recipient, and the production signing, sender, and receipt controls.
+The resulting evidence contains only hashed relay and email-domain identities, a hashed Provider receipt, and the
+source/artifact binding; it must be checked independently with
+`node scripts/verify-notification-email-staging-evidence.mjs <evidence.json>`.
+
+This acceptance proves only that the configured Staging relay returned a success response with a traceable Provider
+receipt; it does not prove mailbox delivery. The signed callback contract can prove application handling of relay
+fixtures, but production still requires real mailbox delivery and Provider-originated bounce/complaint evidence.
+
 ## Verification
 
-Run `npm run test:notification-delivery-operations`. With PostgreSQL available, run
+Run `npm run test:notification-delivery-operations` and `npm run test:notification-email-staging`. With PostgreSQL available, run
 `npm run test:notification-delivery-operations:integration`. The full release gate remains `CI=1 npm run check:pr`.

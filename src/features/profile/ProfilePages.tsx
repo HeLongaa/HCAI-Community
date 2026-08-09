@@ -1,47 +1,29 @@
-import { useState } from 'react'
-import { BriefcaseBusiness, Heart, Play, Share2, Trophy, UserRound } from 'lucide-react'
+import { lazy, useState } from 'react'
+import { BriefcaseBusiness, ListMusic, Share2, Trophy, UserRound } from 'lucide-react'
 import type { MarketplaceProfile, Page, SimulateAction, Task, Track } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { Comment } from '../community'
-import { TrackRow } from '../explore'
-import { MyTasksPage, StatusBadge } from '../tasks'
-import { marketplaceProfiles, tracks } from '../../data/mockData'
+import { StatusBadge } from '../../components/ui/StatusBadge'
 import { categoryLabel, isZhCopy, localizeText, localizedTasks, pointText, profileTags, textFor } from '../../domain/utils'
 import { PortfolioManager } from './PortfolioManager'
 import { ProfileSettingsPanel } from './ProfileSettingsPanel'
 import { RiskCasePanel } from './RiskCasePanel'
 
+const MyTasksPage = lazy(() => import('../tasks').then((module) => ({ default: module.MyTasksPage })))
+
 export function PlaylistPage({
   t,
-  playTrack,
 }: {
   t: Record<string, string>
   playTrack: (track: Track) => void
 }) {
   return (
     <div className="stack">
-      <section className="playlist-header">
-        <img src={tracks[0].cover} alt="" />
-        <div>
-          <span className="eyebrow">{t.playlists}</span>
-          <h1>Top 100</h1>
-          <p>{textFor(t, 'Discover the top tracks, covers, and creator-made AI songs across every mood.', '发现不同情绪下最受欢迎的曲目、翻唱和创作者 AI 歌曲。')}</p>
-          <div className="button-row">
-            <button className="primary-button" type="button" disabled={!tracks[0]?.audioUrl} onClick={() => playTrack(tracks[0])} title={textFor(t, 'Public playback is not available', '公共播放暂未开放')}>
-              <Play size={17} fill="currentColor" />
-              {textFor(t, 'Play', '播放')}
-            </button>
-            <button className="ghost-button" type="button" disabled title={textFor(t, 'Playlist likes are not available', '歌单收藏暂未开放')}>
-              <Heart size={17} />
-              {textFor(t, 'Unavailable', '暂未开放')}
-            </button>
-          </div>
-        </div>
-      </section>
-      <div className="panel">
-        {tracks.map((track) => (
-          <TrackRow key={track.id} t={t} track={track} playTrack={playTrack} />
-        ))}
+      <SectionHeader eyebrow={t.playlists} title={textFor(t, 'Public audio catalog', '公开音频目录')} />
+      <div className="empty-state">
+        <ListMusic size={28} />
+        <strong>{textFor(t, 'No public tracks yet', '暂无公开曲目')}</strong>
+        <span>{textFor(t, 'Published audio will appear here after a governed catalog is available.', '经过治理并公开发布的音频将在这里显示。')}</span>
       </div>
     </div>
   )
@@ -50,6 +32,7 @@ export function PlaylistPage({
 export function ProfilePage({
   t,
   profile,
+  profiles,
   personalProfileId,
   tasks,
   setPage,
@@ -60,6 +43,7 @@ export function ProfilePage({
 }: {
   t: Record<string, string>
   profile: MarketplaceProfile
+  profiles: MarketplaceProfile[]
   personalProfileId: string
   tasks: Task[]
   setPage: (page: Page) => void
@@ -80,11 +64,16 @@ export function ProfilePage({
   ]
   const activeTabLabel = tabs.find((item) => item.key === activeTab)?.label ?? tabs[0].label
   const tags = profileTags(profile, t)
+  const profileCategories = profile.categories ?? []
+  const profileLanguages = profile.languages ?? []
+  const profileBadges = profile.badges ?? []
+  const profileReviews = profile.reviews ?? []
+  const profilePortfolio = profile.portfolio ?? []
   const profileTasks = localizedTasks(tasks, t).filter((task) => task.assignee === profile.handle || task.publisher === profile.handle)
   const deliveredTasks = profileTasks.filter((task) => task.assignee === profile.handle)
   const postedTasks = profileTasks.filter((task) => task.publisher === profile.handle)
-  const relatedProfiles = marketplaceProfiles
-    .filter((item) => item.id !== profile.id && item.categories.some((category) => profile.categories.includes(category)))
+  const relatedProfiles = profiles
+    .filter((item) => item.id !== profile.id && (item.categories ?? []).some((category) => profileCategories.includes(category)))
     .slice(0, 4)
   const displayedTasks =
     activeTab === 'posted' ? postedTasks : activeTab === 'delivered' ? deliveredTasks : profileTasks.slice(0, 4)
@@ -166,19 +155,19 @@ export function ProfilePage({
             </article>
             <article>
               <span>{textFor(t, 'Settled points', '结算积分')}</span>
-              <strong>{pointText(profile.stats.paid)}</strong>
+              <strong>{pointText(profile.stats.paid, t)}</strong>
             </article>
             <article>
               <span>{textFor(t, 'Languages', '语言')}</span>
-              <strong>{profile.languages.join(' / ')}</strong>
+              <strong>{profileLanguages.join(' / ') || textFor(t, 'Not specified', '未填写')}</strong>
             </article>
             <article>
               <span>{textFor(t, 'Categories', '分类')}</span>
-              <strong>{profile.categories.map((category) => categoryLabel(category, t)).join(' / ')}</strong>
+              <strong>{profileCategories.map((category) => categoryLabel(category, t)).join(' / ') || textFor(t, 'Not specified', '未填写')}</strong>
             </article>
           </div>
           <div className="badge-row">
-            {profile.badges.map((badge) => (
+            {profileBadges.map((badge) => (
               <span className="pill small" key={badge.en}>{localizeText(badge, t)}</span>
             ))}
           </div>
@@ -192,7 +181,6 @@ export function ProfilePage({
             key={item.key}
             onClick={() => {
               setActiveTab(item.key)
-              simulateAction(isZh ? `已切换用户主页内容：${item.label}` : `Public profile tab changed: ${item.label}`)
             }}
           >
             {item.label}
@@ -208,7 +196,7 @@ export function ProfilePage({
       )}
       {activeTab === 'myTasks' ? (
         <MyTasksPage t={t} tasks={tasks} setPage={setPage} accountHandle={profile.handle} submitTask={submitTask} simulateAction={simulateAction} />
-      ) : (
+      ) : isPersonalCenter && activeTab === 'overview' ? null : (
       <div className="profile-layout-grid">
         <section className="panel">
           <SectionHeader
@@ -223,7 +211,7 @@ export function ProfilePage({
           />
           {activeTab === 'reviews' ? (
             <div className="review-list">
-              {profile.reviews.map((review) => (
+              {profileReviews.map((review) => (
                 <Comment author={profile.handle} text={localizeText(review, t)} key={review.en} />
               ))}
             </div>
@@ -240,7 +228,7 @@ export function ProfilePage({
                   </div>
                 ))
               ) : (
-                profile.portfolio.map((item) => (
+                profilePortfolio.map((item) => (
                   <div className="proof-item task-proof-item" key={'en' in item ? item.en : item.id}>
                     <StatusBadge status="Completed" t={t} />
                     <strong>{'en' in item ? localizeText(item, t) : item.title}</strong>

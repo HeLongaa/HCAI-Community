@@ -1,6 +1,7 @@
 import { HttpError } from '../common/errors/httpError.js'
 import { creativeGenerationStatuses, safeErrorPreview } from './generationRecords.js'
 import { buildSafeProviderError } from './providerErrorPolicy.js'
+import { assertProviderNativeSafety } from './providerNativeSafety.js'
 
 const secretKeyPattern = /(api[_-]?key|authorization|bearer|credential|password|private[_-]?key|secret|token)/i
 const redactSensitiveText = (value) => String(value ?? '')
@@ -65,6 +66,7 @@ export const assertCreativeProviderAdapterContract = (generation, { request, pro
   if (generation.provider?.id !== provider.id) {
     throw new HttpError(500, 'CREATIVE_PROVIDER_CONTRACT_FAILED', 'Provider adapter returned the wrong provider id')
   }
+  assertProviderNativeSafety(generation, provider)
 
   assertSafeObject(generation.provider, 'provider')
   assertSafeObject(generation.usage, 'usage')
@@ -85,10 +87,15 @@ export const assertCreativeProviderAdapterContract = (generation, { request, pro
 
 export const safeProviderFailure = (error) => {
   const safe = buildSafeProviderError(error)
+  const providerStatusCandidate = Number(error?.details?.providerStatus ?? error?.response?.status ?? error?.statusCode)
   return {
     code: safe.code,
     messagePreview: redactSensitiveText(safe.messagePreview),
     retryable: safe.retryable,
     statusCode: safe.statusCode,
+    providerStatus: Number.isInteger(providerStatusCandidate) && providerStatusCandidate >= 100 && providerStatusCandidate <= 599
+      ? providerStatusCandidate
+      : null,
+    providerCategory: safe.category,
   }
 }

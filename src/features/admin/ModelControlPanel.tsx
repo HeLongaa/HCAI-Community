@@ -1,44 +1,97 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Archive, Ban, Boxes, Download, FlaskConical, History, KeyRound, Play, Plus, RefreshCw, RotateCcw, Save, Scale, Search, ShieldCheck, Waypoints } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Archive, Ban, Boxes, Download, FlaskConical, History, KeyRound, Play, Plus, RefreshCw, RotateCcw, Save, Scale, Search, ShieldCheck, Upload, Waypoints } from 'lucide-react'
 
 import type { Permission } from '../../domain/types'
 import { adminService } from '../../services/adminService'
-import type { AiEvaluationPolicyDto, AiEvaluationRunDto, AiEvaluationSuiteDto, AiEvaluationSummaryDto, ChatProductionReadinessDto, ModelCatalogModelDto, ModelCapabilityModality, ModelControlStatus, ModelControlSummaryDto, ModelDeploymentDto, ModelDeploymentEnvironment, ModelGovernanceSummaryDto, ModelPromotionDto, ModelProviderDto, ModelRouteDecisionDto, ModelRoutePolicyDto, ModelRoutePreviewResult, ModelRouteRevisionDto, ModelRouteSummaryDto, ModelVersionDto, ProviderLegalReviewDto, ProviderLegalSummaryDto, ProviderOperationalPolicyDto, ProviderOperationsSummaryDto, ProviderSecretRefDto } from '../../services/contracts'
+import type { AiEvaluationPolicyDto, AiEvaluationRunDto, AiEvaluationSuiteDto, AiEvaluationSummaryDto, ChatProductionReadinessDto, ModelCatalogModelDto, ModelCapabilityModality, ModelControlStatus, ModelControlSummaryDto, ModelDeploymentDto, ModelDeploymentEnvironment, ModelGovernanceSummaryDto, ModelPromotionDto, ModelProviderDto, ModelRouteDecisionDto, ModelRoutePolicyDto, ModelRoutePreviewResult, ModelRouteRevisionDto, ModelRouteSummaryDto, ModelVersionDto, PricingVersionDto, ProviderLegalReviewDto, ProviderLegalSummaryDto, ProviderOperationalPolicyDto, ProviderOperationsSummaryDto, ProviderSecretRefDto } from '../../services/contracts'
+import { AdminActionFeedback, type AdminActionFeedbackMessage } from './AdminActionFeedback'
+import { downloadJsonArtifact } from './downloadAdminArtifact'
+import { parseProductionReleaseEvidenceFile } from './productionReleaseEvidenceFile'
 
 type Mode = 'providers' | 'models' | 'versions' | 'routes'
 type GovernanceMode = 'operations' | 'evaluations' | 'legal' | 'decisions' | 'secrets' | 'promotions'
+type WorkspaceMode = 'catalog' | 'runtime' | 'governance'
 const statuses: Array<ModelControlStatus | ''> = ['', 'draft', 'active', 'disabled', 'deprecated', 'archived']
 const transitions: Record<ModelControlStatus, ModelControlStatus[]> = {
   draft: ['active', 'archived'], active: ['disabled', 'deprecated'], disabled: ['active', 'archived'], deprecated: ['disabled', 'archived'], archived: [],
 }
+const pricingUnits = [
+  'request', 'image', 'input_tokens', 'output_tokens', 'total_tokens', 'generated_seconds', 'generated_minutes',
+  'input_text_tokens', 'input_image_tokens', 'output_image_tokens',
+  ...['1024x1024', '1536x1024', '1024x1536'].flatMap((size) => ['low', 'medium', 'high'].map((quality) => `image_output_${size}_${quality}`)),
+]
 const splitValues = (value: string) => value.split(',').map((item) => item.trim()).filter(Boolean)
+const adapterForModality = (modality: ModelCapabilityModality) => ({
+  image: 'openai_image',
+  chat: 'openai_chat',
+  video: 'router_video',
+  music: 'router_music',
+})[modality]
+const outputTypesForModality = (modality: ModelCapabilityModality) => ({
+  image: 'image/png',
+  chat: 'application/json',
+  video: 'video/mp4',
+  music: 'audio/mpeg',
+})[modality]
+const pricingUnitForModality = (modality: ModelCapabilityModality) => ({
+  image: 'image',
+  chat: 'total_tokens',
+  video: 'generated_seconds',
+  music: 'generated_minutes',
+})[modality]
 const readinessReasonZh: Record<string, string> = {
   no_active_route_policy: '没有启用的生产对话路由', no_route_targets: '生产路由没有目标', provider_approval_required: '部署尚未取得生产流量资格',
   deployment_inactive: '生产部署未启用', deployment_runtime_disabled: '生产运行开关未启用', provider_secret_ref_missing: '缺少当前生产密钥引用',
   provider_secret_unresolved: '生产密钥引用尚未连接到运行环境', production_promotion_missing: '缺少已发布的生产批准',
   production_promotion_route_mismatch: '生产批准与当前路由不一致', production_secret_unapproved: '当前密钥版本未获生产批准',
   production_evaluation_invalid: '模型评测缺失或已过期', production_legal_invalid: '法务审查缺失、已过期或不是当前版本',
-  provider_operational_repository_missing: '运营限制服务不可用', provider_operational_policy_missing: '缺少生产运营策略', provider_policy_draft: '生产运营策略尚未启用', provider_policy_disabled: '生产运营策略已停用',
-  provider_cap_evidence_missing: '缺少金额上限', provider_cap_evidence_expired: '金额上限已过期', provider_cap_insufficient: '剩余金额不足',
+  provider_operational_repository_missing: '运营限制服务不可用', provider_operational_policy_missing: '缺少生产运营策略', provider_policy_missing: '缺少运营策略', provider_policy_draft: '运营策略尚未启用', provider_policy_disabled: '运营策略已停用',
+  provider_secret_ref_expired: 'Provider 密钥引用已过期',
+  provider_control_state_unknown: '缺少 Provider 控制状态', provider_cap_evidence_missing: '缺少金额上限', provider_cap_evidence_expired: '金额上限已过期', provider_cap_insufficient: '剩余金额不足', provider_cap_currency_mismatch: '金额上限币种不匹配',
   provider_per_request_budget_exceeded: '单次请求金额超过后台上限',
-  provider_kill_switch_active: '紧急关闭开关已开启', provider_circuit_open: 'Provider 熔断已开启', provider_circuit_probe_required: 'Provider 正在等待恢复检查',
+  provider_kill_switch_active: '紧急关闭开关已开启', provider_circuit_state_unknown: '缺少 Provider 熔断状态', provider_circuit_open: 'Provider 熔断已开启', provider_circuit_probe_required: 'Provider 正在等待恢复检查',
   provider_health_missing: '缺少 Provider 健康检查', provider_health_expired: 'Provider 健康检查已过期', provider_health_unavailable: 'Provider 当前不可用',
-  provider_rate_limit_exhausted: '每分钟调用次数已用完', provider_concurrency_limit_exhausted: '并发数已用完',
+  provider_rate_state_missing: '缺少 Provider 速率状态', provider_rate_limit_exhausted: '每分钟调用次数已用完', provider_concurrency_limit_exhausted: '并发数已用完',
 }
+const readinessReasonEn: Record<string, string> = {
+  provider_policy_missing: 'Operations policy missing', provider_policy_draft: 'Operations policy is draft', provider_policy_disabled: 'Operations policy disabled',
+  provider_secret_ref_missing: 'Provider SecretRef missing', provider_secret_ref_expired: 'Provider SecretRef expired', provider_per_request_budget_exceeded: 'Per-request budget exceeded',
+  provider_control_state_unknown: 'Provider control state missing', provider_cap_evidence_missing: 'Spend cap evidence missing', provider_cap_evidence_expired: 'Spend cap evidence expired', provider_cap_insufficient: 'Insufficient spend cap remaining', provider_cap_currency_mismatch: 'Spend cap currency mismatch',
+  provider_kill_switch_active: 'Kill switch active', provider_circuit_state_unknown: 'Provider circuit state missing', provider_circuit_open: 'Provider circuit open', provider_circuit_probe_required: 'Provider circuit probe required',
+  provider_health_missing: 'Provider health evidence missing', provider_health_expired: 'Provider health evidence expired', provider_health_unavailable: 'Provider unavailable',
+  provider_rate_state_missing: 'Provider rate state missing', provider_rate_limit_exhausted: 'Requests per minute exhausted', provider_concurrency_limit_exhausted: 'Concurrency limit exhausted',
+}
+const providerGateLabelsZh: Record<string, string> = {
+  policy: '策略状态', secret: '密钥引用', per_request_budget: '单次预算', control_budget_circuit: '控制 / 额度 / 熔断', health: '健康证据', rate_limit: '速率 / 并发',
+}
+const providerGateLabelsEn: Record<string, string> = {
+  policy: 'Policy status', secret: 'SecretRef', per_request_budget: 'Per-request budget', control_budget_circuit: 'Controls / cap / circuit', health: 'Health evidence', rate_limit: 'Rate / concurrency',
+}
+const readinessReasonLabel = (reasonCode: string | null, isZh: boolean) => reasonCode ? (isZh ? readinessReasonZh[reasonCode] ?? reasonCode : readinessReasonEn[reasonCode] ?? reasonCode) : (isZh ? '已通过' : 'Passed')
+const providerGateLabel = (id: string, isZh: boolean) => (isZh ? providerGateLabelsZh[id] : providerGateLabelsEn[id]) ?? id
 type ModelControlItem = ModelProviderDto | ModelCatalogModelDto | ModelVersionDto | ModelRoutePolicyDto
 const itemLabel = (item: ModelControlItem) => 'name' in item ? item.name : item.versionKey
 const itemKey = (item: ModelControlItem) => 'key' in item ? item.key : item.versionKey
+const routePreviewDetail = (preview: ModelRoutePreviewResult, emptyCopy: string) => {
+  if (preview.selected?.deploymentKey) return preview.selected.deploymentKey
+  const blocked = preview.attempts[0]
+  if (blocked) return `${blocked.deploymentKey ?? blocked.deploymentId}: ${blocked.reasonCode}`
+  return emptyCopy
+}
 const downloadJson = (document: unknown) => {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(document, null, 2)], { type: 'application/json' }))
-  const link = window.document.createElement('a')
-  link.href = url
-  link.download = `model-control-catalog-${new Date().toISOString().slice(0, 10)}.json`
-  link.click()
-  URL.revokeObjectURL(url)
+  downloadJsonArtifact({
+    value: document,
+    fileName: `model-control-catalog-${new Date().toISOString().slice(0, 10)}.json`,
+    mimeType: 'application/json',
+  })
 }
 
-export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermission: (permission: Permission) => boolean; isZh: boolean; notify: (message: string) => void }) {
-  const [mode, setMode] = useState<Mode>('providers')
+export function ModelControlPanel({ hasPermission, isZh }: { hasPermission: (permission: Permission) => boolean; isZh: boolean }) {
+  const [workspace, setWorkspace] = useState<WorkspaceMode>(() => {
+    const saved = typeof window === 'undefined' ? null : window.sessionStorage.getItem('hcaiModelControlWorkspace')
+    return saved === 'runtime' || saved === 'governance' ? saved : 'catalog'
+  })
+  const [mode, setMode] = useState<Mode>(() => workspace === 'runtime' ? 'versions' : 'providers')
   const [providers, setProviders] = useState<ModelProviderDto[]>([])
   const [models, setModels] = useState<ModelCatalogModelDto[]>([])
   const [versions, setVersions] = useState<ModelVersionDto[]>([])
@@ -70,6 +123,7 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
   const [status, setStatus] = useState<ModelControlStatus | ''>('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<AdminActionFeedbackMessage | null>(null)
   const [reasonCode, setReasonCode] = useState('catalog_reviewed')
   const [chatRollbackEvidenceUrl, setChatRollbackEvidenceUrl] = useState('')
   const [providerDraft, setProviderDraft] = useState({ key: '', name: '', websiteUrl: '', regions: '', dataProcessingRegions: '' })
@@ -77,15 +131,17 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
   const [versionDraft, setVersionDraft] = useState({ modelId: '', versionKey: '', contextWindow: '', maxOutputUnits: '' })
   const [capabilityDraft, setCapabilityDraft] = useState({ modality: 'image' as ModelCapabilityModality, operations: 'generate', inputMimeTypes: '', outputMimeTypes: 'image/png' })
   const [deploymentDraft, setDeploymentDraft] = useState({ key: '', environment: 'staging' as ModelDeploymentEnvironment, region: '', deploymentRef: '', adapterType: 'openai_image', providerModelId: '', endpointUrl: '', secretPurpose: 'inference', runtimeConfig: '{}', runtimeEnabled: false })
-  const [pricingDraft, setPricingDraft] = useState({ versionKey: '', modelDeploymentId: '', currency: 'USD', unit: 'request', unitPriceMicros: '', effectiveFrom: new Date().toISOString().slice(0, 16) })
+  const [pricingDraft, setPricingDraft] = useState({ versionKey: '', modelDeploymentId: '', currency: 'USD', unit: 'request', unitPriceMicros: '', effectiveFrom: new Date().toISOString().slice(0, 16), effectiveTo: '' })
   const [routeDraft, setRouteDraft] = useState({ key: '', name: '', modality: 'image' as ModelCapabilityModality, operation: 'generate', environment: 'staging' as ModelDeploymentEnvironment, region: '', audienceRoles: '', rolloutPercentage: '100', rolloutSeed: 'v1', fallbackMode: 'fail_closed' as 'fail_closed' | 'ordered', priority: '100' })
   const [routeTargets, setRouteTargets] = useState({ primary: '', backup: '' })
   const [previewDraft, setPreviewDraft] = useState({ subjectKey: 'preview-user', role: 'member', region: '' })
   const [secretDraft, setSecretDraft] = useState({ providerId: '', environment: 'staging' as ModelDeploymentEnvironment, purpose: 'inference', secretRef: '', externalVersion: '', ownerRef: '', checksumSha256: '', expiresAt: '', rotatedFromId: '' })
-  const [promotionDraft, setPromotionDraft] = useState({ modelDeploymentId: '', routePolicyId: '', routePolicyRevisionId: '', providerSecretRefId: '', evaluationRunId: '', legalReviewId: '', artifactVersion: '', rollbackVersion: '', summary: '' })
+  const [promotionDraft, setPromotionDraft] = useState({ modelDeploymentId: '', routePolicyId: '', routePolicyRevisionId: '', providerSecretRefId: '', evaluationRunId: '', legalReviewId: '', artifactVersion: '', rollbackVersion: '', sourceCommit: '', releaseArtifactSha256: '', rollbackArtifactSha256: '', productionEvidenceReceiptSha256: '', summary: '' })
+  const promotionEvidenceInputRef = useRef<HTMLInputElement>(null)
   const [promotionRevisions, setPromotionRevisions] = useState<ModelRouteRevisionDto[]>([])
   const [operationsDraft, setOperationsDraft] = useState({ providerId: '', environment: 'staging' as ModelDeploymentEnvironment, providerAccountRef: 'default', secretPurpose: 'inference', workspace: 'image' as ModelCapabilityModality, modelFamily: '', currency: 'USD', perRequestBudgetMicros: '250000', maxRequestsPerMinute: '60', maxConcurrentRequests: '4', healthTtlSeconds: '300' })
   const [healthDraft, setHealthDraft] = useState({ policyId: '', status: 'healthy' as 'healthy' | 'degraded' | 'unavailable', latencyMs: '', successRateBps: '', sourceType: 'provider_probe' as 'provider_probe' | 'provider_status_page' | 'manual_unavailable' | 'fixture_probe', sourceRef: '' })
+  const [externalGateDraft, setExternalGateDraft] = useState(() => ({ policyId: '', capAmount: '25', remainingAmount: '20', sourceType: 'manual_attestation' as 'fixture_config' | 'manual_attestation' | 'injected_reader', sourceRef: 'provider-console-attestation', expiresAt: new Date(Date.now() + 86_400_000).toISOString().slice(0, 16) }))
   const [evaluationSuiteDraft, setEvaluationSuiteDraft] = useState({ suiteKey: 'chat-regression', name: 'Chat regression', version: '1', modality: 'chat' as ModelCapabilityModality, operation: 'generate', qualityInputHash: '', qualityExpectedHash: '', safetyInputHash: '', safetyExpectedHash: '' })
   const [evaluationPolicyDraft, setEvaluationPolicyDraft] = useState({ policyKey: 'chat-production', version: '1', suiteId: '', environment: 'production' as ModelDeploymentEnvironment, qualityThresholdBps: '8000', safetyThresholdBps: '10000', maxRegressionBps: '250', minimumCases: '2', evidenceTtlSeconds: '86400', reviewedByRef: 'independent-reviewer' })
   const [evaluationRunDraft, setEvaluationRunDraft] = useState({ suiteId: '', policyId: '', modelVersionId: '', modelDeploymentId: '', baselineRunId: '', scoreBps: '10000', safetyPassed: true, outputHash: '', executorRef: 'evaluation-runner' })
@@ -128,6 +184,13 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
         adminService.providerLegalSummary(),
       ])
       setProviders(providerPage.items); setModels(modelPage.items); setVersions(versionPage.items); setDeployments(deploymentPage.items); setRoutes(routePage.items); setRouteDecisions(decisionPage.items); setSecretRefs(secretPage.items); setPromotions(promotionPage.items); setProviderOperations(operationsPage.items); setEvaluationSuites(suitePage.items); setEvaluationPolicies(policyPage.items); setEvaluationRuns(runPage.items); setLegalReviews(legalPage.items); setSummary(nextSummary); setChatProductionReadiness(nextChatProductionReadiness); setRouteSummary(nextRouteSummary); setGovernanceSummary(nextGovernanceSummary); setOperationsSummary(nextOperationsSummary); setEvaluationSummary(nextEvaluationSummary); setLegalSummary(nextLegalSummary); setEvaluationReferenceTime(Date.now())
+      const defaultProviderId = providerPage.items[0]?.id
+      const defaultPolicyId = operationsPage.items[0]?.id
+      if (defaultProviderId) setOperationsDraft((current) => current.providerId ? current : { ...current, providerId: defaultProviderId })
+      if (defaultPolicyId) {
+        setHealthDraft((current) => current.policyId ? current : { ...current, policyId: defaultPolicyId })
+        setExternalGateDraft((current) => current.policyId ? current : { ...current, policyId: defaultPolicyId })
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally { setBusy(false) }
@@ -137,6 +200,10 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
     const timer = window.setTimeout(() => void refresh(), 0)
     return () => window.clearTimeout(timer)
   }, [refresh])
+
+  useEffect(() => {
+    window.sessionStorage.setItem('hcaiModelControlWorkspace', workspace)
+  }, [workspace])
 
   const items = useMemo<ModelControlItem[]>(() => mode === 'providers' ? providers : mode === 'models' ? models : mode === 'versions' ? versions : routes, [mode, models, providers, routes, versions])
   const selected = items.find((item) => item.id === selectedId) ?? null
@@ -148,9 +215,15 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
     setRouteRevisions([])
     setRoutePreview(null)
   }
+  const changeWorkspace = (nextWorkspace: WorkspaceMode) => {
+    setWorkspace(nextWorkspace)
+    if (nextWorkspace === 'catalog' && mode === 'routes') changeMode('providers')
+    if (nextWorkspace === 'runtime' && mode !== 'versions' && mode !== 'routes') changeMode('versions')
+  }
+  const visibleModes: Mode[] = workspace === 'runtime' ? ['versions', 'routes'] : ['providers', 'models', 'versions']
   const run = async (action: () => Promise<void>, success: string) => {
-    setBusy(true); setError(null)
-    try { await action(); notify(success); await refresh() } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) } finally { setBusy(false) }
+    setBusy(true); setError(null); setFeedback(null)
+    try { await action(); setFeedback({ kind: 'success', text: success }); await refresh() } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) } finally { setBusy(false) }
   }
   const emergencyDisableChatProduction = () => {
     const route = chatProductionReadiness?.checks?.route
@@ -196,7 +269,20 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
   const openItem = async (id: string) => {
     setSelectedId(id)
     if (mode === 'versions') {
-      try { setSelectedVersion(await adminService.modelVersion(id)) } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
+      try {
+        const version = await adminService.modelVersion(id)
+        const capability = version.capabilities?.[0]
+        const modality = capability?.modality ?? 'image'
+        setSelectedVersion(version)
+        setCapabilityDraft({
+          modality,
+          operations: capability?.operations.join(', ') ?? 'generate',
+          inputMimeTypes: capability?.inputMimeTypes.join(', ') ?? '',
+          outputMimeTypes: capability?.outputMimeTypes.join(', ') ?? outputTypesForModality(modality),
+        })
+        setDeploymentDraft({ key: '', environment: 'staging', region: '', deploymentRef: '', adapterType: adapterForModality(modality), providerModelId: '', endpointUrl: '', secretPurpose: 'inference', runtimeConfig: '{}', runtimeEnabled: false })
+        setPricingDraft((current) => ({ ...current, unit: pricingUnitForModality(modality), modelDeploymentId: '' }))
+      } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
     } else if (mode === 'routes') {
       try {
         const [route, revisions] = await Promise.all([adminService.modelRoutePolicy(id), adminService.modelRouteRevisions(id)])
@@ -214,13 +300,21 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
   const createDeployment = () => selectedVersion && void run(async () => {
     await adminService.createModelDeployment({ modelVersionId: selectedVersion.id, ...deploymentDraft, endpointUrl: deploymentDraft.endpointUrl || null, runtimeConfig: JSON.parse(deploymentDraft.runtimeConfig) as Record<string, unknown> })
     setSelectedVersion(await adminService.modelVersion(selectedVersion.id))
-    setDeploymentDraft({ key: '', environment: 'staging', region: '', deploymentRef: '', adapterType: 'openai_image', providerModelId: '', endpointUrl: '', secretPurpose: 'inference', runtimeConfig: '{}', runtimeEnabled: false })
+    setDeploymentDraft({ key: '', environment: 'staging', region: '', deploymentRef: '', adapterType: adapterForModality(capabilityDraft.modality), providerModelId: '', endpointUrl: '', secretPurpose: 'inference', runtimeConfig: '{}', runtimeEnabled: false })
   }, isZh ? '部署记录已创建，流量仍关闭。' : 'Deployment created with traffic disabled.')
   const createPricing = () => selectedVersion && void run(async () => {
-    await adminService.createPricingVersion({ modelVersionId: selectedVersion.id, modelDeploymentId: pricingDraft.modelDeploymentId || null, versionKey: pricingDraft.versionKey, currency: pricingDraft.currency, unit: pricingDraft.unit, unitPriceMicros: Number(pricingDraft.unitPriceMicros), effectiveFrom: new Date(pricingDraft.effectiveFrom).toISOString() })
+    await adminService.createPricingVersion({ modelVersionId: selectedVersion.id, modelDeploymentId: pricingDraft.modelDeploymentId || null, versionKey: pricingDraft.versionKey, currency: pricingDraft.currency, unit: pricingDraft.unit, unitPriceMicros: Number(pricingDraft.unitPriceMicros), effectiveFrom: new Date(pricingDraft.effectiveFrom).toISOString(), effectiveTo: pricingDraft.effectiveTo ? new Date(pricingDraft.effectiveTo).toISOString() : null })
     setSelectedVersion(await adminService.modelVersion(selectedVersion.id))
-    setPricingDraft((current) => ({ ...current, versionKey: '', unitPriceMicros: '' }))
+    setPricingDraft((current) => ({ ...current, versionKey: '', unitPriceMicros: '', effectiveTo: '' }))
   }, isZh ? '价格版本已追加。' : 'Pricing version added.')
+  const transitionPricing = (pricing: PricingVersionDto, target: ModelControlStatus) => selectedVersion && void run(async () => {
+    await adminService.transitionModelControl('pricing', pricing.id, pricing.version, target, reasonCode)
+    setSelectedVersion(await adminService.modelVersion(selectedVersion.id))
+  }, isZh ? `价格版本已切换为 ${target}。` : `Pricing version changed to ${target}.`)
+  const transitionDeployment = (deployment: ModelDeploymentDto, target: ModelControlStatus) => selectedVersion && void run(async () => {
+    await adminService.transitionModelControl('deployment', deployment.id, deployment.version, target, reasonCode)
+    setSelectedVersion(await adminService.modelVersion(selectedVersion.id))
+  }, isZh ? `部署已切换为 ${target}。` : `Deployment changed to ${target}.`)
   const saveRoutePolicy = () => selectedRoute && void run(async () => {
     const updated = await adminService.updateModelRoutePolicy(selectedRoute.id, selectedRoute.version, { name: routeDraft.name, modality: routeDraft.modality, operation: routeDraft.operation, environment: routeDraft.environment, region: routeDraft.region || null, audienceRoles: splitValues(routeDraft.audienceRoles), rolloutPercentage: Number(routeDraft.rolloutPercentage), rolloutSeed: routeDraft.rolloutSeed, fallbackMode: routeDraft.fallbackMode, priority: Number(routeDraft.priority) })
     setSelectedRoute(updated)
@@ -267,16 +361,51 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
     await adminService.requestModelPromotion({ ...promotionDraft, reasonCode })
     setPromotionDraft((current) => ({ ...current, artifactVersion: '', rollbackVersion: '', summary: '' }))
   }, isZh ? '生产提升已提交审批。' : 'Production promotion submitted for approval.')
+
+  const importPromotionEvidence = async (file: File | null) => {
+    if (!file) return
+    try {
+      const parsed = await parseProductionReleaseEvidenceFile(file)
+      setPromotionDraft((current) => ({ ...current, ...parsed.binding }))
+      setFeedback(null)
+    } catch (cause) {
+      setFeedback({ kind: 'error', text: cause instanceof Error ? cause.message : String(cause) })
+    }
+  }
   const createOperationsPolicy = () => void run(async () => {
-    await adminService.createProviderOperationalPolicy({ ...operationsDraft, modelFamily: operationsDraft.modelFamily || null, perRequestBudgetMicros: Number(operationsDraft.perRequestBudgetMicros), maxRequestsPerMinute: Number(operationsDraft.maxRequestsPerMinute), maxConcurrentRequests: Number(operationsDraft.maxConcurrentRequests), healthTtlSeconds: Number(operationsDraft.healthTtlSeconds), reasonCode })
+    const policy = await adminService.createProviderOperationalPolicy({ ...operationsDraft, modelFamily: operationsDraft.modelFamily || null, perRequestBudgetMicros: Number(operationsDraft.perRequestBudgetMicros), maxRequestsPerMinute: Number(operationsDraft.maxRequestsPerMinute), maxConcurrentRequests: Number(operationsDraft.maxConcurrentRequests), healthTtlSeconds: Number(operationsDraft.healthTtlSeconds), reasonCode })
+    setHealthDraft((current) => ({ ...current, policyId: policy.id }))
+    setExternalGateDraft((current) => ({ ...current, policyId: policy.id }))
   }, isZh ? 'Provider 运营策略已创建，默认不启用。' : 'Provider operations policy created disabled by default.')
   const recordHealth = () => healthDraft.policyId && void run(async () => {
-    await adminService.recordProviderHealth(healthDraft.policyId, { sourceKey: `health-${Date.now()}`, status: healthDraft.status, checkedAt: new Date().toISOString(), latencyMs: healthDraft.latencyMs ? Number(healthDraft.latencyMs) : null, successRateBps: healthDraft.successRateBps ? Number(healthDraft.successRateBps) : null, sourceType: healthDraft.sourceType, sourceRef: healthDraft.sourceRef, details: { recordedFrom: 'admin_model_control' } })
+    await adminService.recordProviderHealth(healthDraft.policyId, { sourceKey: `health-${Date.now()}`, status: healthDraft.status, checkedAt: new Date().toISOString(), latencyMs: healthDraft.latencyMs ? Number(healthDraft.latencyMs) : null, successRateBps: healthDraft.successRateBps ? Math.round(Number(healthDraft.successRateBps) * 100) : null, sourceType: healthDraft.sourceType, sourceRef: healthDraft.sourceRef, details: { recordedFrom: 'admin_model_control' } })
     setHealthDraft((current) => ({ ...current, sourceRef: '', latencyMs: '', successRateBps: '' }))
   }, isZh ? '健康证据已追加。' : 'Health evidence appended.')
-  const transitionOperations = (profile: ProviderOperationalPolicyDto, target: 'active' | 'disabled') => void run(async () => {
-    await adminService.transitionProviderOperationalPolicy(profile.id, profile.version, target, reasonCode)
-  }, isZh ? `Provider 运营策略已${target === 'active' ? '启用' : '停用'}。` : `Provider operations policy ${target}.`)
+  const provisionExternalGates = () => externalGateDraft.policyId && void run(async () => {
+    await adminService.provisionProviderOperationalExternalGates(externalGateDraft.policyId, {
+      capAmount: externalGateDraft.capAmount,
+      remainingAmount: externalGateDraft.remainingAmount || null,
+      sourceType: externalGateDraft.sourceType,
+      sourceRef: externalGateDraft.sourceRef,
+      expiresAt: externalGateDraft.expiresAt ? new Date(externalGateDraft.expiresAt).toISOString() : null,
+      reasonCode,
+    })
+    setExternalGateDraft((current) => ({ ...current, sourceRef: 'provider-console-attestation' }))
+  }, isZh ? 'Provider 外部门槛已初始化。' : 'Provider external gates provisioned.')
+  const transitionOperations = (profile: ProviderOperationalPolicyDto, target: 'active' | 'disabled') => void (async () => {
+    setBusy(true); setError(null); setFeedback(null)
+    try {
+      await adminService.transitionProviderOperationalPolicy(profile.id, profile.version, target, reasonCode)
+      setFeedback({ kind: 'success', text: isZh ? `Provider 运营策略已${target === 'active' ? '启用' : '停用'}。` : `Provider operations policy ${target}.` })
+      await refresh()
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause)
+      const blockedGates = target === 'active'
+        ? profile.readiness.gates.filter((gate) => !gate.allowed && gate.id !== 'policy').map((gate) => `${providerGateLabel(gate.id, isZh)}: ${readinessReasonLabel(gate.reasonCode, isZh)}`)
+        : []
+      setError(blockedGates.length ? `${message} (${blockedGates.join(isZh ? '；' : '; ')})` : message)
+    } finally { setBusy(false) }
+  })()
   const createEvaluationSuite = () => void run(async () => {
     await adminService.createEvaluationSuite({
       suiteKey: evaluationSuiteDraft.suiteKey, name: evaluationSuiteDraft.name, version: Number(evaluationSuiteDraft.version), modality: evaluationSuiteDraft.modality, operation: evaluationSuiteDraft.operation,
@@ -319,7 +448,7 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
 
   if (!hasPermission('admin:model-control:read')) return null
   return (
-    <section className="panel model-control-panel" data-testid="model-control-panel">
+    <section className="panel model-control-panel" data-workspace={workspace} data-testid="model-control-panel">
       <header className="settings-panel-header">
         <div><small>{isZh ? '模型控制面' : 'Model control plane'}</small><h2>{isZh ? 'Provider、模型与路由' : 'Provider, model, and routing control'}</h2></div>
         <div className="button-row">
@@ -327,8 +456,27 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
           <button className="icon-button" type="button" title={isZh ? '刷新' : 'Refresh'} onClick={() => void refresh()} disabled={busy}><RefreshCw size={17} /></button>
         </div>
       </header>
+      <AdminActionFeedback message={feedback} />
+      <div className="model-workspace-tabs" role="tablist" aria-label={isZh ? 'AI 配置工作面' : 'AI configuration workspace'}>
+        {([
+          { id: 'catalog' as const, icon: Boxes, label: isZh ? '供应商与模型' : 'Provider & model catalog', ariaLabel: isZh ? '目录工作面' : 'Catalog workspace', description: isZh ? '目录、版本与能力' : 'Catalog, versions, and capabilities' },
+          { id: 'runtime' as const, icon: Waypoints, label: isZh ? '部署与路由' : 'Runtime & routing', ariaLabel: isZh ? '部署与路由' : 'Runtime & routing', description: isZh ? '部署、价格与流量策略' : 'Deployments, pricing, and traffic' },
+          { id: 'governance' as const, icon: ShieldCheck, label: isZh ? '评估与治理' : 'Evaluation & governance', ariaLabel: isZh ? '评估与治理' : 'Evaluation & governance', description: isZh ? '评测、法务与发布证据' : 'Evaluation, legal, and release evidence' },
+        ]).map((item) => {
+          const WorkspaceIcon = item.icon
+          return <button type="button" role="tab" aria-label={item.ariaLabel} aria-selected={workspace === item.id} className={workspace === item.id ? 'active' : ''} key={item.id} onClick={() => changeWorkspace(item.id)}><WorkspaceIcon size={17} /><span><strong>{item.label}</strong><small>{item.description}</small></span></button>
+        })}
+      </div>
+      <label className="model-workspace-select">
+        <span>{isZh ? 'AI 配置工作面' : 'AI configuration workspace'}</span>
+        <select aria-label={isZh ? 'AI 配置工作面' : 'AI configuration workspace'} value={workspace} onChange={(event) => changeWorkspace(event.target.value as WorkspaceMode)}>
+          <option value="catalog">{isZh ? '供应商与模型' : 'Provider & model catalog'}</option>
+          <option value="runtime">{isZh ? '部署与路由' : 'Runtime & routing'}</option>
+          <option value="governance">{isZh ? '评估与治理' : 'Evaluation & governance'}</option>
+        </select>
+      </label>
       <div className="model-control-gate"><ShieldCheck size={18} /><strong>{isZh ? 'Provider 流量受提升审批控制' : 'Provider traffic is promotion-gated'}</strong><span>{summary?.providerTrafficEnabled ? (isZh ? '存在已启用生产流量' : 'Production traffic enabled') : (isZh ? '当前无生产流量' : 'No production traffic')} · {routeSummary?.policyCount ?? 0} {isZh ? '条路由' : 'routes'}</span></div>
-      <div className="model-control-gate" data-testid="chat-production-readiness" data-status={chatProductionReadiness?.decision ?? 'loading'}>
+      {workspace === 'runtime' && <div className="model-control-gate" data-testid="chat-production-readiness" data-status={chatProductionReadiness?.decision ?? 'loading'}>
         <ShieldCheck size={18} />
         <strong>{chatProductionReadiness?.ready ? (isZh ? '对话生产条件已齐全' : 'Chat production is ready') : (isZh ? '对话生产暂不可开启' : 'Chat production is not ready')}</strong>
         <span>{chatProductionReadiness?.ready
@@ -351,47 +499,71 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
             <button className="ghost-button danger" type="button" onClick={rollbackChatProduction} disabled={busy || !chatRollbackEvidenceUrl}><RotateCcw size={16} />{isZh ? '回滚发布' : 'Rollback release'}</button>
           </>}
         </div>}
-      </div>
-      <div className="chip-row" role="tablist">
-        {(['providers', 'models', 'versions', 'routes'] as Mode[]).map((item) => <button key={item} type="button" className={mode === item ? 'chip active' : 'chip'} onClick={() => changeMode(item)}>{({ providers: isZh ? 'Provider' : 'Providers', models: isZh ? '模型' : 'Models', versions: isZh ? '版本' : 'Versions', routes: isZh ? '路由' : 'Routing' })[item]}</button>)}
+      </div>}
+      {error && <div className="inline-alert">{error}</div>}
+      {workspace !== 'governance' && <>
+      <div className="chip-row model-entity-tabs" role="tablist" aria-label={workspace === 'runtime' ? (isZh ? '运行时实体' : 'Runtime entities') : (isZh ? '目录实体' : 'Catalog entities')}>
+        {visibleModes.map((item) => <button key={item} type="button" className={mode === item ? 'chip active' : 'chip'} aria-selected={mode === item} onClick={() => changeMode(item)}>{({ providers: isZh ? 'Provider' : 'Providers', models: isZh ? '模型' : 'Models', versions: workspace === 'runtime' ? (isZh ? '部署' : 'Deployments') : (isZh ? '版本' : 'Versions'), routes: isZh ? '路由' : 'Routing' })[item]}</button>)}
       </div>
       <div className="model-control-toolbar">
         <label><span>{isZh ? '搜索' : 'Search'}</span><div className="search-box"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} /></div></label>
         <label><span>{isZh ? '状态' : 'Status'}</span><select value={status} onChange={(event) => setStatus(event.target.value as ModelControlStatus | '')}>{statuses.map((item) => <option value={item} key={item || 'all'}>{item || (isZh ? '全部' : 'All')}</option>)}</select></label>
         <label><span>{isZh ? '原因代码' : 'Reason code'}</span><input value={reasonCode} onChange={(event) => setReasonCode(event.target.value)} /></label>
       </div>
-      {canManage && <div className="model-control-create">
+      {canManage && (workspace === 'catalog' || mode === 'routes') && <div className="model-control-create">
         {mode === 'providers' && <><input aria-label="Provider key" placeholder="provider-key" value={providerDraft.key} onChange={(event) => setProviderDraft({ ...providerDraft, key: event.target.value })} /><input aria-label="Provider name" placeholder={isZh ? '名称' : 'Name'} value={providerDraft.name} onChange={(event) => setProviderDraft({ ...providerDraft, name: event.target.value })} /><input aria-label="Provider website" placeholder="https://" value={providerDraft.websiteUrl} onChange={(event) => setProviderDraft({ ...providerDraft, websiteUrl: event.target.value })} /></>}
         {mode === 'models' && <><select aria-label="Provider" value={modelDraft.providerId} onChange={(event) => setModelDraft({ ...modelDraft, providerId: event.target.value })}><option value="">Provider</option>{providers.filter((item) => item.status !== 'archived').map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><input aria-label="Model key" placeholder="model-key" value={modelDraft.key} onChange={(event) => setModelDraft({ ...modelDraft, key: event.target.value })} /><input aria-label="Model name" placeholder={isZh ? '模型名称' : 'Model name'} value={modelDraft.name} onChange={(event) => setModelDraft({ ...modelDraft, name: event.target.value })} /></>}
         {mode === 'versions' && <><select aria-label="Model" value={versionDraft.modelId} onChange={(event) => setVersionDraft({ ...versionDraft, modelId: event.target.value })}><option value="">{isZh ? '选择模型' : 'Select model'}</option>{models.filter((item) => item.status !== 'archived').map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><input aria-label="Version key" placeholder="version-key" value={versionDraft.versionKey} onChange={(event) => setVersionDraft({ ...versionDraft, versionKey: event.target.value })} /><input aria-label="Context window" type="number" placeholder={isZh ? '上下文' : 'Context'} value={versionDraft.contextWindow} onChange={(event) => setVersionDraft({ ...versionDraft, contextWindow: event.target.value })} /></>}
         {mode === 'routes' && <><input aria-label="Route key" placeholder="image-staging" value={routeDraft.key} onChange={(event) => setRouteDraft({ ...routeDraft, key: event.target.value })} /><input aria-label="Route name" placeholder={isZh ? '策略名称' : 'Policy name'} value={routeDraft.name} onChange={(event) => setRouteDraft({ ...routeDraft, name: event.target.value })} /><select aria-label="Route modality" value={routeDraft.modality} onChange={(event) => setRouteDraft({ ...routeDraft, modality: event.target.value as ModelCapabilityModality })}>{(['image', 'chat', 'video', 'music'] as ModelCapabilityModality[]).map((item) => <option key={item}>{item}</option>)}</select><select aria-label="Route environment" value={routeDraft.environment} onChange={(event) => setRouteDraft({ ...routeDraft, environment: event.target.value as ModelDeploymentEnvironment })}>{(['development', 'staging', 'production'] as ModelDeploymentEnvironment[]).map((item) => <option key={item}>{item}</option>)}</select></>}
         <button className="primary-button" type="button" onClick={create} disabled={busy}><Plus size={17} />{isZh ? '新建草稿' : 'New draft'}</button>
       </div>}
-      {error && <div className="inline-alert">{error}</div>}
       <div className="model-control-layout">
         <div className="model-control-list">{items.map((item) => <button type="button" className={selectedId === item.id ? 'model-control-row active' : 'model-control-row'} key={item.id} onClick={() => void openItem(item.id)}><span><strong>{itemLabel(item)}</strong><small>{itemKey(item)}</small></span><em data-status={item.status}>{item.status}</em></button>)}{!items.length && <div className="empty-state">{isZh ? '暂无记录' : 'No records'}</div>}</div>
         <div className="model-control-detail">{selected ? <>
-          <header><div><small>{mode.slice(0, -1)}</small><h3>{itemLabel(selected)}</h3></div><span>v{selected.version}</span></header>
+          <header><div><small>{mode === 'versions' && workspace === 'runtime' ? (isZh ? '部署版本' : 'deployment version') : mode.slice(0, -1)}</small><h3>{itemLabel(selected)}</h3></div><span>v{selected.version}</span></header>
           {canTransition && <div className="button-row">{transitions[selected.status].map((target) => <button className="ghost-button" type="button" key={target} onClick={() => transition(target)}>{target === 'archived' ? <Archive size={16} /> : target === 'disabled' ? <Ban size={16} /> : target === 'active' ? <RotateCcw size={16} /> : <Boxes size={16} />}{target}</button>)}</div>}
           {mode === 'versions' && selectedVersion && <div className="model-version-tools">
-            <div className="model-tool-section"><h4>{isZh ? '能力' : 'Capability'}</h4><select value={capabilityDraft.modality} onChange={(event) => setCapabilityDraft({ ...capabilityDraft, modality: event.target.value as ModelCapabilityModality })}>{(['image', 'chat', 'video', 'music'] as ModelCapabilityModality[]).map((item) => <option key={item}>{item}</option>)}</select><input value={capabilityDraft.operations} onChange={(event) => setCapabilityDraft({ ...capabilityDraft, operations: event.target.value })} placeholder="generate, edit" /><button className="icon-button" type="button" title={isZh ? '保存能力' : 'Save capability'} onClick={saveCapability} disabled={selectedVersion.status !== 'draft'}><Save size={17} /></button></div>
-            <div className="model-tool-section"><h4>{isZh ? '部署' : 'Deployment'}</h4><select aria-label="Deployment environment" value={deploymentDraft.environment} onChange={(event) => setDeploymentDraft({ ...deploymentDraft, environment: event.target.value as ModelDeploymentEnvironment })}>{(['development', 'staging', 'production'] as ModelDeploymentEnvironment[]).map((item) => <option key={item}>{item}</option>)}</select><select aria-label="Deployment adapter" value={deploymentDraft.adapterType} onChange={(event) => setDeploymentDraft({ ...deploymentDraft, adapterType: event.target.value })}>{['openai_image', 'openai_chat', 'google_video', 'elevenlabs_music'].map((item) => <option key={item}>{item}</option>)}</select><input value={deploymentDraft.key} onChange={(event) => setDeploymentDraft({ ...deploymentDraft, key: event.target.value })} placeholder="deployment-key" /><input value={deploymentDraft.region} onChange={(event) => setDeploymentDraft({ ...deploymentDraft, region: event.target.value })} placeholder="region" /><input value={deploymentDraft.deploymentRef} onChange={(event) => setDeploymentDraft({ ...deploymentDraft, deploymentRef: event.target.value })} placeholder="deployment-ref" /><input aria-label="Provider model ID" value={deploymentDraft.providerModelId} onChange={(event) => setDeploymentDraft({ ...deploymentDraft, providerModelId: event.target.value })} placeholder="provider-model-id" /><input aria-label="Provider endpoint" value={deploymentDraft.endpointUrl} onChange={(event) => setDeploymentDraft({ ...deploymentDraft, endpointUrl: event.target.value })} placeholder="https://provider.example/v1" /><input aria-label="Secret purpose" value={deploymentDraft.secretPurpose} onChange={(event) => setDeploymentDraft({ ...deploymentDraft, secretPurpose: event.target.value })} placeholder="inference" /><textarea aria-label="Deployment runtime config" value={deploymentDraft.runtimeConfig} onChange={(event) => setDeploymentDraft({ ...deploymentDraft, runtimeConfig: event.target.value })} /><label><input type="checkbox" checked={deploymentDraft.runtimeEnabled} onChange={(event) => setDeploymentDraft({ ...deploymentDraft, runtimeEnabled: event.target.checked })} />{isZh ? '允许 staging 运行' : 'Enable staging runtime'}</label><button className="icon-button" type="button" title={isZh ? '新建部署' : 'Create deployment'} onClick={createDeployment}><Plus size={17} /></button></div>
-            <div className="model-tool-section"><h4>{isZh ? '价格' : 'Pricing'}</h4><input value={pricingDraft.versionKey} onChange={(event) => setPricingDraft({ ...pricingDraft, versionKey: event.target.value })} placeholder="price-version" /><input value={pricingDraft.unitPriceMicros} onChange={(event) => setPricingDraft({ ...pricingDraft, unitPriceMicros: event.target.value })} type="number" placeholder="micros" /><select value={pricingDraft.modelDeploymentId} onChange={(event) => setPricingDraft({ ...pricingDraft, modelDeploymentId: event.target.value })}><option value="">{isZh ? '全局' : 'Global'}</option>{selectedVersion.deployments?.map((item) => <option value={item.id} key={item.id}>{item.key}</option>)}</select><button className="icon-button" type="button" title={isZh ? '追加价格' : 'Add pricing'} onClick={createPricing}><Plus size={17} /></button></div>
+            {workspace === 'catalog' && <><div className="model-tool-section"><h4>{isZh ? '能力' : 'Capability'}</h4><select aria-label={isZh ? '能力类型' : 'Capability modality'} value={capabilityDraft.modality} onChange={(event) => setCapabilityDraft({ ...capabilityDraft, modality: event.target.value as ModelCapabilityModality })}>{(['image', 'chat', 'video', 'music'] as ModelCapabilityModality[]).map((item) => <option key={item}>{item}</option>)}</select><input aria-label={isZh ? '能力操作' : 'Capability operations'} value={capabilityDraft.operations} onChange={(event) => setCapabilityDraft({ ...capabilityDraft, operations: event.target.value })} placeholder="generate, edit" /><button className="icon-button" type="button" title={isZh ? '保存能力' : 'Save capability'} onClick={saveCapability} disabled={selectedVersion.status !== 'draft'}><Save size={17} /></button></div><div className="model-version-counts"><span>{selectedVersion.capabilities?.length ?? 0} capabilities</span></div></>}
+            {workspace === 'runtime' && <>
+            <div className="model-tool-section"><h4>{isZh ? '部署' : 'Deployment'}</h4><select aria-label="Deployment environment" value={deploymentDraft.environment} onChange={(event) => setDeploymentDraft({ ...deploymentDraft, environment: event.target.value as ModelDeploymentEnvironment })}>{(['development', 'staging', 'production'] as ModelDeploymentEnvironment[]).map((item) => <option key={item}>{item}</option>)}</select><select aria-label="Deployment adapter" value={deploymentDraft.adapterType} onChange={(event) => setDeploymentDraft({ ...deploymentDraft, adapterType: event.target.value })}>{['openai_image', 'openai_chat', 'router_video', 'router_music'].map((item) => <option key={item}>{item}</option>)}</select><input aria-label={isZh ? '部署 Key' : 'Deployment key'} value={deploymentDraft.key} onChange={(event) => setDeploymentDraft({ ...deploymentDraft, key: event.target.value })} placeholder="deployment-key" /><input aria-label={isZh ? '部署区域' : 'Deployment region'} value={deploymentDraft.region} onChange={(event) => setDeploymentDraft({ ...deploymentDraft, region: event.target.value })} placeholder="region" /><input aria-label={isZh ? '部署引用' : 'Deployment reference'} value={deploymentDraft.deploymentRef} onChange={(event) => setDeploymentDraft({ ...deploymentDraft, deploymentRef: event.target.value })} placeholder="deployment-ref" /><input aria-label="Provider model ID" value={deploymentDraft.providerModelId} onChange={(event) => setDeploymentDraft({ ...deploymentDraft, providerModelId: event.target.value })} placeholder="provider-model-id" /><input aria-label="Provider endpoint" value={deploymentDraft.endpointUrl} onChange={(event) => setDeploymentDraft({ ...deploymentDraft, endpointUrl: event.target.value })} placeholder="https://provider.example/v1" /><input aria-label="Secret purpose" value={deploymentDraft.secretPurpose} onChange={(event) => setDeploymentDraft({ ...deploymentDraft, secretPurpose: event.target.value })} placeholder="inference" /><textarea aria-label="Deployment runtime config" value={deploymentDraft.runtimeConfig} onChange={(event) => setDeploymentDraft({ ...deploymentDraft, runtimeConfig: event.target.value })} /><label><input aria-label={isZh ? '启用 staging 运行' : 'Enable staging runtime'} type="checkbox" checked={deploymentDraft.runtimeEnabled} onChange={(event) => setDeploymentDraft({ ...deploymentDraft, runtimeEnabled: event.target.checked })} />{isZh ? '允许 staging 运行' : 'Enable staging runtime'}</label><button className="icon-button" type="button" title={isZh ? '新建部署' : 'Create deployment'} onClick={createDeployment}><Plus size={17} /></button></div>
+            <div className="model-tool-section">
+              <h4>{isZh ? '价格' : 'Pricing'}</h4>
+              <input aria-label="Pricing version key" value={pricingDraft.versionKey} onChange={(event) => setPricingDraft({ ...pricingDraft, versionKey: event.target.value })} placeholder="price-version" />
+              <select aria-label="Pricing currency" value={pricingDraft.currency} onChange={(event) => setPricingDraft({ ...pricingDraft, currency: event.target.value })}><option value="USD">USD</option></select>
+              <select aria-label="Pricing unit" value={pricingDraft.unit} onChange={(event) => setPricingDraft({ ...pricingDraft, unit: event.target.value })}>{pricingUnits.map((unit) => <option value={unit} key={unit}>{unit}</option>)}</select>
+              <input aria-label="Unit price micros" value={pricingDraft.unitPriceMicros} onChange={(event) => setPricingDraft({ ...pricingDraft, unitPriceMicros: event.target.value })} type="number" min="1" placeholder="micros" />
+              <small>{isZh ? '价格单位必须与 Provider 的结算合同一致。' : 'The pricing unit must match the Provider billing contract.'}</small>
+              <input aria-label="Pricing effective from" type="datetime-local" value={pricingDraft.effectiveFrom} onChange={(event) => setPricingDraft({ ...pricingDraft, effectiveFrom: event.target.value })} />
+              <input aria-label="Pricing effective to" type="datetime-local" value={pricingDraft.effectiveTo} onChange={(event) => setPricingDraft({ ...pricingDraft, effectiveTo: event.target.value })} />
+              <select aria-label="Pricing deployment" value={pricingDraft.modelDeploymentId} onChange={(event) => setPricingDraft({ ...pricingDraft, modelDeploymentId: event.target.value })}><option value="">{isZh ? '全局' : 'Global'}</option>{selectedVersion.deployments?.map((item) => <option value={item.id} key={item.id}>{item.key}</option>)}</select>
+              <button className="icon-button" type="button" title={isZh ? '追加价格' : 'Add pricing'} onClick={createPricing}><Plus size={17} /></button>
+            </div>
             <div className="model-version-counts"><span>{selectedVersion.capabilities?.length ?? 0} capabilities</span><span>{selectedVersion.deployments?.length ?? 0} deployments</span><span>{selectedVersion.prices?.length ?? 0} prices</span></div>
-            <div className="admin-table">{selectedVersion.deployments?.map((deployment) => <div className="admin-row compact" key={deployment.id}><span><strong>{deployment.key}</strong><small>{deployment.adapterType ?? (isZh ? '未配置适配器' : 'No adapter')} · {deployment.providerModelId ?? (isZh ? '未配置模型' : 'No model')} · {deployment.endpointUrl ?? (isZh ? '无接口地址' : 'No endpoint')}</small></span><span className={`status ${deployment.runtimeEnabled ? 'active' : 'disabled'}`}>{deployment.runtimeEnabled ? (isZh ? '运行已启用' : 'runtime enabled') : (isZh ? '运行未启用' : 'runtime disabled')}</span><code>v{deployment.version}</code></div>)}</div>
+            <div className="admin-table">{selectedVersion.deployments?.map((deployment) => {
+              const runtimeEffective = deployment.status === 'active' && deployment.runtimeEnabled
+              const runtimeLabel = runtimeEffective
+                ? (isZh ? '运行已启用' : 'runtime enabled')
+                : deployment.runtimeEnabled
+                  ? (isZh ? '已配置，当前停用' : 'configured, inactive')
+                  : (isZh ? '运行未启用' : 'runtime disabled')
+              return <div className="admin-row compact" key={deployment.id}><span><strong>{deployment.key}</strong><small>{deployment.adapterType ?? (isZh ? '未配置适配器' : 'No adapter')} · {deployment.providerModelId ?? (isZh ? '未配置模型' : 'No model')} · {deployment.endpointUrl ?? (isZh ? '无接口地址' : 'No endpoint')}</small></span><span className={`status ${deployment.status}`}>{deployment.status}</span><span className={`status ${runtimeEffective ? 'active' : 'disabled'}`}>{runtimeLabel}</span>{canTransition && deployment.status === 'draft' && <button className="ghost-button small" type="button" onClick={() => transitionDeployment(deployment, 'active')}>{isZh ? '启用' : 'Activate'}</button>}{canTransition && deployment.status === 'active' && <button className="ghost-button small" type="button" onClick={() => transitionDeployment(deployment, 'disabled')}>{isZh ? '停用' : 'Disable'}</button>}{canTransition && deployment.status === 'disabled' && <button className="ghost-button small" type="button" onClick={() => transitionDeployment(deployment, 'active')}>{isZh ? '恢复' : 'Reactivate'}</button>}<code>v{deployment.version}</code></div>
+            })}</div>
+            <div className="admin-table">{selectedVersion.prices?.map((pricing) => <div className="admin-row compact" key={pricing.id}><span><strong>{pricing.versionKey}</strong><small>{pricing.currency} {(pricing.unitPriceMicros / 1_000_000).toFixed(6)} / {pricing.unit} · {pricing.modelDeploymentId ? (selectedVersion.deployments?.find((item) => item.id === pricing.modelDeploymentId)?.key ?? pricing.modelDeploymentId) : (isZh ? '全局' : 'Global')} · {new Date(pricing.effectiveFrom).toLocaleString()}{pricing.effectiveTo ? ` → ${new Date(pricing.effectiveTo).toLocaleString()}` : ''}</small></span><span className={`status ${pricing.status}`}>{pricing.status}</span>{canTransition && pricing.status === 'draft' && <button className="ghost-button small" type="button" onClick={() => transitionPricing(pricing, 'active')}>{isZh ? '启用' : 'Activate'}</button>}{canTransition && pricing.status === 'active' && <button className="ghost-button small" type="button" onClick={() => transitionPricing(pricing, 'disabled')}>{isZh ? '停用' : 'Disable'}</button>}{canTransition && pricing.status === 'disabled' && <button className="ghost-button small" type="button" onClick={() => transitionPricing(pricing, 'active')}>{isZh ? '恢复' : 'Reactivate'}</button>}<code>v{pricing.version}</code></div>)}</div>
+            </>}
           </div>}
           {mode === 'routes' && selectedRoute && <div className="model-version-tools model-route-tools" data-testid="model-route-tools">
             <div className="model-tool-section"><h4>{isZh ? '策略' : 'Policy'}</h4><input aria-label="Route operation" value={routeDraft.operation} onChange={(event) => setRouteDraft({ ...routeDraft, operation: event.target.value })} /><input aria-label="Route region" placeholder={isZh ? '全部区域' : 'Any region'} value={routeDraft.region} onChange={(event) => setRouteDraft({ ...routeDraft, region: event.target.value })} /><input aria-label="Route roles" placeholder="member, creator" value={routeDraft.audienceRoles} onChange={(event) => setRouteDraft({ ...routeDraft, audienceRoles: event.target.value })} /><button className="icon-button" type="button" title={isZh ? '保存策略' : 'Save policy'} onClick={saveRoutePolicy} disabled={!canManage || ['active', 'archived'].includes(selectedRoute.status)}><Save size={17} /></button></div>
             <div className="model-tool-section route-policy-controls"><h4>{isZh ? '灰度' : 'Rollout'}</h4><input aria-label="Rollout percentage" type="number" min="0" max="100" value={routeDraft.rolloutPercentage} onChange={(event) => setRouteDraft({ ...routeDraft, rolloutPercentage: event.target.value })} /><input aria-label="Rollout seed" value={routeDraft.rolloutSeed} onChange={(event) => setRouteDraft({ ...routeDraft, rolloutSeed: event.target.value })} /><select aria-label="Fallback mode" value={routeDraft.fallbackMode} onChange={(event) => setRouteDraft({ ...routeDraft, fallbackMode: event.target.value as 'fail_closed' | 'ordered' })}><option value="fail_closed">fail_closed</option><option value="ordered">ordered</option></select><input aria-label="Route priority" type="number" min="0" value={routeDraft.priority} onChange={(event) => setRouteDraft({ ...routeDraft, priority: event.target.value })} /></div>
             <div className="model-tool-section"><h4>{isZh ? '主备目标' : 'Targets'}</h4><select aria-label="Primary deployment" value={routeTargets.primary} onChange={(event) => setRouteTargets({ ...routeTargets, primary: event.target.value })}><option value="">{isZh ? '主部署' : 'Primary deployment'}</option>{deployments.filter((item) => item.environment === selectedRoute.environment).map((item) => <option value={item.id} key={item.id}>{item.key}</option>)}</select><select aria-label="Backup deployment" value={routeTargets.backup} onChange={(event) => setRouteTargets({ ...routeTargets, backup: event.target.value })}><option value="">{isZh ? '无备份' : 'No backup'}</option>{deployments.filter((item) => item.environment === selectedRoute.environment && item.id !== routeTargets.primary).map((item) => <option value={item.id} key={item.id}>{item.key}</option>)}</select><button className="icon-button" type="button" title={isZh ? '保存主备目标' : 'Save route targets'} onClick={saveRouteTargets} disabled={!canManage || !routeTargets.primary || ['active', 'archived'].includes(selectedRoute.status)}><Waypoints size={17} /></button></div>
             <div className="model-tool-section"><h4>{isZh ? '预演' : 'Preview'}</h4><input aria-label="Preview subject" value={previewDraft.subjectKey} onChange={(event) => setPreviewDraft({ ...previewDraft, subjectKey: event.target.value })} /><select aria-label="Preview role" value={previewDraft.role} onChange={(event) => setPreviewDraft({ ...previewDraft, role: event.target.value })}>{['member', 'creator', 'publisher', 'moderator', 'admin'].map((item) => <option key={item}>{item}</option>)}</select><input aria-label="Preview region" value={previewDraft.region} onChange={(event) => setPreviewDraft({ ...previewDraft, region: event.target.value })} /><button className="icon-button" type="button" title={isZh ? '运行路由预演' : 'Run route preview'} onClick={previewRoute}><Play size={17} /></button></div>
-            {routePreview && <div className="model-route-preview" data-testid="model-route-preview"><strong>{routePreview.status}</strong><span>{routePreview.reasonCode}</span><small>{routePreview.selected?.deploymentKey ?? (isZh ? '未选择部署' : 'No deployment selected')}</small></div>}
+            {routePreview && <div className="model-route-preview" data-testid="model-route-preview"><strong>{routePreview.status}</strong><span>{routePreview.reasonCode}</span><small>{routePreviewDetail(routePreview, isZh ? '未选择部署' : 'No deployment selected')}</small></div>}
             <div className="model-route-history"><h4><History size={16} />{isZh ? '修订历史' : 'Revision history'}</h4>{routeRevisions.slice(0, 6).map((revision) => <div key={revision.id}><span>r{revision.revisionNumber} · {revision.reasonCode}</span>{canTransition && !['active', 'archived'].includes(selectedRoute.status) && <button className="icon-button" type="button" title={isZh ? `回滚到 r${revision.revisionNumber}` : `Restore r${revision.revisionNumber}`} onClick={() => rollbackRoute(revision.revisionNumber)}><RotateCcw size={15} /></button>}</div>)}</div>
             <div className="model-version-counts"><span>{selectedRoute.rolloutPercentage}% rollout</span><span>{selectedRoute.fallbackMode}</span><span>{selectedRoute.targets.length} targets</span><span>{selectedRoute.revisionCount} revisions</span></div>
           </div>}
         </> : <div className="empty-state">{isZh ? '选择一条记录' : 'Select a record'}</div>}</div>
       </div>
-      <section className="model-governance-workbench" data-testid="model-governance-workbench">
+      </>}
+      {workspace === 'governance' && <section className="model-governance-workbench" data-testid="model-governance-workbench">
         <header className="settings-panel-header"><div><small>MODEL-05</small><h3>{isZh ? '决策、凭证与环境提升' : 'Decisions, secrets, and promotion'}</h3><small>{governanceSummary?.decisionCount ?? 0} decisions · {governanceSummary?.secretRefCount ?? 0} SecretRefs · {governanceSummary?.promotionCount ?? 0} promotions</small></div><button className="icon-button" type="button" title={isZh ? '导出治理证据' : 'Export governance evidence'} onClick={() => void run(async () => downloadJson(await adminService.exportModelGovernance()), isZh ? '治理证据已导出。' : 'Governance evidence exported.')}><Download size={17} /></button></header>
         <div className="chip-row" role="tablist">{(['operations', 'evaluations', 'legal', 'decisions', 'secrets', 'promotions'] as GovernanceMode[]).map((item) => <button key={item} type="button" className={governanceMode === item ? 'chip active' : 'chip'} onClick={() => setGovernanceMode(item)}>{({ operations: isZh ? '运营就绪' : 'Operations', evaluations: isZh ? '质量评测' : 'Evaluations', legal: isZh ? '法务审查' : 'Legal review', decisions: isZh ? '路由决策' : 'Route decisions', secrets: 'SecretRef', promotions: isZh ? '环境提升' : 'Promotions' })[item]}</button>)}</div>
         {governanceMode === 'operations' && <>
@@ -414,8 +586,17 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
             <select aria-label="Health source type" value={healthDraft.sourceType} onChange={(event) => setHealthDraft({ ...healthDraft, sourceType: event.target.value as typeof healthDraft.sourceType })}>{(['provider_probe', 'provider_status_page', 'manual_unavailable', 'fixture_probe'] as const).map((item) => <option key={item}>{item}</option>)}</select>
             <input aria-label="Health source reference" value={healthDraft.sourceRef} onChange={(event) => setHealthDraft({ ...healthDraft, sourceRef: event.target.value })} placeholder="monitor:evidence-id" />
             <input aria-label="Health latency" type="number" min="0" value={healthDraft.latencyMs} onChange={(event) => setHealthDraft({ ...healthDraft, latencyMs: event.target.value })} placeholder="latency ms" />
-            <input aria-label="Health success rate" type="number" min="0" max="10000" value={healthDraft.successRateBps} onChange={(event) => setHealthDraft({ ...healthDraft, successRateBps: event.target.value })} placeholder="success bps" />
+            <input aria-label="Health success rate (%)" type="number" min="0" max="100" step="0.01" value={healthDraft.successRateBps} onChange={(event) => setHealthDraft({ ...healthDraft, successRateBps: event.target.value })} placeholder="99.9" />
             <button className="primary-button" type="button" onClick={recordHealth} disabled={busy || !healthDraft.policyId || !healthDraft.sourceRef}><Plus size={17} />{isZh ? '追加健康证据' : 'Append health'}</button>
+          </div>}
+          {canManage && <div className="model-governance-form">
+            <select aria-label="External gates policy" value={externalGateDraft.policyId} onChange={(event) => setExternalGateDraft({ ...externalGateDraft, policyId: event.target.value })}><option value="">{isZh ? '外部门槛策略' : 'External gates policy'}</option>{providerOperations.map((item) => <option value={item.id} key={item.id}>{item.provider?.name ?? item.providerId} · {item.environment} · {item.workspace}</option>)}</select>
+            <input aria-label="Provider cap amount" type="number" min="0.000001" step="0.000001" value={externalGateDraft.capAmount} onChange={(event) => setExternalGateDraft({ ...externalGateDraft, capAmount: event.target.value })} placeholder="cap USD" />
+            <input aria-label="Provider remaining amount" type="number" min="0" step="0.000001" value={externalGateDraft.remainingAmount} onChange={(event) => setExternalGateDraft({ ...externalGateDraft, remainingAmount: event.target.value })} placeholder="remaining USD" />
+            <select aria-label="Provider cap evidence source type" value={externalGateDraft.sourceType} onChange={(event) => setExternalGateDraft({ ...externalGateDraft, sourceType: event.target.value as typeof externalGateDraft.sourceType })}>{(['manual_attestation', 'fixture_config', 'injected_reader'] as const).map((item) => <option key={item}>{item}</option>)}</select>
+            <input aria-label="Provider cap evidence source reference" value={externalGateDraft.sourceRef} onChange={(event) => setExternalGateDraft({ ...externalGateDraft, sourceRef: event.target.value })} placeholder="provider-console-attestation" />
+            <input aria-label="Provider cap expiry" type="datetime-local" value={externalGateDraft.expiresAt} onChange={(event) => setExternalGateDraft({ ...externalGateDraft, expiresAt: event.target.value })} />
+            <button className="primary-button" type="button" onClick={provisionExternalGates} disabled={busy || !externalGateDraft.policyId || !externalGateDraft.capAmount || !externalGateDraft.sourceRef}><ShieldCheck size={17} />{isZh ? '初始化外部门槛' : 'Provision gates'}</button>
           </div>}
         </>}
         {governanceMode === 'evaluations' && <>
@@ -503,8 +684,14 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
           }).map((item) => <option value={item.id} key={item.id}>v{item.version} · {item.evidenceHash.slice(0, 8)}</option>)}</select>
           <input aria-label="Promotion artifact version" value={promotionDraft.artifactVersion} onChange={(event) => setPromotionDraft({ ...promotionDraft, artifactVersion: event.target.value })} placeholder="artifact-version" />
           <input aria-label="Promotion rollback version" value={promotionDraft.rollbackVersion} onChange={(event) => setPromotionDraft({ ...promotionDraft, rollbackVersion: event.target.value })} placeholder="rollback-version" />
+          <input aria-label="Promotion source commit" value={promotionDraft.sourceCommit} onChange={(event) => setPromotionDraft({ ...promotionDraft, sourceCommit: event.target.value })} placeholder="Git commit SHA" />
+          <input aria-label="Promotion candidate artifact SHA-256" value={promotionDraft.releaseArtifactSha256} onChange={(event) => setPromotionDraft({ ...promotionDraft, releaseArtifactSha256: event.target.value })} placeholder={isZh ? '候选制品 SHA-256' : 'Candidate artifact SHA-256'} />
+          <input aria-label="Promotion rollback artifact SHA-256" value={promotionDraft.rollbackArtifactSha256} onChange={(event) => setPromotionDraft({ ...promotionDraft, rollbackArtifactSha256: event.target.value })} placeholder={isZh ? '回滚制品 SHA-256' : 'Rollback artifact SHA-256'} />
+          <input aria-label="Promotion evidence receipt SHA-256" value={promotionDraft.productionEvidenceReceiptSha256} onChange={(event) => setPromotionDraft({ ...promotionDraft, productionEvidenceReceiptSha256: event.target.value })} placeholder={isZh ? '证据包 receipt SHA-256' : 'Evidence receipt SHA-256'} />
+          <button className="ghost-button" type="button" onClick={() => promotionEvidenceInputRef.current?.click()}><Upload size={16} />{isZh ? '导入证据包' : 'Import evidence'}</button>
+          <input ref={promotionEvidenceInputRef} className="config-import-input" type="file" accept="application/json,.json" tabIndex={-1} aria-hidden="true" onChange={(event) => { void importPromotionEvidence(event.target.files?.[0] ?? null); event.target.value = '' }} />
           <input aria-label="Promotion summary" value={promotionDraft.summary} onChange={(event) => setPromotionDraft({ ...promotionDraft, summary: event.target.value })} placeholder={isZh ? '提升摘要' : 'Promotion summary'} />
-          <button className="primary-button" type="button" onClick={requestPromotion} disabled={busy || !promotionDraft.modelDeploymentId || !promotionDraft.routePolicyId || !promotionDraft.routePolicyRevisionId || !promotionDraft.providerSecretRefId || !promotionDraft.evaluationRunId || !promotionDraft.legalReviewId || !promotionDraft.artifactVersion || !promotionDraft.rollbackVersion || !promotionDraft.summary}><ShieldCheck size={17} />{isZh ? '提交审批' : 'Request approval'}</button>
+          <button className="primary-button" type="button" onClick={requestPromotion} disabled={busy || !promotionDraft.modelDeploymentId || !promotionDraft.routePolicyId || !promotionDraft.routePolicyRevisionId || !promotionDraft.providerSecretRefId || !promotionDraft.evaluationRunId || !promotionDraft.legalReviewId || !promotionDraft.artifactVersion || !promotionDraft.rollbackVersion || !promotionDraft.sourceCommit || !promotionDraft.releaseArtifactSha256 || !promotionDraft.rollbackArtifactSha256 || !promotionDraft.productionEvidenceReceiptSha256 || !promotionDraft.summary}><ShieldCheck size={17} />{isZh ? '提交审批' : 'Request approval'}</button>
         </div>}
         <div className="model-governance-list">
           {governanceMode === 'decisions' && routeDecisions.map((item) => <div key={item.id}><span><strong>{item.status}</strong><small>{item.modality} · {item.environment} · {item.reasonCode}</small></span><code>{item.subjectHash.slice(0, 12)}</code><time>{new Date(item.createdAt).toLocaleString()}</time></div>)}
@@ -512,10 +699,30 @@ export function ModelControlPanel({ hasPermission, isZh, notify }: { hasPermissi
           {governanceMode === 'promotions' && promotions.map((item) => <div key={item.id}><span><strong>{item.releaseChange.status}</strong><small>{item.modelDeploymentId} · {item.releaseChange.artifactVersion}</small></span><code>{item.releaseChangeId}</code><time>{new Date(item.createdAt).toLocaleString()}</time></div>)}
           {governanceMode === 'evaluations' && evaluationRuns.map((item) => <div key={item.id}><span><strong>{item.status} · {item.qualityScoreBps}/{item.safetyScoreBps}</strong><small>{item.suite?.suiteKey ?? item.suiteId} · {item.baselineRunId ? `delta ${item.regressionDeltaBps ?? 0}` : (isZh ? '基线' : 'baseline')}</small></span><code>{item.reportHash.slice(0, 12)}</code><time>{new Date(item.completedAt).toLocaleString()}</time></div>)}
           {governanceMode === 'legal' && legalReviews.map((item) => <div key={item.id}><span><strong>{item.decision} · {item.environment}</strong><small>{item.provider?.name ?? item.providerId} · {item.modelVersion?.versionKey ?? item.modelVersionId} · {item.allowedRegions.join(', ')}</small></span><code>v{item.version} · {item.evidenceHash.slice(0, 10)}</code><time>{new Date(item.expiresAt).toLocaleString()}</time></div>)}
-          {governanceMode === 'operations' && providerOperations.map((item) => <div key={item.id}><span><strong>{item.provider?.name ?? item.providerId} · {item.environment}</strong><small>{item.workspace} · {item.readiness.ready ? (isZh ? '就绪' : 'ready') : item.readiness.reasonCode} · {item.maxRequestsPerMinute}/min · {item.rate?.inFlightCount ?? 0}/{item.maxConcurrentRequests} concurrent · {item.health?.status ?? 'health unknown'} · {item.cost?.actualMicros ?? '0'} {item.currency} micros</small></span><code>{item.status} · v{item.version}</code>{canTransition && <button className="ghost-button small" type="button" onClick={() => transitionOperations(item, item.status === 'active' ? 'disabled' : 'active')} disabled={busy}>{item.status === 'active' ? (isZh ? '停用' : 'Disable') : (isZh ? '启用' : 'Activate')}</button>}</div>)}
+          {governanceMode === 'operations' && providerOperations.map((item) => <div className="provider-operations-row" data-ready={item.readiness.ready ? 'true' : 'false'} key={item.id}>
+            <span className="provider-operations-main">
+              <strong>{item.provider?.name ?? item.providerId} · {item.environment} · {item.workspace}</strong>
+              <small>{item.scopeKey}</small>
+              <span className="provider-operations-metrics">
+                <em>{isZh ? '策略' : 'Policy'}: {item.status} · v{item.version}</em>
+                <em>{isZh ? '健康' : 'Health'}: {item.health?.status ?? (isZh ? '未知' : 'unknown')}{item.health?.expiresAt ? ` · ${new Date(item.health.expiresAt).toLocaleString()}` : ''}</em>
+                <em>{isZh ? '速率' : 'Rate'}: {item.rate?.requestCount ?? 0}/{item.maxRequestsPerMinute}/min · {item.rate?.inFlightCount ?? 0}/{item.maxConcurrentRequests} concurrent</em>
+                <em>{isZh ? '预算' : 'Budget'}: {(Number(item.perRequestBudgetMicros) / 1_000_000).toFixed(4)} {item.currency}/request</em>
+                <em>{isZh ? '花费' : 'Cost'}: {((Number(item.cost?.actualMicros ?? 0)) / 1_000_000).toFixed(4)} {item.currency}</em>
+              </span>
+              <span className="provider-readiness-gates">
+                {item.readiness.gates.map((gate) => <span className={gate.allowed ? 'provider-readiness-gate allowed' : 'provider-readiness-gate blocked'} key={gate.id}>
+                  <strong>{providerGateLabel(gate.id, isZh)}</strong>
+                  <small>{gate.allowed ? readinessReasonLabel(null, isZh) : readinessReasonLabel(gate.reasonCode, isZh)}{gate.blockedScopeKey ? ` · ${gate.blockedScopeKey}` : ''}</small>
+                </span>)}
+              </span>
+            </span>
+            <code>{item.readiness.ready ? (isZh ? '就绪' : 'ready') : readinessReasonLabel(item.readiness.reasonCode, isZh)}</code>
+            {canTransition && <button className="ghost-button small" type="button" onClick={() => transitionOperations(item, item.status === 'active' ? 'disabled' : 'active')} disabled={busy}>{item.status === 'active' ? (isZh ? '停用' : 'Disable') : (isZh ? '启用' : 'Activate')}</button>}
+          </div>)}
           {((governanceMode === 'operations' && !providerOperations.length) || (governanceMode === 'evaluations' && !evaluationRuns.length) || (governanceMode === 'legal' && !legalReviews.length) || (governanceMode === 'decisions' && !routeDecisions.length) || (governanceMode === 'secrets' && !secretRefs.length) || (governanceMode === 'promotions' && !promotions.length)) && <div className="empty-state">{isZh ? '暂无记录' : 'No records'}</div>}
         </div>
-      </section>
+      </section>}
     </section>
   )
 }

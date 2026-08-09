@@ -1,12 +1,13 @@
 import { randomBytes } from 'node:crypto'
 import { refreshTokenTtlMs } from '../../auth/sessionTokens.js'
+import { isProductionEnvironment } from '../runtimeEnvironment.js'
 
 export const refreshTokenCookieName = 'hcaiRefreshToken'
 export const csrfTokenCookieName = 'hcaiCsrfToken'
 
 const refreshTokenMaxAgeSeconds = Math.floor(refreshTokenTtlMs / 1000)
 
-const isSecureCookie = () => process.env.AUTH_COOKIE_SECURE === 'true' || process.env.NODE_ENV === 'production'
+const isSecureCookie = () => process.env.AUTH_COOKIE_SECURE === 'true' || isProductionEnvironment(process.env)
 const getSameSite = () => {
   const value = String(process.env.AUTH_COOKIE_SAMESITE ?? 'Lax').trim().toLowerCase()
   if (value === 'none') return 'None'

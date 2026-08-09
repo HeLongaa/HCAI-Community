@@ -1,8 +1,5 @@
 import { useState } from 'react'
-import type { Locale, Page, PublishDraft, Task } from '../domain/types'
-import { tasks } from '../data/mockData'
-import { copy } from '../i18n/copy'
-import { localeFirstTask } from '../domain/utils'
+import type { Locale, Page, PublishDraft, Task, TaskProposalDraft } from '../domain/types'
 import { taskService } from '../services/taskService'
 import type { ApiAcceptanceChecklistItem, ApiTaskProposal, ApiTaskSubmission, ApiTaskTimelineItem, ApiTaskWorkflow } from '../services/contracts'
 import { useAsyncResource } from './useAsyncResource'
@@ -25,8 +22,8 @@ type ReviewTaskOptions = {
 }
 
 export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: TaskWorkflowOptions) {
-  const [taskList, setTaskList] = useState<Task[]>(tasks)
-  const [selectedTask, setSelectedTask] = useState<Task>(() => localeFirstTask(tasks, copy.en))
+  const [taskList, setTaskList] = useState<Task[]>([])
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [proposalStateByTask, setProposalStateByTask] = useState<Record<string, TaskChildCollection<ApiTaskProposal>>>({})
   const [submissionStateByTask, setSubmissionStateByTask] = useState<Record<string, TaskChildCollection<ApiTaskSubmission>>>({})
   const [timelineStateByTask, setTimelineStateByTask] = useState<Record<string, TaskChildCollection<ApiTaskTimelineItem>>>({})
@@ -35,9 +32,8 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
   const taskStatus = useAsyncResource<Task[]>({
     load: () => taskService.list({ limit: 100 }),
     onSuccess: (items) => {
-      if (items.length === 0) return
       setTaskList(items)
-      setSelectedTask((current) => items.find((item) => item.id === current.id) ?? items[0])
+      setSelectedTask((current) => items.find((item) => item.id === current?.id) ?? items[0] ?? null)
     },
     getErrorMessage: () => (locale === 'zh' ? '任务 API 暂不可用；未显示本地替代数据。' : 'The task API is unavailable; no local substitute is shown.'),
     deps: [locale],
@@ -68,7 +64,7 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
     setTaskList((current) =>
       current.map((item) => (item.id === taskId ? { ...item, proposals: item.proposals + 1 } : item)),
     )
-    setSelectedTask((current) => (current.id === taskId ? { ...current, proposals: current.proposals + 1 } : current))
+    setSelectedTask((current) => current?.id === taskId ? { ...current, proposals: current.proposals + 1 } : current)
   }
 
   const refreshProposals = async (task: Task) => {
@@ -163,14 +159,14 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
     }
   }
 
-  const submitProposal = async (task: Task) => {
+  const submitProposal = async (task: Task, draft: TaskProposalDraft) => {
     const isZh = locale === 'zh'
     try {
       const proposal = await taskService.createProposal(task.id, {
         coverLetter: isZh
-          ? `我可以按需求拆解并提交首版方案：${task.title}`
-          : `I can scope and deliver a first proposal for: ${task.title}`,
-        estimate: isZh ? '首版方案 1 天内提交' : 'First proposal within 1 day',
+          ? `方案思路\n${draft.approach.trim()}\n\n交付内容\n${draft.deliverables.trim()}`
+          : `Approach\n${draft.approach.trim()}\n\nDeliverables\n${draft.deliverables.trim()}`,
+        estimate: draft.estimate.trim(),
       })
       setProposalStateByTask((current) => {
         const key = String(task.id)
@@ -186,13 +182,21 @@ export function useTaskWorkflows({ locale, pushLedger, pushToast, setPage }: Tas
       pushLedger(isZh ? `提交方案草稿：${task.title}` : `Submitted proposal draft: ${task.title}`, '+50')
       pushToast(isZh ? `方案已提交：${task.title}` : `Proposal submitted: ${task.title}`)
       setPage('mine')
+      return true
     } catch (error) {
       console.info('[task-service]', error)
       pushToast(isZh ? '方案提交失败，已保留本地状态。' : 'Proposal submission failed. Local state kept.')
+      return false
     }
   }
 
-  const claimTask = submitProposal
+  const claimTask = (task: Task) => submitProposal(task, {
+    approach: locale === 'zh'
+      ? `我会先拆解任务范围，再提交 ${task.title} 的首版方案。`
+      : `I will scope the request and deliver a first pass for ${task.title}.`,
+    deliverables: locale === 'zh' ? '按任务要求完成全部交付内容。' : 'All deliverables listed in the task brief.',
+    estimate: locale === 'zh' ? '首版方案 1 天内提交' : 'First proposal within 1 day',
+  })
 
   const acceptProposal = async (task: Task, proposalId: string) => {
     const isZh = locale === 'zh'

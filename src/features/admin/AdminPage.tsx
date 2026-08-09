@@ -1,108 +1,102 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Activity, Archive, BarChart3, Bell, Clipboard, Download, PlayCircle, RotateCcw, ShieldAlert, ShieldCheck, Trophy, XCircle } from 'lucide-react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { Activity, Archive, BarChart3, Bell, Clipboard, Download, Settings2, ShieldAlert, ShieldCheck, Trophy } from 'lucide-react'
 import type { AdminDeepLink, AuditEvent, Page, Permission, Role, SimulateAction } from '../../domain/types'
 import { SectionHeader } from '../../components/ui/SectionHeader'
 import { NotificationList } from '../../components/ui/NotificationList'
-import { StatusBadge } from '../tasks'
+import { StatusBadge } from '../../components/ui/StatusBadge'
 import { isZhCopy, pointText, textFor } from '../../domain/utils'
 import { adminService } from '../../services/adminService'
 import { notificationService } from '../../services/notificationService'
 import { mediaService } from '../../services/mediaService'
 import { useAsyncResource } from '../../hooks/useAsyncResource'
-import { AdminOverviewPanel } from './AdminOverviewPanel'
-import { ReleaseControlPanel } from './ReleaseControlPanel'
-import { ObservabilityPanel } from './ObservabilityPanel'
-import { SystemSettingsPanel } from './SystemSettingsPanel'
-import { ConfigurationResourcesPanel } from './ConfigurationResourcesPanel'
-import { ModelControlPanel } from './ModelControlPanel'
-import { AdminMediaLifecyclePanel } from './AdminMediaLifecyclePanel'
-import { OAuthAdminPanel } from './OAuthAdminPanel'
-import { DeveloperAccessAdminPanel } from './DeveloperAccessAdminPanel'
-import { WebhookAdminPanel } from './WebhookAdminPanel'
-import { SupportAdminPanel } from './SupportAdminPanel'
-import { CommunityAdminPanel } from './CommunityAdminPanel'
-import { DataRightsAdminPanel } from './DataRightsAdminPanel'
-import { AuthSessionAdminPanel } from './AuthSessionAdminPanel'
-import { TaskAdminPanel } from './TaskAdminPanel'
-import { EntitlementAdminPanel } from './EntitlementAdminPanel'
-import { UserAdminPanel } from './UserAdminPanel'
-import { NotificationAdminPanel } from './NotificationAdminPanel'
-import { AuditRetentionPanel } from './AuditRetentionPanel'
-import { TrustSafetyAdminPanel } from './TrustSafetyAdminPanel'
-import { RiskAdminPanel } from './RiskAdminPanel'
+import { SubmissionReviewPanel } from './SubmissionReviewPanel'
+import { SecurityWorkspaceNavigation } from './SecurityWorkspaceNavigation'
+import { SecurityWorkspacePanel } from './SecurityWorkspacePanel'
+import { SecurityIncidentsWorkspace } from './SecurityIncidentsWorkspace'
+import { SecurityGovernanceWorkspace } from './SecurityGovernanceWorkspace'
+import { SecurityMediaWorkspace } from './SecurityMediaWorkspace'
+import { SecurityOperationsWorkspace, type OperationsSampleKey } from './SecurityOperationsWorkspace'
+import { securityWorkspaces, type SecurityWorkspace } from './securityWorkspace'
+import { useAdminSecurityResources } from './useAdminSecurityResources'
+import { accountingIssueCanRepair, useAdminAccountingOperations } from './useAdminAccountingOperations'
+import { pointPolicyRoles, useAdminAccountingState } from './useAdminAccountingState'
+import { useAdminAuditOperations } from './useAdminAuditOperations'
+import { useAdminAuditState } from './useAdminAuditState'
+import { useAdminGenerationBulkOperations } from './useAdminGenerationBulkOperations'
+import { useAdminGenerationOperations } from './useAdminGenerationOperations'
+import { useAdminGenerationState, type GenerationOperationsWorkspace } from './useAdminGenerationState'
+import { useSecurityGovernanceOperations } from './useSecurityGovernanceOperations'
+import { useSecurityGovernanceState } from './useSecurityGovernanceState'
+import { useSecurityIncidentOperations } from './useSecurityIncidentOperations'
+import { useSecurityIncidentState } from './useSecurityIncidentState'
+import { useSecurityMediaOperations } from './useSecurityMediaOperations'
+import { useSecurityMediaState } from './useSecurityMediaState'
+import { downloadJsonArtifact, downloadTextArtifact } from './downloadAdminArtifact'
+import { AdminGenerationRecordsPanel } from './AdminGenerationRecordsPanel'
+import { AdminGenerationRecoveryPanel } from './AdminGenerationRecoveryPanel'
+import { AdminGenerationMetricsPanel } from './AdminGenerationMetricsPanel'
+import { AdminGenerationWorkspacePanel } from './AdminGenerationWorkspacePanel'
+import { AdminGenerationWorkspaceNavigation } from './AdminGenerationWorkspaceNavigation'
+import { AdminProviderControlsPanel } from './AdminProviderControlsPanel'
+import './admin-workspaces.css'
+import './admin-generations.css'
+import './admin-accounting.css'
+import './admin-audit.css'
+import { AdminActionFeedback, type AdminActionFeedbackMessage } from './AdminActionFeedback'
+import { SecurityOperationConfirmation, type PendingSecurityOperation } from './SecurityOperationConfirmation'
 import type {
   AdminPermissionDto,
-  AdminAuditArchiveManifestDto,
-  AdminAuditIntegrityDto,
-  AdminAccountingIssueDto,
   AdminAccountingIssueStatus,
-  AdminAccountingIssueSummary,
-  AdminAccountingReconciliationQuery,
   AdminAccountingUnit,
   AdminBillingMetrics,
-  AdminBillingMetricsQuery,
   AdminBillingPolicyInventory,
-  AdminBillingPolicyPreview,
-  AdminCreativeGenerationHistoryQuery,
   AdminCreativeGenerationSummary,
   AdminGenerationBusinessMetrics,
-  AdminCreativeGenerationBulkAction,
-  AdminCreativeGenerationBulkPreview,
-  AdminCreativeGenerationBulkResult,
   AdminCreativeGenerationExecution,
   AdminOperationsMetricsDto,
   AdminProviderControlBundle,
-  AdminProviderControlRecoveryTarget,
   AdminReviewDecision,
   AdminReviewQueueItemDto,
   AdminRolePermissionDto,
-  AdminSecurityAlertEventDto,
-  AdminSecurityAlertDto,
-  AdminSecurityEventDto,
-  AdminSecurityEventListQuery,
   ApiCreativeGenerationRecord,
   ApiLedgerEntry,
   ApiMediaGovernanceConfig,
-  ApiMediaAsset,
-  ApiMediaScanAlert,
-  ApiMediaScanAlertEvent,
-  ApiMediaScanJob,
   ApiNotification,
   ApiPointsSummary,
-  MediaScanJobHistoryPage,
-  MediaAssetPurpose,
   MediaGovernancePolicyPatch,
-  MediaGovernancePolicyHistoryItem,
-  MediaReviewQueueQuery,
   NotificationListQuery,
   PointAdjustmentPolicy,
   PointAdjustmentPolicyHistoryItem,
-  PointAdjustmentReviewMetadata,
   PointsLedgerQuery,
   PersonalBillingEntry,
   PersonalBillingSummary,
 } from '../../services/contracts'
 
-const pointPolicyRoles: Array<keyof PointAdjustmentPolicy['roleLimits']> = ['member', 'creator', 'publisher', 'moderator', 'admin']
+const AdminOverviewPanel = lazy(() => import('./AdminOverviewPanel').then((module) => ({ default: module.AdminOverviewPanel })))
+const ReleaseControlPanel = lazy(() => import('./ReleaseControlPanel').then((module) => ({ default: module.ReleaseControlPanel })))
+const ObservabilityPanel = lazy(() => import('./ObservabilityPanel').then((module) => ({ default: module.ObservabilityPanel })))
+const SystemSettingsPanel = lazy(() => import('./SystemSettingsPanel').then((module) => ({ default: module.SystemSettingsPanel })))
+const ConfigurationResourcesPanel = lazy(() => import('./ConfigurationResourcesPanel').then((module) => ({ default: module.ConfigurationResourcesPanel })))
+const ModelControlPanel = lazy(() => import('./ModelControlPanel').then((module) => ({ default: module.ModelControlPanel })))
+const OAuthAdminPanel = lazy(() => import('./OAuthAdminPanel').then((module) => ({ default: module.OAuthAdminPanel })))
+const DeveloperAccessAdminPanel = lazy(() => import('./DeveloperAccessAdminPanel').then((module) => ({ default: module.DeveloperAccessAdminPanel })))
+const WebhookAdminPanel = lazy(() => import('./WebhookAdminPanel').then((module) => ({ default: module.WebhookAdminPanel })))
+const SupportAdminPanel = lazy(() => import('./SupportAdminPanel').then((module) => ({ default: module.SupportAdminPanel })))
+const CommunityAdminPanel = lazy(() => import('./CommunityAdminPanel').then((module) => ({ default: module.CommunityAdminPanel })))
+const InspirationAdminPanel = lazy(() => import('./InspirationAdminPanel').then((module) => ({ default: module.InspirationAdminPanel })))
+const DataRightsAdminPanel = lazy(() => import('./DataRightsAdminPanel').then((module) => ({ default: module.DataRightsAdminPanel })))
+const AuthSessionAdminPanel = lazy(() => import('./AuthSessionAdminPanel').then((module) => ({ default: module.AuthSessionAdminPanel })))
+const TaskAdminPanel = lazy(() => import('./TaskAdminPanel').then((module) => ({ default: module.TaskAdminPanel })))
+const EntitlementAdminPanel = lazy(() => import('./EntitlementAdminPanel').then((module) => ({ default: module.EntitlementAdminPanel })))
+const UserAdminPanel = lazy(() => import('./UserAdminPanel').then((module) => ({ default: module.UserAdminPanel })))
+const NotificationAdminPanel = lazy(() => import('./NotificationAdminPanel').then((module) => ({ default: module.NotificationAdminPanel })))
+const AuditRetentionPanel = lazy(() => import('./AuditRetentionPanel').then((module) => ({ default: module.AuditRetentionPanel })))
+const TrustSafetyWorkspace = lazy(() => import('./TrustSafetyWorkspace').then((module) => ({ default: module.TrustSafetyWorkspace })))
+
 const notificationReadStates: Array<NonNullable<NotificationListQuery['readState']>> = ['unread', 'all', 'read']
 const notificationTypes = ['task.proposal_submitted', 'task.proposal_accepted', 'task.proposal_rejected', 'task.submission_submitted', 'task.submission_resubmitted', 'task.revision_requested', 'task.submission_approved', 'task.submission_rejected', 'task.reward_settled', 'task.submission_stale', 'task.dispute_opened', 'task.dispute_received', 'points.adjustment.requested', 'points.adjustment.approved', 'points.adjustment.rejected', 'points.policy.updated', 'points.policy.rolled_back', 'media.governance_policy.updated', 'media.governance_policy.rolled_back', 'media.scan.review_required', 'media.scan.rejected', 'media.scan.retry_requested', 'media.scan.alert', 'security.event.alert']
 const notificationResourceTypes = ['task', 'admin_review', 'point_adjustment_policy', 'media_governance_policy', 'media_asset', 'media_scan_alert', 'security_alert']
-const mediaReviewStatuses: Array<NonNullable<MediaReviewQueueQuery['status']>> = ['review', 'scanning', 'pending', 'rejected', 'clean', 'all']
-const mediaPurposes: MediaAssetPurpose[] = ['task_attachment', 'submission_asset', 'profile_portfolio', 'library_asset']
-const creativeHistoryWorkspaces = ['image', 'video', 'music', 'chat']
-const creativeHistoryStatuses = ['queued', 'running', 'completed', 'failed', 'cancelled', 'review_required']
-const securityEventSources: Array<NonNullable<AdminSecurityEventListQuery['source']>> = ['rate_limit', 'body_size', 'auth_failure']
-const securityEventSeverities = ['warning', 'info', 'critical']
 const operationsMetricWindows = [15, 60, 240, 1440]
-type OperationsSampleKey =
-  | 'securityDispatchFailures'
-  | 'mediaDispatchFailures'
-  | 'archiveWrites'
-  | 'historyPruned'
-  | 'creativeProviderBudgetThresholds'
-  | 'creativeProviderBudgetDispatchBlocks'
-  | 'creativeProviderCostAnomalies'
-  | 'creativeProviderAlertDispatches'
 const mediaScanHistoryPageSize = 6
 const mediaPolicyDraftKeys = [
   'retryDelaySeconds',
@@ -140,8 +134,6 @@ type MediaPolicyRiskItem = {
   riskZh: string
 }
 const emptyMediaPolicyDraft = Object.fromEntries(mediaPolicyDraftKeys.map((key) => [key, ''])) as MediaPolicyDraft
-const isPointAdjustmentMetadata = (metadata: unknown): metadata is PointAdjustmentReviewMetadata =>
-  Boolean(metadata && typeof metadata === 'object' && (metadata as PointAdjustmentReviewMetadata).kind === 'point_adjustment')
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 const mediaGovernanceDiffFields = [
@@ -203,39 +195,7 @@ const isOperationsMetricsExportAudit = (event: AuditEvent) =>
   event.action === 'admin.operations.metrics_exported' && event.resourceType === 'operations_metrics'
 const metadataEntries = (metadata: Record<string, unknown>) =>
   Object.entries(metadata).filter(([key]) => !['diff', 'previous', 'next', 'summary'].includes(key))
-const formatGenerationStatus = (status: string) => status.replaceAll('_', ' ')
-const recordNumber = (record: Record<string, unknown>, key: string) => {
-  const value = Number(record[key] ?? 0)
-  return Number.isFinite(value) ? value : 0
-}
-const generationCredit = (generation: ApiCreativeGenerationRecord) => asRecord(generation.credit)
-const generationQuota = (generation: ApiCreativeGenerationRecord) => asRecord(generation.quota)
-const generationSafety = (generation: ApiCreativeGenerationRecord) => asRecord(generation.safety)
-const generationCreditStatus = (generation: ApiCreativeGenerationRecord) => String(generationCredit(generation).status ?? 'none')
-const generationCreditAmount = (generation: ApiCreativeGenerationRecord, key: 'reserved' | 'settled' | 'refunded') => recordNumber(generationCredit(generation), key)
-const generationQuotaAmount = (generation: ApiCreativeGenerationRecord, key: 'limit' | 'used' | 'remaining' | 'released' | 'reserved') => recordNumber(generationQuota(generation), key)
-const generationReviewRequired = (generation: ApiCreativeGenerationRecord) => Boolean(generationSafety(generation).reviewRequired)
-const generationReplayCount = (generation: ApiCreativeGenerationRecord) =>
-  generation.providerReplayEvidence?.available ? generation.providerReplayEvidence.count : 0
 const generationProviderCost = (generation: ApiCreativeGenerationRecord) => generation.usage?.providerCost ?? null
-const providerReplayEvidenceSummary = (generation: ApiCreativeGenerationRecord, t: Record<string, string>) => {
-  const evidence = generation.providerReplayEvidence
-  if (!evidence?.available) return textFor(t, 'Replay ledger unavailable', 'Replay ledger 不可用')
-  if (!evidence.count) return textFor(t, 'No replay records', '暂无 replay 记录')
-  const latest = evidence.latest
-  if (!latest) return `${evidence.count} ${textFor(t, 'records', '条记录')}`
-  return [
-    `${evidence.count} ${textFor(t, 'records', '条记录')}`,
-    `${latest.sourceType}/${latest.action}/${latest.normalizedStatus ?? '-'}`,
-    `${textFor(t, 'outcome', '结果')} ${latest.sideEffectOutcome}`,
-    latest.payloadHashPresent
-      ? `${textFor(t, 'payload hash', 'payload hash')} ${latest.payloadHashPreview ?? textFor(t, 'present', '存在')}`
-      : textFor(t, 'payload hash missing', '缺少 payload hash'),
-    latest.sideEffectCompleted
-      ? textFor(t, 'side effects complete', 'side effect 已完成')
-      : textFor(t, 'side effects pending', 'side effect 未完成'),
-  ].join(' · ')
-}
 const mediaGovernancePreviewFields = [
   {
     key: 'retryDelaySeconds',
@@ -449,7 +409,14 @@ export function AdminPage({
   onOpenNotificationResource?: (notification: ApiNotification) => void
 }) {
   const isZh = isZhCopy(t)
-  const adminTabs = ['Overview', 'Observability', 'Settings', 'Notifications', 'Support', 'Trust & Safety', 'Task review', 'Access', 'Security', 'Finance', 'Accounting', 'Generations', 'Submissions', 'Community', 'Audit log', 'Users', 'Tags', 'AI config']
+  const adminTabGroups = [
+    { id: 'operations', label: textFor(t, 'Operations', '运营'), icon: Activity, tabs: ['Overview', 'Observability', 'Notifications', 'Support'] },
+    { id: 'content', label: textFor(t, 'Content', '内容'), icon: Clipboard, tabs: ['Task review', 'Submissions', 'Community', 'Inspiration', 'Tags'] },
+    { id: 'safety', label: textFor(t, 'Safety', '安全'), icon: ShieldCheck, tabs: ['Trust & Safety', 'Security', 'Audit log'] },
+    { id: 'platform', label: textFor(t, 'Platform', '平台'), icon: Settings2, tabs: ['Settings', 'Access', 'Users', 'AI config', 'Release'] },
+    { id: 'finance', label: textFor(t, 'Finance', '财务'), icon: BarChart3, tabs: ['Finance', 'Accounting', 'Generations'] },
+  ]
+  const adminTabs = adminTabGroups.flatMap((group) => group.tabs)
   const adminTabLabels: Record<string, string> = {
     Overview: textFor(t, 'Overview', '概览'),
     Observability: textFor(t, 'Observability', '可观测性'),
@@ -465,18 +432,69 @@ export function AdminPage({
     Generations: textFor(t, 'Generations', '生成历史'),
     Submissions: textFor(t, 'Submissions', '交付物'),
     Community: textFor(t, 'Community', '社区'),
+    Inspiration: textFor(t, 'Inspiration', '灵感库'),
     'Audit log': textFor(t, 'Audit log', '审计日志'),
     Users: textFor(t, 'Users', '用户'),
     Tags: textFor(t, 'Tags', '标签'),
     'AI config': textFor(t, 'AI config', 'AI 配置'),
+    Release: textFor(t, 'Release', '发布控制'),
   }
-  const [activeTab, setActiveTab] = useState('Overview')
+  const adminTabDescriptions: Record<string, string> = {
+    Overview: textFor(t, 'Monitor operational health and open work across the product.', '查看产品运营状态与待处理工作。'),
+    Observability: textFor(t, 'Inspect service health, alerts, and runtime diagnostics.', '检查服务健康、告警与运行诊断。'),
+    Notifications: textFor(t, 'Manage system notifications, delivery, and preferences.', '管理系统通知、投递与偏好设置。'),
+    Support: textFor(t, 'Review and resolve customer support requests.', '查看并处理用户支持请求。'),
+    'Task review': textFor(t, 'Review task operations and moderation decisions.', '审核任务运营状态与治理决策。'),
+    Submissions: textFor(t, 'Inspect submitted work and delivery status.', '检查用户交付物与处理状态。'),
+    Community: textFor(t, 'Operate published community content and reports.', '运营已发布的社区内容与举报。'),
+    Inspiration: textFor(t, 'Maintain the governed inspiration catalog.', '维护受治理的灵感内容目录。'),
+    Tags: textFor(t, 'Manage user and content classification tags.', '管理用户与内容分类标签。'),
+    'Trust & Safety': textFor(t, 'Review risk cases, policies, and safety operations.', '处理风险案例、安全策略与治理工作。'),
+    Security: textFor(t, 'Inspect security events and media governance controls.', '检查安全事件与媒体治理控制。'),
+    'Audit log': textFor(t, 'Trace administrative changes and exportable evidence.', '追踪管理变更与可导出的审计证据。'),
+    Settings: textFor(t, 'Manage runtime settings and configuration resources.', '管理运行设置与配置资源。'),
+    Access: textFor(t, 'Control sessions, OAuth, developer access, and webhooks.', '控制会话、OAuth、开发者访问与 Webhook。'),
+    Users: textFor(t, 'Manage accounts and data-rights operations.', '管理账号与数据权利操作。'),
+    'AI config': textFor(t, 'Configure providers, models, routing, and evaluation gates.', '配置供应商、模型、路由与评估门禁。'),
+    Release: textFor(t, 'Review release readiness and deployment controls.', '检查发布就绪状态与部署控制。'),
+    Finance: textFor(t, 'Manage entitlements and product billing policy.', '管理产品权益与计费策略。'),
+    Accounting: textFor(t, 'Reconcile ledger entries and accounting exceptions.', '核对账务流水与会计异常。'),
+    Generations: textFor(t, 'Operate generation history, recovery, and provider controls.', '运营生成历史、恢复任务与供应商控制。'),
+  }
+  const [activeTab, setActiveTab] = useState(() => {
+    const saved = typeof window === 'undefined' ? null : window.sessionStorage.getItem('hcaiAdminActiveTab')
+    return saved && adminTabs.includes(saved) ? saved : 'Overview'
+  })
+  const activeAdminGroup = adminTabGroups.find((group) => group.tabs.includes(activeTab)) ?? adminTabGroups[0]
+  useEffect(() => {
+    window.sessionStorage.setItem('hcaiAdminActiveTab', activeTab)
+  }, [activeTab])
+  const selectAdminTab = (tab: string) => {
+    setActiveTab(tab)
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>('.admin-current-section-header')?.scrollIntoView({ block: 'start' })
+    })
+  }
   const [overviewTarget, setOverviewTarget] = useState<{ resourceType?: string | null; resourceId?: string | null } | null>(null)
   const [queueItems, setQueueItems] = useState<AdminReviewQueueItemDto[]>([])
   const [reviewQueueFilter, setReviewQueueFilter] = useState<string | null>(null)
+  const [selectedReviewId, setSelectedReviewId] = useState<string | null>(null)
   const [reviewingQueueItems, setReviewingQueueItems] = useState<Record<string, AdminReviewDecision>>({})
-  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
-  const [expandedAuditEventIds, setExpandedAuditEventIds] = useState<Record<string, boolean>>({})
+  const [reviewActionMessage, setReviewActionMessage] = useState<AdminActionFeedbackMessage | null>(null)
+  const auditState = useAdminAuditState()
+  const { events: auditEvents, expandedEventIds: expandedAuditEventIds, exporting: exportingAudit,
+    integrity: auditIntegrity, archives: auditArchives, verifying: verifyingAudit, archiving: archivingAudit,
+    actionFilter: auditActionFilter, resourceTypeFilter: auditResourceTypeFilter,
+    resourceIdFilter: auditResourceIdFilter, actorTypeFilter: auditActorTypeFilter,
+    actorIdFilter: auditActorIdFilter, dateFrom: auditDateFrom, dateTo: auditDateTo,
+    direction: auditDirection, feedback: auditActionMessage, query: auditQuery } = auditState.state
+  const { setEvents: setAuditEvents, setExpandedEventIds: setExpandedAuditEventIds,
+    setExporting: setExportingAudit, setIntegrity: setAuditIntegrity, setArchives: setAuditArchives,
+    setVerifying: setVerifyingAudit, setArchiving: setArchivingAudit,
+    setActionFilter: setAuditActionFilter, setResourceTypeFilter: setAuditResourceTypeFilter,
+    setResourceIdFilter: setAuditResourceIdFilter, setActorTypeFilter: setAuditActorTypeFilter,
+    setActorIdFilter: setAuditActorIdFilter, setDateFrom: setAuditDateFrom,
+    setDateTo: setAuditDateTo, setDirection: setAuditDirection, setFeedback: setAuditActionMessage } = auditState.setters
   const [permissions, setPermissions] = useState<AdminPermissionDto[]>([])
   const [notifications, setNotifications] = useState<ApiNotification[]>([])
   const [readingNotification, setReadingNotification] = useState<string | null>(null)
@@ -492,135 +510,119 @@ export function AdminPage({
   const [ledgerSearch, setLedgerSearch] = useState('')
   const [ledgerRows, setLedgerRows] = useState<ApiLedgerEntry[]>([])
   const [ledgerSummary, setLedgerSummary] = useState<ApiPointsSummary | null>(null)
-  const [accountingIssues, setAccountingIssues] = useState<AdminAccountingIssueDto[]>([])
-  const [accountingSummary, setAccountingSummary] = useState<AdminAccountingIssueSummary>({ total: 0, open: 0, repairPending: 0, resolved: 0, ignored: 0 })
-  const [accountingGeneratedAt, setAccountingGeneratedAt] = useState('')
-  const [accountingStatusFilter, setAccountingStatusFilter] = useState<AdminAccountingIssueStatus | null>('open')
-  const [accountingUnitFilter, setAccountingUnitFilter] = useState<AdminAccountingUnit | null>(null)
-  const [accountingTypeFilter, setAccountingTypeFilter] = useState('')
-  const [selectedAccountingIssueId, setSelectedAccountingIssueId] = useState<string | null>(null)
-  const [scanningAccounting, setScanningAccounting] = useState(false)
-  const [exportingAccounting, setExportingAccounting] = useState(false)
-  const [requestingAccountingRepairId, setRequestingAccountingRepairId] = useState<string | null>(null)
-  const [billingMetrics, setBillingMetrics] = useState<AdminBillingMetrics | null>(null)
-  const [personalBillingSummary, setPersonalBillingSummary] = useState<PersonalBillingSummary | null>(null)
-  const [personalBillingEntries, setPersonalBillingEntries] = useState<PersonalBillingEntry[]>([])
-  const [billingPolicies, setBillingPolicies] = useState<AdminBillingPolicyInventory | null>(null)
-  const [billingPreview, setBillingPreview] = useState<AdminBillingPolicyPreview | null>(null)
-  const [billingUnitFilter, setBillingUnitFilter] = useState<AdminAccountingUnit | null>(null)
-  const [billingSourceType, setBillingSourceType] = useState('')
-  const [billingDateFrom, setBillingDateFrom] = useState('')
-  const [billingDateTo, setBillingDateTo] = useState('')
-  const [previewingBillingPolicy, setPreviewingBillingPolicy] = useState(false)
-  const [exportingBillingMetrics, setExportingBillingMetrics] = useState(false)
-  const [generationRows, setGenerationRows] = useState<ApiCreativeGenerationRecord[]>([])
-  const [providerControls, setProviderControls] = useState<AdminProviderControlBundle>({ controls: [], circuits: [], capEvidence: [] })
-  const [providerControlReason, setProviderControlReason] = useState('operator_requested')
-  const [runningProviderControlAction, setRunningProviderControlAction] = useState<string | null>(null)
-  const [generationNextCursor, setGenerationNextCursor] = useState<string | null>(null)
-  const [loadingMoreGenerations, setLoadingMoreGenerations] = useState(false)
-  const [selectedGenerationId, setSelectedGenerationId] = useState<string | null>(null)
-  const [selectedGeneration, setSelectedGeneration] = useState<ApiCreativeGenerationRecord | null>(null)
-  const [loadingGenerationDetail, setLoadingGenerationDetail] = useState(false)
-  const [generationDetailError, setGenerationDetailError] = useState<string | null>(null)
-  const [generationUserHandle, setGenerationUserHandle] = useState('')
-  const [generationWorkspace, setGenerationWorkspace] = useState('')
-  const [generationProviderId, setGenerationProviderId] = useState('')
-  const [generationStatusFilter, setGenerationStatusFilter] = useState('')
-  const [generationReviewFilter, setGenerationReviewFilter] = useState<'all' | 'true' | 'false'>('all')
-  const [generationMediaAssetId, setGenerationMediaAssetId] = useState('')
-  const [generationDateFrom, setGenerationDateFrom] = useState('')
-  const [generationDateTo, setGenerationDateTo] = useState('')
-  const [generationSort, setGenerationSort] = useState<'createdAt' | 'updatedAt' | 'status'>('createdAt')
-  const [generationDirection, setGenerationDirection] = useState<'asc' | 'desc'>('desc')
-  const [generationSummary, setGenerationSummary] = useState<AdminCreativeGenerationSummary>({ total: 0, active: 0, failed: 0, reviewRequired: 0, outputAssets: 0, byStatus: {}, byWorkspace: {}, byProvider: {} })
-  const [generationBusinessMetrics, setGenerationBusinessMetrics] = useState<AdminGenerationBusinessMetrics | null>(null)
-  const [exportingGenerations, setExportingGenerations] = useState(false)
-  const [exportingGenerationMetrics, setExportingGenerationMetrics] = useState(false)
-  const [generationMutationReason, setGenerationMutationReason] = useState('operator_requested')
-  const [generationMutationNote, setGenerationMutationNote] = useState('')
-  const [generationReplayStatus, setGenerationReplayStatus] = useState<'queued' | 'running' | 'completed' | 'failed' | 'cancelled'>('failed')
-  const [runningGenerationAction, setRunningGenerationAction] = useState<'cancel' | 'retry' | 'manual_replay' | null>(null)
-  const [selectedGenerationIds, setSelectedGenerationIds] = useState<string[]>([])
-  const [generationBulkAction, setGenerationBulkAction] = useState<AdminCreativeGenerationBulkAction>('cancel')
-  const [generationBulkPreview, setGenerationBulkPreview] = useState<AdminCreativeGenerationBulkPreview | null>(null)
-  const [generationBulkConfirmation, setGenerationBulkConfirmation] = useState('')
-  const [generationBulkResult, setGenerationBulkResult] = useState<AdminCreativeGenerationBulkResult | null>(null)
-  const [runningGenerationBulkAction, setRunningGenerationBulkAction] = useState(false)
-  const [generationExecutions, setGenerationExecutions] = useState<AdminCreativeGenerationExecution[]>([])
-  const [recoveringGenerationExecutionId, setRecoveringGenerationExecutionId] = useState<string | null>(null)
-  const [generationRecoveryReason, setGenerationRecoveryReason] = useState('operator_verified_no_result')
-  const [generationRecoveryError, setGenerationRecoveryError] = useState('CREATIVE_GENERATION_EXECUTION_ABANDONED')
+  const accountingState = useAdminAccountingState()
+  const { issues: accountingIssues, summary: accountingSummary, generatedAt: accountingGeneratedAt,
+    statusFilter: accountingStatusFilter, unitFilter: accountingUnitFilter, typeFilter: accountingTypeFilter,
+    selectedIssueId: selectedAccountingIssueId, scanning: scanningAccounting,
+    exporting: exportingAccounting, requestingRepairId: requestingAccountingRepairId,
+    billingMetrics, personalSummary: personalBillingSummary, personalEntries: personalBillingEntries,
+    policies: billingPolicies, preview: billingPreview, billingUnitFilter, billingSourceType,
+    billingDateFrom, billingDateTo, previewingPolicy: previewingBillingPolicy,
+    exportingMetrics: exportingBillingMetrics, pointPolicy, policyRoleLimits, policyReasonCodes,
+    policyApprovalTemplates, policyHistory, savingPointPolicy, rollingBackPolicy, feedback: accountingActionMessage, query: accountingQuery,
+    metricsQuery: billingMetricsQuery } = accountingState.state
+  const { setIssues: setAccountingIssues, setSummary: setAccountingSummary,
+    setGeneratedAt: setAccountingGeneratedAt, setStatusFilter: setAccountingStatusFilter,
+    setUnitFilter: setAccountingUnitFilter, setTypeFilter: setAccountingTypeFilter,
+    setSelectedIssueId: setSelectedAccountingIssueId, setScanning: setScanningAccounting,
+    setExporting: setExportingAccounting, setRequestingRepairId: setRequestingAccountingRepairId,
+    setBillingMetrics, setPersonalSummary: setPersonalBillingSummary,
+    setPersonalEntries: setPersonalBillingEntries, setPolicies: setBillingPolicies,
+    setPreview: setBillingPreview, setBillingUnitFilter, setBillingSourceType, setBillingDateFrom,
+    setBillingDateTo, setPreviewingPolicy: setPreviewingBillingPolicy,
+    setExportingMetrics: setExportingBillingMetrics, setPointPolicy, setPolicyRoleLimits,
+    setPolicyReasonCodes, setPolicyApprovalTemplates, setPolicyHistory, setSavingPointPolicy,
+    setRollingBackPolicy, setFeedback: setAccountingActionMessage } = accountingState.setters
+
+  const generationState = useAdminGenerationState()
+  const { workspace: generationOperationsWorkspace, providerControls,
+    providerControlReason, runningProviderControlAction, nextCursor: generationNextCursor,
+    loadingMore: loadingMoreGenerations, selectedId: selectedGenerationId, selected: selectedGeneration,
+    providerCostSettlementDraft, settlingProviderCost, loadingDetail: loadingGenerationDetail,
+    userHandle: generationUserHandle,
+    historyWorkspace: generationWorkspace, providerId: generationProviderId,
+    statusFilter: generationStatusFilter, reviewFilter: generationReviewFilter,
+    mediaAssetId: generationMediaAssetId, dateFrom: generationDateFrom, dateTo: generationDateTo,
+    sort: generationSort, direction: generationDirection,
+    metricsWorkspace: generationMetricsWorkspace, metricsProviderId: generationMetricsProviderId,
+    metricsDateFrom: generationMetricsDateFrom, metricsDateTo: generationMetricsDateTo,
+    exporting: exportingGenerations, exportingMetrics: exportingGenerationMetrics,
+    mutationReason: generationMutationReason, mutationNote: generationMutationNote,
+    replayStatus: generationReplayStatus, runningAction: runningGenerationAction,
+    selectedIds: selectedGenerationIds, bulkAction: generationBulkAction,
+    bulkPreview: generationBulkPreview, bulkConfirmation: generationBulkConfirmation,
+    runningBulkAction: runningGenerationBulkAction,
+    executions: generationExecutions, recoveringExecutionId: recoveringGenerationExecutionId,
+    recoveryReason: generationRecoveryReason, recoveryError: generationRecoveryError,
+    actionMessage: generationActionMessage,
+    query: generationQuery, metricsQuery: generationMetricsQuery } = generationState.state
+  const { setRows: setGenerationRows, setWorkspace: setGenerationOperationsWorkspace,
+    setProviderControls, setProviderControlReason, setRunningProviderControlAction,
+    setNextCursor: setGenerationNextCursor, setLoadingMore: setLoadingMoreGenerations,
+    setSelectedId: setSelectedGenerationId, setSelected: setSelectedGeneration,
+    setProviderCostSettlementDraft, setSettlingProviderCost,
+    setLoadingDetail: setLoadingGenerationDetail, setDetailError: setGenerationDetailError,
+    setUserHandle: setGenerationUserHandle, setHistoryWorkspace: setGenerationWorkspace,
+    setProviderId: setGenerationProviderId, setStatusFilter: setGenerationStatusFilter,
+    setReviewFilter: setGenerationReviewFilter, setMediaAssetId: setGenerationMediaAssetId,
+    setDateFrom: setGenerationDateFrom, setDateTo: setGenerationDateTo,
+    setSort: setGenerationSort, setDirection: setGenerationDirection, setSummary: setGenerationSummary,
+    setMetricsWorkspace: setGenerationMetricsWorkspace, setMetricsProviderId: setGenerationMetricsProviderId,
+    setMetricsDateFrom: setGenerationMetricsDateFrom, setMetricsDateTo: setGenerationMetricsDateTo,
+    setMetricsSummary: setGenerationMetricsSummary, setBusinessMetrics: setGenerationBusinessMetrics,
+    setExporting: setExportingGenerations, setExportingMetrics: setExportingGenerationMetrics,
+    setRunningAction: setRunningGenerationAction,
+    setSelectedIds: setSelectedGenerationIds, setBulkAction: setGenerationBulkAction,
+    setBulkPreview: setGenerationBulkPreview, setBulkConfirmation: setGenerationBulkConfirmation,
+    setBulkResult: setGenerationBulkResult, setRunningBulkAction: setRunningGenerationBulkAction,
+    setExecutions: setGenerationExecutions, setRecoveringExecutionId: setRecoveringGenerationExecutionId,
+    setRecoveryReason: setGenerationRecoveryReason, setRecoveryError: setGenerationRecoveryError,
+    setActionMessage: setGenerationActionMessage } = generationState.setters
   const [adjustDelta, setAdjustDelta] = useState('100')
   const [adjustReason, setAdjustReason] = useState('')
   const [adjustReasonCode, setAdjustReasonCode] = useState('')
   const [adjustingPoints, setAdjustingPoints] = useState(false)
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
   const [exportingLedger, setExportingLedger] = useState(false)
-  const [exportingAudit, setExportingAudit] = useState(false)
-  const [auditIntegrity, setAuditIntegrity] = useState<AdminAuditIntegrityDto | null>(null)
-  const [auditArchives, setAuditArchives] = useState<AdminAuditArchiveManifestDto[]>([])
-  const [verifyingAudit, setVerifyingAudit] = useState(false)
-  const [archivingAudit, setArchivingAudit] = useState(false)
-  const [pointPolicy, setPointPolicy] = useState<PointAdjustmentPolicy | null>(null)
-  const [policyRoleLimits, setPolicyRoleLimits] = useState<Record<string, string>>({})
-  const [policyReasonCodes, setPolicyReasonCodes] = useState('')
-  const [policyApprovalTemplates, setPolicyApprovalTemplates] = useState('')
-  const [policyHistory, setPolicyHistory] = useState<PointAdjustmentPolicyHistoryItem[]>([])
-  const [savingPointPolicy, setSavingPointPolicy] = useState(false)
-  const [rollingBackPolicy, setRollingBackPolicy] = useState<string | null>(null)
   const [highlightedReviewId, setHighlightedReviewId] = useState<string | null>(null)
   const [highlightedPolicyEventId, setHighlightedPolicyEventId] = useState<string | null>(null)
   const [highlightedMediaAssetId, setHighlightedMediaAssetId] = useState<string | null>(null)
   const [highlightedAuditEventId, setHighlightedAuditEventId] = useState<string | null>(null)
-  const [mediaRows, setMediaRows] = useState<ApiMediaAsset[]>([])
-  const [mediaStatus, setMediaStatus] = useState<NonNullable<MediaReviewQueueQuery['status']>>('review')
-  const [mediaPurpose, setMediaPurpose] = useState<MediaAssetPurpose | null>(null)
-  const [mediaSearch, setMediaSearch] = useState('')
-  const [mediaGovernanceConfig, setMediaGovernanceConfig] = useState<ApiMediaGovernanceConfig | null>(null)
-  const [mediaPolicyDraft, setMediaPolicyDraft] = useState<MediaPolicyDraft>(emptyMediaPolicyDraft)
-  const [mediaPolicyHistory, setMediaPolicyHistory] = useState<MediaGovernancePolicyHistoryItem[]>([])
-  const [expandedMediaPolicyEventIds, setExpandedMediaPolicyEventIds] = useState<Record<string, boolean>>({})
-  const [savingMediaPolicy, setSavingMediaPolicy] = useState(false)
-  const [confirmingMediaPolicySave, setConfirmingMediaPolicySave] = useState(false)
-  const [rollingBackMediaPolicy, setRollingBackMediaPolicy] = useState<string | null>(null)
-  const [reviewingMediaId, setReviewingMediaId] = useState<string | null>(null)
-  const [sweepingMediaJobs, setSweepingMediaJobs] = useState(false)
-  const [selectedMediaAssetId, setSelectedMediaAssetId] = useState<string | null>(null)
-  const [mediaScanHistory, setMediaScanHistory] = useState<ApiMediaScanJob[]>([])
-  const [mediaScanHistoryNextCursor, setMediaScanHistoryNextCursor] = useState<string | null>(null)
-  const [loadingMoreMediaScanHistory, setLoadingMoreMediaScanHistory] = useState(false)
-  const [mediaScanAlerts, setMediaScanAlerts] = useState<ApiMediaScanAlert[]>([])
-  const [handlingScanAlertId, setHandlingScanAlertId] = useState<string | null>(null)
-  const [selectedScanAlertId, setSelectedScanAlertId] = useState<string | null>(null)
-  const [scanAlertEvents, setScanAlertEvents] = useState<ApiMediaScanAlertEvent[]>([])
-  const [loadingScanAlertEvents, setLoadingScanAlertEvents] = useState(false)
-  const [scanAlertEventsError, setScanAlertEventsError] = useState<string | null>(null)
-  const [callbackFailureEvents, setCallbackFailureEvents] = useState<AuditEvent[]>([])
-  const [auditActionFilter, setAuditActionFilter] = useState('')
-  const [auditResourceTypeFilter, setAuditResourceTypeFilter] = useState('')
-  const [auditResourceIdFilter, setAuditResourceIdFilter] = useState('')
-  const [auditActorTypeFilter, setAuditActorTypeFilter] = useState<'all' | 'user' | 'system'>('all')
-  const [auditActorIdFilter, setAuditActorIdFilter] = useState('')
-  const [auditDateFrom, setAuditDateFrom] = useState('')
-  const [auditDateTo, setAuditDateTo] = useState('')
-  const [auditDirection, setAuditDirection] = useState<'asc' | 'desc'>('desc')
-  const [securityAlerts, setSecurityAlerts] = useState<AdminSecurityAlertDto[]>([])
-  const [handlingSecurityAlertId, setHandlingSecurityAlertId] = useState<string | null>(null)
-  const [selectedSecurityAlertId, setSelectedSecurityAlertId] = useState<string | null>(null)
+  const mediaState = useSecurityMediaState()
+  const { rows: mediaRows, status: mediaStatus, purpose: mediaPurpose, search: mediaSearch,
+    selectedAssetId: selectedMediaAssetId, scanHistory: mediaScanHistory,
+    scanHistoryNextCursor: mediaScanHistoryNextCursor, scanAlerts: mediaScanAlerts,
+    callbackFailureEvents } = mediaState.state
+  const { setRows: setMediaRows, setStatus: setMediaStatus, setPurpose: setMediaPurpose,
+    setSearch: setMediaSearch, setSelectedAssetId: setSelectedMediaAssetId,
+    setScanHistory: setMediaScanHistory, setScanHistoryNextCursor: setMediaScanHistoryNextCursor,
+    setScanAlerts: setMediaScanAlerts, setCallbackFailureEvents } = mediaState.setters
+  const governanceState = useSecurityGovernanceState<MediaPolicyDraft>(emptyMediaPolicyDraft)
+  const { config: mediaGovernanceConfig, draft: mediaPolicyDraft, history: mediaPolicyHistory,
+    expandedHistoryEventIds: expandedMediaPolicyEventIds } = governanceState.state
+  const { setConfig: setMediaGovernanceConfig, setDraft: setMediaPolicyDraft,
+    setHistory: setMediaPolicyHistory,
+    setExpandedHistoryEventIds: setExpandedMediaPolicyEventIds } = governanceState.setters
+  const incidentState = useSecurityIncidentState()
+  const { alerts: securityAlerts, events: securityEvents, sourceFilter: securitySourceFilter,
+    severityFilter: securitySeverityFilter, typeFilter: securityTypeFilter,
+    nextCursor: securityNextCursor, incidents: securityIncidents, selectedOpenIncidentId,
+    query: securityQuery } = incidentState.state
+  const { setAlerts: setSecurityAlerts, setEvents: setSecurityEvents,
+    setSourceFilter: setSecuritySourceFilter, setSeverityFilter: setSecuritySeverityFilter,
+    setTypeFilter: setSecurityTypeFilter, setNextCursor: setSecurityNextCursor,
+    setIncidents: setSecurityIncidents, setSelectedOpenIncidentId } = incidentState.setters
   const [highlightedSecurityAlertId, setHighlightedSecurityAlertId] = useState<string | null>(null)
   const [observabilityAlertId, setObservabilityAlertId] = useState<string | null>(null)
   const clearObservabilityAlertId = useCallback(() => setObservabilityAlertId(null), [])
-  const [exportingSecurityAlertId, setExportingSecurityAlertId] = useState<string | null>(null)
-  const [securityAlertEvents, setSecurityAlertEvents] = useState<AdminSecurityAlertEventDto[]>([])
-  const [loadingSecurityAlertEvents, setLoadingSecurityAlertEvents] = useState(false)
-  const [securityAlertEventsError, setSecurityAlertEventsError] = useState<string | null>(null)
-  const [securityEvents, setSecurityEvents] = useState<AdminSecurityEventDto[]>([])
-  const [securitySourceFilter, setSecuritySourceFilter] = useState<AdminSecurityEventListQuery['source']>(null)
-  const [securitySeverityFilter, setSecuritySeverityFilter] = useState('')
-  const [securityTypeFilter, setSecurityTypeFilter] = useState('')
-  const [securityNextCursor, setSecurityNextCursor] = useState<string | null>(null)
-  const [loadingMoreSecurityEvents, setLoadingMoreSecurityEvents] = useState(false)
+  const [pendingSecurityOperation, setPendingSecurityOperation] = useState<PendingSecurityOperation | null>(null)
+  const [securityOperationReason, setSecurityOperationReason] = useState('')
+  const [securityOperationCritical, setSecurityOperationCritical] = useState(false)
+  const [securityActionMessage, setSecurityActionMessage] = useState<AdminActionFeedbackMessage | null>(null)
+  const [securityWorkspace, setSecurityWorkspace] = useState<SecurityWorkspace>(() => {
+    const saved = typeof window === 'undefined' ? null : window.sessionStorage.getItem('hcaiSecurityWorkspace') as SecurityWorkspace | null
+    return saved && securityWorkspaces.includes(saved) ? saved : 'overview'
+  })
   const [operationsMetricsWindow, setOperationsMetricsWindow] = useState(60)
   const [operationsMetrics, setOperationsMetrics] = useState<AdminOperationsMetricsDto | null>(null)
   const [writingScanArchive, setWritingScanArchive] = useState(false)
@@ -651,47 +653,19 @@ export function AdminPage({
   const canManageProviderControls = account.hasPermission('admin:creative:provider-control:manage')
   const canRecoverProviderControls = account.hasPermission('admin:creative:provider-control:recover')
   const canManageSecurityAlerts = account.hasPermission('security:alerts:manage')
-  const securityQuery: AdminSecurityEventListQuery = {
-    source: securitySourceFilter,
-    severity: securitySeverityFilter || null,
-    type: securityTypeFilter || null,
-    limit: 12,
-  }
   const ledgerQuery: PointsLedgerQuery = {
     userHandle: ledgerUserHandle,
     status: ledgerStatus,
     search: ledgerSearch,
     limit: 12,
   }
-  const accountingQuery: AdminAccountingReconciliationQuery = {
-    status: accountingStatusFilter,
-    unit: accountingUnitFilter,
-    type: accountingTypeFilter || null,
-    limit: 20,
-  }
-  const billingMetricsQuery: AdminBillingMetricsQuery = {
-    unit: billingUnitFilter,
-    sourceType: billingSourceType || null,
-    dateFrom: billingDateFrom || null,
-    dateTo: billingDateTo || null,
-  }
-  const generationQuery: AdminCreativeGenerationHistoryQuery = {
-    userHandle: generationUserHandle || null,
-    workspace: generationWorkspace || null,
-    providerId: generationProviderId || null,
-    status: generationStatusFilter || null,
-    reviewRequired: generationReviewFilter === 'all' ? null : generationReviewFilter === 'true',
-    mediaAssetId: generationMediaAssetId || null,
-    dateFrom: generationDateFrom || null,
-    dateTo: generationDateTo || null,
-    sort: generationSort,
-    direction: generationDirection,
-    limit: 12,
-  }
   const visibleQueueItems = reviewQueueFilter
     ? queueItems.filter((item) => item.queue === reviewQueueFilter)
     : queueItems
   const pointReviewCount = queueItems.filter((item) => item.queue === 'points' && !item.decision).length
+  useEffect(() => {
+    window.sessionStorage.setItem('hcaiSecurityWorkspace', securityWorkspace)
+  }, [securityWorkspace])
   const notificationStatus = useAsyncResource<ApiNotification[]>({
     load: () => notificationService.list({
       readState: notificationReadState,
@@ -704,27 +678,18 @@ export function AdminPage({
     deps: [isZh, notificationReadState, notificationType, notificationResourceType],
     logLabel: 'notification-service',
   })
-  const queueStatus = useAsyncResource<AdminReviewQueueItemDto[]>({
-    load: () => adminService.reviews(),
+  const queueStatus = useAsyncResource<AdminReviewQueueItemDto[] | null>({
+    load: () => activeTab === 'Submissions' ? adminService.reviews() : Promise.resolve(null),
     onSuccess: (items) => {
-      if (items.length > 0) setQueueItems(items)
+      if (!items) return
+      setQueueItems(items)
     },
     getErrorMessage: () => (isZh ? '运营队列 API 暂不可用；未显示本地替代数据。' : 'The operations queue API is unavailable; no local substitute is shown.'),
-    deps: [isZh],
+    deps: [activeTab, isZh],
     logLabel: 'admin-service',
   })
   const auditStatus = useAsyncResource<AuditEvent[]>({
-    load: () => adminService.audit({
-      action: auditActionFilter || null,
-      resourceType: auditResourceTypeFilter || null,
-      resourceId: auditResourceIdFilter || null,
-      actorType: auditActorTypeFilter === 'all' ? null : auditActorTypeFilter,
-      actorId: auditActorIdFilter || null,
-      dateFrom: auditDateFrom || null,
-      dateTo: auditDateTo || null,
-      direction: auditDirection,
-      limit: 20,
-    }),
+    load: () => adminService.audit(auditQuery),
     onSuccess: (events) => {
       setAuditEvents(events)
     },
@@ -732,33 +697,46 @@ export function AdminPage({
     deps: [auditActionFilter, auditResourceTypeFilter, auditResourceIdFilter, auditActorTypeFilter, auditActorIdFilter, auditDateFrom, auditDateTo, auditDirection, isZh],
     logLabel: 'admin-service',
   })
-  const securityAlertStatus = useAsyncResource<AdminSecurityAlertDto[]>({
-    load: () => canReadAudit ? adminService.securityAlerts() : Promise.resolve([]),
-    onSuccess: (alerts) => {
-      setSecurityAlerts(alerts)
+  const {
+    securityAlertStatus,
+    securityStatus,
+    securityIncidentStatus,
+    operationsMetricsStatus,
+    mediaReviewStatus,
+    mediaGovernanceConfigStatus,
+    mediaPolicyHistoryStatus,
+    mediaScanHistoryStatus,
+    mediaScanAlertStatus,
+    callbackFailureStatus,
+  } = useAdminSecurityResources({
+    active: activeTab === 'Security',
+    workspace: securityWorkspace,
+    canReadAudit,
+    canReadQueues,
+    isZh,
+    securityQuery,
+    operationsMetricsWindow,
+    mediaStatus,
+    mediaPurpose,
+    mediaSearch,
+    selectedMediaAssetId,
+    mediaScanHistoryPageSize,
+    setSecurityAlerts,
+    setSecurityEvents,
+    setSecurityNextCursor,
+    setSecurityIncidents,
+    setSelectedOpenIncidentId,
+    setOperationsMetrics,
+    setMediaRows,
+    onMediaGovernanceConfig: (config) => {
+      setMediaGovernanceConfig(config)
+      setMediaPolicyDraft(mediaPolicyDraftFromConfig(config))
     },
-    getErrorMessage: () => (isZh ? '无法读取安全告警，请确认账号具备审计读取权限。' : 'Could not load security alerts. Confirm audit read access.'),
-    deps: [canReadAudit, isZh],
-    logLabel: 'admin-service',
-  })
-  const securityStatus = useAsyncResource<{ events: AdminSecurityEventDto[]; nextCursor: string | null }>({
-    load: () => canReadAudit
-      ? adminService.securityEvents(securityQuery)
-      : Promise.resolve({ events: [], nextCursor: null }),
-    onSuccess: ({ events, nextCursor }) => {
-      setSecurityEvents(events)
-      setSecurityNextCursor(nextCursor)
-    },
-    getErrorMessage: () => (isZh ? '无法读取安全事件，请确认账号具备审计读取权限。' : 'Could not load security events. Confirm audit read access.'),
-    deps: [canReadAudit, isZh, securitySourceFilter, securitySeverityFilter, securityTypeFilter],
-    logLabel: 'admin-service',
-  })
-  const operationsMetricsStatus = useAsyncResource<AdminOperationsMetricsDto | null>({
-    load: () => canReadAudit ? adminService.operationsMetrics(operationsMetricsWindow) : Promise.resolve(null),
-    onSuccess: (metrics) => setOperationsMetrics(metrics),
-    getErrorMessage: () => (isZh ? '无法读取运营指标，请确认账号具备审计读取权限。' : 'Could not load operations metrics. Confirm audit read access.'),
-    deps: [canReadAudit, isZh, operationsMetricsWindow],
-    logLabel: 'admin-service',
+    setMediaPolicyHistory,
+    setMediaScanHistory,
+    setMediaScanHistoryNextCursor,
+    setMediaScanAlerts,
+    setCallbackFailureEvents,
   })
   const permissionsStatus = useAsyncResource<AdminPermissionDto[]>({
     load: () => adminService.permissions(),
@@ -837,15 +815,16 @@ export function AdminPage({
     deps: [canReadAccounting, isZh],
     logLabel: 'admin-service',
   })
-  const generationHistoryStatus = useAsyncResource<{ items: ApiCreativeGenerationRecord[]; nextCursor: string | null; summary: AdminCreativeGenerationSummary; metrics: AdminGenerationBusinessMetrics | null }>({
-    load: () => canReadAudit
-      ? Promise.all([adminService.creativeGenerations(generationQuery), adminService.creativeGenerationSummary(generationQuery), adminService.creativeGenerationBusinessMetrics(generationQuery)]).then(([page, summary, metrics]) => ({ ...page, summary, metrics }))
-      : Promise.resolve({ items: [], nextCursor: null, summary: { total: 0, active: 0, failed: 0, reviewRequired: 0, outputAssets: 0, byStatus: {}, byWorkspace: {}, byProvider: {} }, metrics: null }),
-    onSuccess: ({ items, nextCursor, summary, metrics }) => {
+  const generationHistoryStatus = useAsyncResource<{ items: ApiCreativeGenerationRecord[]; nextCursor: string | null; summary: AdminCreativeGenerationSummary } | null>({
+    load: () => canReadAudit && activeTab === 'Generations' && generationOperationsWorkspace === 'records'
+      ? Promise.all([adminService.creativeGenerations(generationQuery), adminService.creativeGenerationSummary(generationQuery)]).then(([page, summary]) => ({ ...page, summary }))
+      : Promise.resolve(null),
+    onSuccess: (result) => {
+      if (!result) return
+      const { items, nextCursor, summary } = result
       setGenerationRows(items)
       setGenerationNextCursor(nextCursor)
       setGenerationSummary(summary)
-      setGenerationBusinessMetrics(metrics)
       if (selectedGenerationId && !items.some((item) => item.id === selectedGenerationId)) {
         setSelectedGenerationId(null)
         setSelectedGeneration(null)
@@ -853,23 +832,36 @@ export function AdminPage({
       }
     },
     getErrorMessage: () => (isZh ? '无法读取生成历史，请确认账号具备审计读取权限。' : 'Could not load generation history. Confirm audit read access.'),
-    deps: [canReadAudit, isZh, generationUserHandle, generationWorkspace, generationProviderId, generationStatusFilter, generationReviewFilter, generationMediaAssetId, generationDateFrom, generationDateTo, generationSort, generationDirection],
+    deps: [canReadAudit, activeTab, generationOperationsWorkspace, isZh, generationUserHandle, generationWorkspace, generationProviderId, generationStatusFilter, generationReviewFilter, generationMediaAssetId, generationDateFrom, generationDateTo, generationSort, generationDirection],
+    logLabel: 'admin-service',
+  })
+  const generationMetricsStatus = useAsyncResource<{ summary: AdminCreativeGenerationSummary; metrics: AdminGenerationBusinessMetrics } | null>({
+    load: () => canReadAudit && activeTab === 'Generations' && generationOperationsWorkspace === 'metrics'
+      ? Promise.all([adminService.creativeGenerationSummary(generationMetricsQuery), adminService.creativeGenerationBusinessMetrics(generationMetricsQuery)]).then(([summary, metrics]) => ({ summary, metrics }))
+      : Promise.resolve(null),
+    onSuccess: (result) => {
+      if (!result) return
+      setGenerationMetricsSummary(result.summary)
+      setGenerationBusinessMetrics(result.metrics)
+    },
+    getErrorMessage: () => (isZh ? '无法读取生成业务指标。' : 'Could not load generation business metrics.'),
+    deps: [canReadAudit, activeTab, generationOperationsWorkspace, isZh, generationMetricsWorkspace, generationMetricsProviderId, generationMetricsDateFrom, generationMetricsDateTo],
     logLabel: 'admin-service',
   })
   const generationExecutionStatus = useAsyncResource<AdminCreativeGenerationExecution[]>({
-    load: () => canReadAudit ? adminService.creativeGenerationExecutions() : Promise.resolve([]),
+    load: () => canReadAudit && activeTab === 'Generations' && generationOperationsWorkspace === 'recovery' ? adminService.creativeGenerationExecutions() : Promise.resolve([]),
     onSuccess: setGenerationExecutions,
     getErrorMessage: () => (isZh ? '无法读取生成恢复队列。' : 'Could not load generation recovery queue.'),
-    deps: [canReadAudit, isZh],
+    deps: [canReadAudit, activeTab, generationOperationsWorkspace, isZh],
     logLabel: 'admin-service',
   })
   const providerControlStatus = useAsyncResource<AdminProviderControlBundle>({
-    load: () => canReadProviderControls
+    load: () => canReadProviderControls && activeTab === 'Generations' && generationOperationsWorkspace === 'providers'
       ? adminService.providerControls()
       : Promise.resolve({ controls: [], circuits: [], capEvidence: [] }),
     onSuccess: setProviderControls,
     getErrorMessage: () => (isZh ? '无法读取 Provider 控制状态。' : 'Could not load Provider controls.'),
-    deps: [canReadProviderControls, isZh],
+    deps: [canReadProviderControls, activeTab, generationOperationsWorkspace, isZh],
     logLabel: 'admin-service',
   })
   const pointPolicyStatus = useAsyncResource<PointAdjustmentPolicy | null>({
@@ -890,71 +882,6 @@ export function AdminPage({
     onSuccess: (items) => setPolicyHistory(items),
     getErrorMessage: () => (isZh ? '无法读取积分策略历史。' : 'Could not load point policy history.'),
     deps: [canAdjustPoints, isZh],
-    logLabel: 'admin-service',
-  })
-  const mediaReviewStatus = useAsyncResource<ApiMediaAsset[]>({
-    load: () => canReadQueues
-      ? mediaService.reviewQueue({
-          status: mediaStatus,
-          purpose: mediaPurpose,
-          search: mediaSearch,
-          limit: 12,
-        })
-      : Promise.resolve([]),
-    onSuccess: (items) => setMediaRows(items),
-    getErrorMessage: () => (isZh ? '无法读取媒体审核队列。' : 'Could not load media review queue.'),
-    deps: [canReadQueues, isZh, mediaStatus, mediaPurpose, mediaSearch],
-    logLabel: 'media-service',
-  })
-  const mediaGovernanceConfigStatus = useAsyncResource<ApiMediaGovernanceConfig | null>({
-    load: () => canReadQueues ? mediaService.governanceConfig() : Promise.resolve(null),
-    onSuccess: (config) => {
-      setMediaGovernanceConfig(config)
-      if (config) {
-        setMediaPolicyDraft(mediaPolicyDraftFromConfig(config))
-      }
-    },
-    getErrorMessage: () => (isZh ? '无法读取媒体治理配置。' : 'Could not load media governance config.'),
-    deps: [canReadQueues, isZh],
-    logLabel: 'media-service',
-  })
-  const mediaPolicyHistoryStatus = useAsyncResource<MediaGovernancePolicyHistoryItem[]>({
-    load: () => canReadQueues ? mediaService.governancePolicyHistory() : Promise.resolve([]),
-    onSuccess: (items) => setMediaPolicyHistory(items),
-    getErrorMessage: () => (isZh ? '无法读取媒体治理策略历史。' : 'Could not load media governance policy history.'),
-    deps: [canReadQueues, isZh],
-    logLabel: 'media-service',
-  })
-  const mediaScanHistoryStatus = useAsyncResource<MediaScanJobHistoryPage>({
-    load: () => canReadQueues && selectedMediaAssetId
-      ? mediaService.scanJobHistoryPage(selectedMediaAssetId, { limit: mediaScanHistoryPageSize })
-      : Promise.resolve({ items: [], limit: mediaScanHistoryPageSize, nextCursor: null }),
-    onSuccess: (page) => {
-      setMediaScanHistory(page.items)
-      setMediaScanHistoryNextCursor(page.nextCursor)
-    },
-    getErrorMessage: () => (isZh ? '无法读取扫描任务历史。' : 'Could not load scan job history.'),
-    deps: [canReadQueues, isZh, selectedMediaAssetId],
-    logLabel: 'media-service',
-  })
-  const mediaScanAlertStatus = useAsyncResource<ApiMediaScanAlert[]>({
-    load: () => canReadQueues ? mediaService.scanAlerts() : Promise.resolve([]),
-    onSuccess: (items) => setMediaScanAlerts(items),
-    getErrorMessage: () => (isZh ? '无法读取扫描告警。' : 'Could not load scan alerts.'),
-    deps: [canReadQueues, isZh],
-    logLabel: 'media-service',
-  })
-  const callbackFailureStatus = useAsyncResource<AuditEvent[]>({
-    load: () => canReadQueues && canReadAudit
-      ? adminService.audit({
-          action: 'media.scan.callback_denied',
-          resourceType: 'media_asset',
-          limit: 5,
-        })
-      : Promise.resolve([]),
-    onSuccess: (events) => setCallbackFailureEvents(events),
-    getErrorMessage: () => (isZh ? '无法读取扫描回调失败事件。' : 'Could not load scanner callback failures.'),
-    deps: [canReadAudit, canReadQueues, isZh],
     logLabel: 'admin-service',
   })
   const mediaPolicyImpactPreview = useMemo<MediaPolicyImpactPreviewItem[]>(() => {
@@ -1027,6 +954,257 @@ export function AdminPage({
     return risks
   }, [mediaGovernanceConfig, mediaPolicyDraft])
 
+  const generationBulkOperations = useAdminGenerationBulkOperations({
+    isZh,
+    canCancel: canCancelGenerations,
+    canRequestRetries: canRequestGenerationRetries,
+    selectedIds: selectedGenerationIds,
+    action: generationBulkAction,
+    preview: generationBulkPreview,
+    confirmation: generationBulkConfirmation,
+    reasonCode: generationMutationReason,
+    note: generationMutationNote,
+    running: runningGenerationBulkAction,
+    setSelectedIds: setSelectedGenerationIds,
+    setAction: setGenerationBulkAction,
+    setPreview: setGenerationBulkPreview,
+    setConfirmation: setGenerationBulkConfirmation,
+    setResult: setGenerationBulkResult,
+    setRunning: setRunningGenerationBulkAction,
+    setFeedback: setGenerationActionMessage,
+    refreshHistory: generationHistoryStatus.refresh,
+  })
+  const generationOperations = useAdminGenerationOperations({
+    isZh,
+    canRead: canReadAudit,
+    canCancel: canCancelGenerations,
+    canRequestRetries: canRequestGenerationRetries,
+    canRepairAccounting,
+    canManageProviderControls,
+    canRecoverProviderControls,
+    query: generationQuery,
+    nextCursor: generationNextCursor,
+    loadingMore: loadingMoreGenerations,
+    selectedId: selectedGenerationId,
+    selected: selectedGeneration,
+    loadingDetail: loadingGenerationDetail,
+    runningAction: runningGenerationAction,
+    replayStatus: generationReplayStatus,
+    mutationReason: generationMutationReason,
+    mutationNote: generationMutationNote,
+    providerCostSettlementDraft,
+    settlingProviderCost,
+    recoveringExecutionId: recoveringGenerationExecutionId,
+    recoveryReason: generationRecoveryReason,
+    recoveryError: generationRecoveryError,
+    runningProviderControlAction,
+    providerControlReason,
+    setRows: setGenerationRows,
+    setNextCursor: setGenerationNextCursor,
+    setLoadingMore: setLoadingMoreGenerations,
+    setSelectedId: setSelectedGenerationId,
+    setSelected: setSelectedGeneration,
+    setLoadingDetail: setLoadingGenerationDetail,
+    setDetailError: setGenerationDetailError,
+    setRunningAction: setRunningGenerationAction,
+    setProviderCostSettlementDraft,
+    setSettlingProviderCost,
+    setRecoveringExecutionId: setRecoveringGenerationExecutionId,
+    setRunningProviderControlAction,
+    setFeedback: setGenerationActionMessage,
+    refreshExecutions: generationExecutionStatus.refresh,
+    refreshQueue: queueStatus.refresh,
+    refreshAudit: auditStatus.refresh,
+    refreshProviderControls: providerControlStatus.refresh,
+  })
+  const accountingOperations = useAdminAccountingOperations({
+    isZh,
+    canScan: canScanAccounting,
+    canRepair: canRepairAccounting,
+    canPreviewPolicy: canReadAccounting,
+    canManagePolicy: canManagePermissions,
+    query: accountingQuery,
+    scanning: scanningAccounting,
+    requestingRepairId: requestingAccountingRepairId,
+    previewingPolicy: previewingBillingPolicy,
+    pointPolicy,
+    billingPolicyFallback: billingPolicies?.pointAdjustment.policy ?? null,
+    policyRoleLimits,
+    policyReasonCodes,
+    policyApprovalTemplates,
+    savingPointPolicy,
+    rollingBackPolicy,
+    setIssues: setAccountingIssues,
+    setSummary: setAccountingSummary,
+    setGeneratedAt: setAccountingGeneratedAt,
+    setScanning: setScanningAccounting,
+    setRequestingRepairId: setRequestingAccountingRepairId,
+    setPreview: setBillingPreview,
+    setPreviewingPolicy: setPreviewingBillingPolicy,
+    setPointPolicy,
+    setPolicyRoleLimits,
+    setPolicyReasonCodes,
+    setPolicyApprovalTemplates,
+    setSavingPointPolicy,
+    setRollingBackPolicy,
+    setQueueItems,
+    setReviewQueueFilter,
+    refreshQueue: queueStatus.refresh,
+    refreshAudit: auditStatus.refresh,
+    refreshPolicyHistory: pointPolicyHistoryStatus.refresh,
+    refreshNotifications: notificationStatus.refresh,
+    setFeedback: setAccountingActionMessage,
+  })
+  const auditOperations = useAdminAuditOperations({
+    isZh,
+    canVerify: canVerifyAudit,
+    canArchive: canArchiveAudit,
+    verifying: verifyingAudit,
+    archiving: archivingAudit,
+    setIntegrity: setAuditIntegrity,
+    setArchives: setAuditArchives,
+    setVerifying: setVerifyingAudit,
+    setArchiving: setArchivingAudit,
+    refreshAudit: auditStatus.refresh,
+    setFeedback: setAuditActionMessage,
+  })
+
+  const {
+    toggleSelection: toggleGenerationSelection,
+    changeAction: changeGenerationBulkAction,
+    previewAction: previewGenerationBulkAction,
+    executeAction: executeGenerationBulkAction,
+  } = generationBulkOperations.actions
+  const {
+    loadMore: loadMoreGenerations,
+    toggleDetail: toggleGenerationDetail,
+    mutate: runGenerationMutation,
+    settleProviderCost: settleSelectedProviderCost,
+    recoverExecution: recoverGenerationExecution,
+    runProviderControl: runProviderControlAction,
+  } = generationOperations.actions
+  const {
+    scan: scanAccounting,
+    previewPolicy: previewBillingPolicy,
+    requestRepair: requestAccountingRepair,
+    savePointPolicy,
+    rollbackPointPolicy,
+  } = accountingOperations.actions
+  const {
+    verifyIntegrity: verifyAuditIntegrity,
+    archiveEvidence: archiveAuditEvidence,
+  } = auditOperations.actions
+
+  const incidentOperations = useSecurityIncidentOperations({
+    isZh,
+    canReadAudit,
+    incidents: securityIncidents,
+    selectedOpenIncidentId,
+    nextCursor: securityNextCursor,
+    query: securityQuery,
+    setAlerts: setSecurityAlerts,
+    setEvents: setSecurityEvents,
+    setNextCursor: setSecurityNextCursor,
+    setIncidents: setSecurityIncidents,
+    setSelectedOpenIncidentId,
+    setFeedback: setSecurityActionMessage,
+    refreshAudit: auditStatus.refresh,
+    refreshMetrics: operationsMetricsStatus.refresh,
+    refreshAlerts: securityAlertStatus.refresh,
+    refreshEvents: securityStatus.refresh,
+    refreshIncidents: securityIncidentStatus.refresh,
+    onOperationComplete: () => setPendingSecurityOperation(null),
+  })
+  const mediaOperations = useSecurityMediaOperations({
+    isZh,
+    selectedAssetId: selectedMediaAssetId,
+    historyNextCursor: mediaScanHistoryNextCursor,
+    historyPageSize: mediaScanHistoryPageSize,
+    setRows: setMediaRows,
+    setSelectedAssetId: setSelectedMediaAssetId,
+    setHistory: setMediaScanHistory,
+    setHistoryNextCursor: setMediaScanHistoryNextCursor,
+    setAlerts: setMediaScanAlerts,
+    setCallbackEvents: setCallbackFailureEvents,
+    setFeedback: setSecurityActionMessage,
+    refreshReview: mediaReviewStatus.refresh,
+    refreshHistory: mediaScanHistoryStatus.refresh,
+    refreshAlerts: mediaScanAlertStatus.refresh,
+    refreshAudit: auditStatus.refresh,
+    refreshMetrics: operationsMetricsStatus.refresh,
+    onOperationComplete: () => setPendingSecurityOperation(null),
+  })
+  const governanceOperations = useSecurityGovernanceOperations({
+    isZh,
+    draft: mediaPolicyDraft,
+    hasInvalidDraft: hasInvalidMediaPolicyDraft,
+    highRiskChangeCount: highRiskMediaPolicyChanges.length,
+    setConfig: setMediaGovernanceConfig,
+    setDraft: setMediaPolicyDraft,
+    toPatch: mediaPolicyPatchFromDraft,
+    fromConfig: mediaPolicyDraftFromConfig,
+    setFeedback: setSecurityActionMessage,
+    refreshHistory: mediaPolicyHistoryStatus.refresh,
+    refreshAlerts: mediaScanAlertStatus.refresh,
+    refreshAudit: auditStatus.refresh,
+    onOperationComplete: () => setPendingSecurityOperation(null),
+  })
+  const {
+    handlingAlertId: handlingSecurityAlertId,
+    selectedAlertId: selectedSecurityAlertId,
+    exportingAlertId: exportingSecurityAlertId,
+    alertEvents: securityAlertEvents,
+    alertEventsLoading: loadingSecurityAlertEvents,
+    alertEventsError: securityAlertEventsError,
+    loadingMoreEvents: loadingMoreSecurityEvents,
+    handlingIncidentId: handlingSecurityIncidentId,
+  } = incidentOperations.state
+  const {
+    reviewingAssetId: reviewingMediaId,
+    sweeping: sweepingMediaJobs,
+    loadingMoreHistory: loadingMoreMediaScanHistory,
+    handlingAlertId: handlingScanAlertId,
+    selectedAlertId: selectedScanAlertId,
+    alertEvents: scanAlertEvents,
+    alertEventsLoading: loadingScanAlertEvents,
+    alertEventsError: scanAlertEventsError,
+  } = mediaOperations.state
+  const {
+    saving: savingMediaPolicy,
+    confirmingSave: confirmingMediaPolicySave,
+    rollingBackEventId: rollingBackMediaPolicy,
+  } = governanceOperations.state
+  const {
+    refreshWorkspace: refreshSecurityIncidents,
+    createIncident: createSecurityIncident,
+    attachEvent: attachSecurityEventToIncident,
+    resolveIncident: resolveSecurityIncident,
+    acknowledgeAlert: acknowledgeSecurityAlert,
+    silenceAlert: silenceSecurityAlert,
+    unsilenceAlert: unsilenceSecurityAlert,
+    openAlertEvents: openSecurityAlertEvents,
+    toggleAlertEvents: toggleSecurityAlertEvents,
+    exportAlert: exportSecurityAlert,
+    loadMoreEvents: loadMoreSecurityEvents,
+  } = incidentOperations.actions
+  const {
+    selectAsset: selectMediaAsset,
+    reviewAsset: reviewMediaAsset,
+    retryAsset: retryMediaAsset,
+    loadMoreHistory: loadMoreMediaScanHistory,
+    acknowledgeAlert: acknowledgeScanAlert,
+    silenceAlert: silenceScanAlert,
+    unsilenceAlert: unsilenceScanAlert,
+    toggleAlertEvents: toggleScanAlertEvents,
+    sweepJobs: sweepMediaJobs,
+  } = mediaOperations.actions
+  const {
+    save: saveMediaGovernancePolicy,
+    commit: commitMediaGovernancePolicy,
+    rollback: rollbackMediaGovernancePolicy,
+    cancelSaveConfirmation: cancelMediaPolicySaveConfirmation,
+  } = governanceOperations.actions
+
   useEffect(() => {
     if (!deepLink) return
     const timer = window.setTimeout(() => {
@@ -1040,8 +1218,9 @@ export function AdminPage({
         setReviewQueueFilter(deepLink.queue)
       }
       if (deepLink.reviewId) {
-        setActiveTab('Task review')
+        setActiveTab('Submissions')
         setReviewQueueFilter(deepLink.queue ?? 'points')
+        setSelectedReviewId(deepLink.reviewId)
         setHighlightedReviewId(deepLink.reviewId)
       }
       if (deepLink.ledgerUserHandle) {
@@ -1067,18 +1246,7 @@ export function AdminPage({
       if (deepLink.securityAlertId) {
         setActiveTab('Security')
         setHighlightedSecurityAlertId(deepLink.securityAlertId)
-        setSelectedSecurityAlertId(deepLink.securityAlertId)
-        setSecurityAlertEvents([])
-        setSecurityAlertEventsError(null)
-        setLoadingSecurityAlertEvents(true)
-        void adminService.securityAlertEvents(deepLink.securityAlertId).then((events) => {
-          setSecurityAlertEvents(events)
-        }).catch((error) => {
-          console.info('[admin-service]', error)
-          setSecurityAlertEventsError(isZh ? '无法读取安全告警样本。' : 'Could not load security alert events.')
-        }).finally(() => {
-          setLoadingSecurityAlertEvents(false)
-        })
+        void openSecurityAlertEvents(deepLink.securityAlertId)
       }
       if (deepLink.observabilityAlertId) {
         setActiveTab('Observability')
@@ -1087,10 +1255,7 @@ export function AdminPage({
       if (deepLink.mediaAssetId) {
         setMediaSearch(deepLink.mediaAssetId)
         setHighlightedMediaAssetId(deepLink.mediaAssetId)
-        setMediaScanHistory([])
-        setMediaScanHistoryNextCursor(null)
-        setLoadingMoreMediaScanHistory(false)
-        setSelectedMediaAssetId(deepLink.mediaAssetId)
+        selectMediaAsset(deepLink.mediaAssetId)
       }
       if (deepLink.mediaStatus) {
         setMediaStatus(deepLink.mediaStatus)
@@ -1103,7 +1268,9 @@ export function AdminPage({
       onDeepLinkHandled?.()
     }, 0)
     return () => window.clearTimeout(timer)
-  }, [deepLink, isZh, onDeepLinkHandled, simulateAction])
+  }, [deepLink, isZh, onDeepLinkHandled, openSecurityAlertEvents, selectMediaAsset,
+    setAuditActionFilter, setAuditEvents, setAuditResourceTypeFilter, setExpandedAuditEventIds,
+    setMediaSearch, setMediaStatus, simulateAction])
 
   const formatAuditTime = (value: string) => {
     const date = new Date(value)
@@ -1399,10 +1566,6 @@ export function AdminPage({
     }
   }
 
-  const enabledLabel = (value: boolean) => value
-    ? textFor(t, 'configured', '已配置')
-    : textFor(t, 'not configured', '未配置')
-
   const focusMediaGovernanceAudit = () => {
     setAuditActionFilter('')
     setAuditResourceTypeFilter('media_governance_policy')
@@ -1420,11 +1583,11 @@ export function AdminPage({
   }
 
   const focusMediaGovernanceFromMetrics = () => {
-    setActiveTab('Task review')
+    setActiveTab('Security')
+    setSecurityWorkspace('media')
     setMediaStatus('all')
     setMediaPurpose(null)
     setMediaSearch('')
-    simulateAction(isZh ? '已定位到媒体治理和扫描归档区域。' : 'Focused media governance and scan archive controls.')
   }
 
   const writeScanArchiveFromMetrics = async () => {
@@ -1433,14 +1596,15 @@ export function AdminPage({
       const result = await mediaService.writeScanJobArchive({ limit: 100 })
       void operationsMetricsStatus.refresh()
       void auditStatus.refresh()
-      simulateAction(
-        isZh
+      setSecurityActionMessage({
+        kind: 'success',
+        text: isZh
           ? `扫描历史归档已写入：${result.storage?.storageKey ?? result.count}，候选 ${result.totalCandidates ?? result.count}`
           : `Scan history archive written: ${result.storage?.storageKey ?? result.count}, candidates ${result.totalCandidates ?? result.count}`,
-      )
+      })
     } catch (error) {
       console.info('[media-service]', error)
-      simulateAction(isZh ? '扫描历史归档写入失败。' : 'Could not write scan history archive.')
+      setSecurityActionMessage({ kind: 'error', text: isZh ? '扫描历史归档写入失败。' : 'Could not write scan history archive.' })
     } finally {
       setWritingScanArchive(false)
     }
@@ -1461,11 +1625,7 @@ export function AdminPage({
     try {
       const samples = await loadOperationSamples(key)
       setOperationsSamples(samples)
-      simulateAction(
-        isZh
-          ? `已读取${config.title}。`
-          : `Loaded ${config.title}.`,
-      )
+      setSecurityActionMessage({ kind: 'success', text: isZh ? `已读取${config.title}。` : `Loaded ${config.title}.` })
     } catch (error) {
       console.info('[admin-service]', error)
       setOperationsSamplesError(isZh ? '无法读取指标样本。' : 'Could not load metric samples.')
@@ -1479,18 +1639,16 @@ export function AdminPage({
     setExportingOperationsSnapshot(true)
     try {
       const json = await adminService.exportOperationsMetricsJson(operationsMetrics.window.minutes)
-      const blob = new Blob([json], { type: 'application/json;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `operations-metrics-${operationsMetrics.window.minutes}m-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
-      link.click()
-      URL.revokeObjectURL(url)
+      downloadTextArtifact({
+        content: json,
+        fileName: `operations-metrics-${operationsMetrics.window.minutes}m-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
+        mimeType: 'application/json;charset=utf-8',
+      })
       void auditStatus.refresh()
-      simulateAction(isZh ? '已导出运营指标快照。' : 'Exported operations metrics snapshot.')
+      setSecurityActionMessage({ kind: 'success', text: isZh ? '已导出运营指标快照。' : 'Exported operations metrics snapshot.' })
     } catch (error) {
       console.info('[admin-service]', error)
-      simulateAction(isZh ? '导出运营指标快照失败。' : 'Could not export operations metrics snapshot.')
+      setSecurityActionMessage({ kind: 'error', text: isZh ? '导出运营指标快照失败。' : 'Could not export operations metrics snapshot.' })
     } finally {
       setExportingOperationsSnapshot(false)
     }
@@ -1506,11 +1664,12 @@ export function AdminPage({
     if (nextWindow === operationsMetricsWindow) {
       void operationsMetricsStatus.refresh()
     }
-    simulateAction(
-      isZh
+    setSecurityActionMessage({
+      kind: 'success',
+      text: isZh
         ? `已切换到 ${nextWindow} 分钟运营指标窗口。`
         : `Opened the ${nextWindow} minute operations metrics window.`,
-    )
+    })
   }
 
   const focusAuditEvent = (eventId: string, resourceType = '') => {
@@ -1545,7 +1704,15 @@ export function AdminPage({
     setSecuritySeverityFilter('')
     setSecurityTypeFilter('')
     setSecurityNextCursor(null)
-    simulateAction(isZh ? '已清除安全事件筛选。' : 'Cleared security event filters.')
+    setSecurityActionMessage({ kind: 'success', text: isZh ? '已清除安全事件筛选。' : 'Cleared security event filters.' })
+  }
+
+  const filterSecurityEventsBySource = (source: string) => {
+    setSecuritySourceFilter(source)
+    setSecuritySeverityFilter('')
+    setSecurityTypeFilter('')
+    setSecurityNextCursor(null)
+    setSecurityActionMessage({ kind: 'success', text: isZh ? '已按告警来源筛选安全事件。' : 'Filtered security events by alert source.' })
   }
 
   const clearGenerationFilters = () => {
@@ -1567,92 +1734,36 @@ export function AdminPage({
     setGenerationBulkResult(null)
     setGenerationBulkConfirmation('')
     setGenerationDetailError(null)
-    simulateAction(isZh ? '已清除生成历史筛选。' : 'Cleared generation history filters.')
+    setGenerationActionMessage(null)
   }
 
-  const toggleGenerationSelection = (generationId: string) => {
-    setSelectedGenerationIds((current) => current.includes(generationId)
-      ? current.filter((id) => id !== generationId)
-      : current.length < 50 ? [...current, generationId] : current)
-    setGenerationBulkPreview(null)
-    setGenerationBulkResult(null)
-    setGenerationBulkConfirmation('')
+  const clearGenerationMetricsFilters = () => {
+    setGenerationMetricsWorkspace('')
+    setGenerationMetricsProviderId('')
+    setGenerationMetricsDateFrom('')
+    setGenerationMetricsDateTo('')
   }
 
-  const previewGenerationBulkAction = async () => {
-    if (!selectedGenerationIds.length || runningGenerationBulkAction) return
-    setRunningGenerationBulkAction(true)
-    setGenerationBulkResult(null)
-    setGenerationBulkConfirmation('')
-    try {
-      const preview = await adminService.previewCreativeGenerationBulkAction(generationBulkAction, selectedGenerationIds)
-      setGenerationBulkPreview(preview)
-      simulateAction(textFor(t, 'Bulk action preview is ready.', '批量操作预检已完成。'))
-    } catch (error) {
-      console.info('[admin-service]', error)
-      setGenerationBulkPreview(null)
-      simulateAction(error instanceof Error ? error.message : textFor(t, 'Bulk preview failed.', '批量预检失败。'))
-    } finally {
-      setRunningGenerationBulkAction(false)
-    }
-  }
-
-  const executeGenerationBulkAction = async () => {
-    if (!generationBulkPreview || runningGenerationBulkAction) return
-    setRunningGenerationBulkAction(true)
-    try {
-      const result = await adminService.executeCreativeGenerationBulkAction({
-        action: generationBulkPreview.action,
-        targetIds: selectedGenerationIds,
-        targetHash: generationBulkPreview.targetHash,
-        confirmationText: generationBulkConfirmation,
-        idempotencyKey: `admin-generation-bulk:${generationBulkPreview.action}:${Date.now()}`,
-        reasonCode: generationMutationReason || 'operator_requested',
-        note: generationMutationNote,
-      })
-      setGenerationBulkResult(result)
-      setGenerationBulkPreview(null)
-      setGenerationBulkConfirmation('')
-      setSelectedGenerationIds([])
-      await generationHistoryStatus.refresh()
-      simulateAction(textFor(t, 'Bulk generation action completed.', '批量生成操作已完成。'))
-    } catch (error) {
-      console.info('[admin-service]', error)
-      simulateAction(error instanceof Error ? error.message : textFor(t, 'Bulk action failed.', '批量操作失败。'))
-    } finally {
-      setRunningGenerationBulkAction(false)
-    }
-  }
-
-  const recoverGenerationExecution = async (executionId: string) => {
-    if (!canRequestGenerationRetries || recoveringGenerationExecutionId) return
-    setRecoveringGenerationExecutionId(executionId)
-    try {
-      await adminService.recoverCreativeGenerationExecution(executionId, generationRecoveryReason, generationRecoveryError)
-      await generationExecutionStatus.refresh()
-      simulateAction(textFor(t, 'Generation execution marked failed.', '生成执行已标记失败。'))
-    } catch (error) {
-      console.info('[admin-service]', error)
-      simulateAction(error instanceof Error ? error.message : textFor(t, 'Execution recovery failed.', '执行恢复失败。'))
-    } finally {
-      setRecoveringGenerationExecutionId(null)
-    }
+  const changeGenerationOperationsWorkspace = (workspace: GenerationOperationsWorkspace) => {
+    setGenerationActionMessage(null)
+    setGenerationOperationsWorkspace(workspace)
   }
 
   const exportGenerations = async () => {
     if (!canExportAudit || exportingGenerations) return
     setExportingGenerations(true)
+    setGenerationActionMessage(null)
     try {
       const csv = await adminService.exportCreativeGenerations(generationQuery, 'csv')
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
-      link.download = `creative-generations-${new Date().toISOString().slice(0, 10)}.csv`
-      link.click()
-      URL.revokeObjectURL(link.href)
-      simulateAction(isZh ? '已导出生成记录。' : 'Exported generation records.')
+      downloadTextArtifact({
+        content: csv,
+        fileName: `creative-generations-${new Date().toISOString().slice(0, 10)}.csv`,
+        mimeType: 'text/csv;charset=utf-8',
+      })
+      setGenerationActionMessage({ kind: 'success', text: isZh ? '已导出生成记录。' : 'Exported generation records.' })
     } catch (error) {
       console.info('[admin-service]', error)
-      simulateAction(isZh ? '导出生成记录失败。' : 'Could not export generation records.')
+      setGenerationActionMessage({ kind: 'error', text: isZh ? '导出生成记录失败。' : 'Could not export generation records.' })
     } finally {
       setExportingGenerations(false)
     }
@@ -1661,132 +1772,20 @@ export function AdminPage({
   const exportGenerationMetrics = async () => {
     if (!canExportAudit || exportingGenerationMetrics) return
     setExportingGenerationMetrics(true)
+    setGenerationActionMessage(null)
     try {
-      const csv = await adminService.exportCreativeGenerationBusinessMetrics(generationQuery, 'csv')
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
-      link.download = `creative-generation-metrics-${new Date().toISOString().slice(0, 10)}.csv`
-      link.click()
-      URL.revokeObjectURL(link.href)
-      simulateAction(isZh ? '已导出生成业务统计。' : 'Exported generation business metrics.')
+      const csv = await adminService.exportCreativeGenerationBusinessMetrics(generationMetricsQuery, 'csv')
+      downloadTextArtifact({
+        content: csv,
+        fileName: `creative-generation-metrics-${new Date().toISOString().slice(0, 10)}.csv`,
+        mimeType: 'text/csv;charset=utf-8',
+      })
+      setGenerationActionMessage({ kind: 'success', text: isZh ? '已导出生成业务统计。' : 'Exported generation business metrics.' })
     } catch (error) {
       console.info('[admin-service]', error)
-      simulateAction(isZh ? '导出生成业务统计失败。' : 'Could not export generation business metrics.')
+      setGenerationActionMessage({ kind: 'error', text: isZh ? '导出生成业务统计失败。' : 'Could not export generation business metrics.' })
     } finally {
       setExportingGenerationMetrics(false)
-    }
-  }
-
-  const loadMoreGenerations = async () => {
-    if (!generationNextCursor || loadingMoreGenerations || !canReadAudit) return
-    setLoadingMoreGenerations(true)
-    try {
-      const page = await adminService.creativeGenerations({
-        ...generationQuery,
-        cursor: generationNextCursor,
-      })
-      setGenerationRows((current) => [...current, ...page.items.filter((item) => !current.some((row) => row.id === item.id))])
-      setGenerationNextCursor(page.nextCursor)
-      simulateAction(isZh ? '已加载更多生成历史。' : 'Loaded more generation history.')
-    } catch (error) {
-      console.info('[admin-service]', error)
-      simulateAction(isZh ? '加载更多生成历史失败。' : 'Could not load more generation history.')
-    } finally {
-      setLoadingMoreGenerations(false)
-    }
-  }
-
-  const toggleGenerationDetail = async (generation: ApiCreativeGenerationRecord) => {
-    if (selectedGenerationId === generation.id) {
-      setSelectedGenerationId(null)
-      setSelectedGeneration(null)
-      setGenerationDetailError(null)
-      return
-    }
-    setSelectedGenerationId(generation.id)
-    setSelectedGeneration(generation)
-    setGenerationDetailError(null)
-    setLoadingGenerationDetail(true)
-    try {
-      const detail = await adminService.creativeGeneration(generation.id)
-      setSelectedGeneration(detail)
-      simulateAction(isZh ? '已读取生成历史详情。' : 'Loaded generation history detail.')
-    } catch (error) {
-      console.info('[admin-service]', error)
-      setGenerationDetailError(isZh ? '无法读取生成历史详情。' : 'Could not load generation detail.')
-    } finally {
-      setLoadingGenerationDetail(false)
-    }
-  }
-
-  const runGenerationMutation = async (action: 'cancel' | 'retry' | 'manual_replay') => {
-    if (!selectedGeneration || runningGenerationAction) return
-    setRunningGenerationAction(action)
-    setGenerationDetailError(null)
-    const request = {
-      idempotencyKey: `${action}:${selectedGeneration.id}:${Date.now()}`,
-      reasonCode: generationMutationReason || 'operator_requested',
-      note: generationMutationNote,
-    }
-    try {
-      if (action === 'cancel') {
-        await adminService.cancelCreativeGeneration(selectedGeneration.id, request)
-      } else if (action === 'retry') {
-        await adminService.requestCreativeGenerationRetry(selectedGeneration.id, request)
-      } else {
-        if (!selectedGeneration.providerId || !selectedGeneration.providerMode || !selectedGeneration.providerJobId) {
-          throw new Error('Provider replay identifiers are incomplete')
-        }
-        await adminService.requestCreativeGenerationManualReplay(selectedGeneration.id, {
-          ...request,
-          providerId: selectedGeneration.providerId,
-          providerMode: selectedGeneration.providerMode,
-          providerJobId: selectedGeneration.providerJobId,
-          normalizedStatus: generationReplayStatus,
-        })
-        await queueStatus.refresh()
-      }
-      const detail = await adminService.creativeGeneration(selectedGeneration.id)
-      setSelectedGeneration(detail)
-      setGenerationRows((rows) => rows.map((row) => row.id === detail.id ? detail : row))
-      simulateAction(action === 'cancel'
-        ? textFor(t, 'Generation cancelled.', '生成任务已取消。')
-        : action === 'retry'
-          ? textFor(t, 'Retry authorization created.', '已创建重试授权。')
-          : textFor(t, 'Manual replay sent to review.', '人工重放已提交复核。'))
-    } catch (error) {
-      console.info('[admin-service]', error)
-      setGenerationDetailError(error instanceof Error
-        ? error.message
-        : textFor(t, 'Generation action failed.', '生成任务操作失败。'))
-    } finally {
-      setRunningGenerationAction(null)
-    }
-  }
-
-  const runProviderControlAction = async (
-    resourceId: string,
-    version: number,
-    action: 'disable' | AdminProviderControlRecoveryTarget,
-  ) => {
-    const actionKey = `${resourceId}:${action}`
-    if (runningProviderControlAction) return
-    setRunningProviderControlAction(actionKey)
-    try {
-      if (action === 'disable') {
-        await adminService.disableProviderControl(resourceId, version, providerControlReason || 'operator_emergency_stop')
-        simulateAction(textFor(t, 'Provider dispatch disabled.', 'Provider 调用已停用。'))
-      } else {
-        await adminService.requestProviderControlRecovery(resourceId, action, version, providerControlReason || 'operator_recovery_requested')
-        await queueStatus.refresh()
-        simulateAction(textFor(t, 'Provider recovery sent to review.', 'Provider 恢复已提交复核。'))
-      }
-      await providerControlStatus.refresh()
-    } catch (error) {
-      console.info('[admin-service]', error)
-      simulateAction(error instanceof Error ? error.message : textFor(t, 'Provider control action failed.', 'Provider 控制操作失败。'))
-    } finally {
-      setRunningProviderControlAction(null)
     }
   }
 
@@ -1796,10 +1795,7 @@ export function AdminPage({
     setMediaPurpose(null)
     setMediaSearch(assetId)
     setHighlightedMediaAssetId(assetId)
-    setMediaScanHistory([])
-    setMediaScanHistoryNextCursor(null)
-    setLoadingMoreMediaScanHistory(false)
-    setSelectedMediaAssetId(assetId)
+    selectMediaAsset(assetId)
     simulateAction(isZh ? '已定位到生成输出媒体资产。' : 'Focused the generated media asset.')
   }
 
@@ -1815,128 +1811,19 @@ export function AdminPage({
     )
   }
 
-  const refreshSecurityPanel = async () => {
-    await Promise.all([securityAlertStatus.refresh(), securityStatus.refresh(), operationsMetricsStatus.refresh()])
-  }
-
-  const updateSecurityAlert = (updated: AdminSecurityAlertDto) => {
-    setSecurityAlerts((current) => current.map((item) => (item.id === updated.id ? updated : item)))
-    void auditStatus.refresh()
-    void operationsMetricsStatus.refresh()
-  }
-
-  const acknowledgeSecurityAlert = async (alert: AdminSecurityAlertDto) => {
-    setHandlingSecurityAlertId(alert.id)
-    try {
-      const updated = await adminService.acknowledgeSecurityAlert(
-        alert.id,
-        isZh ? '已在管理中心确认安全告警。' : 'Acknowledged from Admin Center.',
-      )
-      updateSecurityAlert(updated)
-      simulateAction(isZh ? `已确认安全告警：${alert.title}` : `Security alert acknowledged: ${alert.title}`)
-    } catch (error) {
-      console.info('[admin-service]', error)
-      simulateAction(isZh ? '安全告警确认失败。' : 'Could not acknowledge security alert.')
-    } finally {
-      setHandlingSecurityAlertId(null)
-    }
-  }
-
-  const silenceSecurityAlert = async (alert: AdminSecurityAlertDto) => {
-    setHandlingSecurityAlertId(alert.id)
-    try {
-      const until = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-      const updated = await adminService.silenceSecurityAlert(
-        alert.id,
-        until,
-        isZh ? '管理中心静默 24 小时。' : 'Silenced from Admin Center for 24 hours.',
-      )
-      updateSecurityAlert(updated)
-      simulateAction(isZh ? `已静默安全告警：${alert.title}` : `Security alert silenced: ${alert.title}`)
-    } catch (error) {
-      console.info('[admin-service]', error)
-      simulateAction(isZh ? '安全告警静默失败。' : 'Could not silence security alert.')
-    } finally {
-      setHandlingSecurityAlertId(null)
-    }
-  }
-
-  const unsilenceSecurityAlert = async (alert: AdminSecurityAlertDto) => {
-    setHandlingSecurityAlertId(alert.id)
-    try {
-      const updated = await adminService.unsilenceSecurityAlert(
-        alert.id,
-        isZh ? '管理中心解除静默。' : 'Unsilenced from Admin Center.',
-      )
-      updateSecurityAlert(updated)
-      simulateAction(isZh ? `已解除安全告警静默：${alert.title}` : `Security alert unsilenced: ${alert.title}`)
-    } catch (error) {
-      console.info('[admin-service]', error)
-      simulateAction(isZh ? '解除安全告警静默失败。' : 'Could not unsilence security alert.')
-    } finally {
-      setHandlingSecurityAlertId(null)
-    }
-  }
-
-  const toggleSecurityAlertEvents = async (alert: AdminSecurityAlertDto) => {
-    if (selectedSecurityAlertId === alert.id) {
-      setSelectedSecurityAlertId(null)
-      setSecurityAlertEvents([])
-      setSecurityAlertEventsError(null)
-      return
-    }
-    setSelectedSecurityAlertId(alert.id)
-    setSecurityAlertEvents([])
-    setSecurityAlertEventsError(null)
-    setLoadingSecurityAlertEvents(true)
-    try {
-      const events = await adminService.securityAlertEvents(alert.id)
-      setSecurityAlertEvents(events)
-    } catch (error) {
-      console.info('[admin-service]', error)
-      setSecurityAlertEventsError(isZh ? '无法读取安全告警样本。' : 'Could not load security alert events.')
-    } finally {
-      setLoadingSecurityAlertEvents(false)
-    }
-  }
-
-  const exportSecurityAlert = async (alert: AdminSecurityAlertDto) => {
-    setExportingSecurityAlertId(alert.id)
-    try {
-      const json = await adminService.exportSecurityAlertJson(alert.id)
-      const blob = new Blob([json], { type: 'application/json;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `security-alert-${alert.id}.json`
-      link.click()
-      URL.revokeObjectURL(url)
-      simulateAction(isZh ? `已导出安全告警：${alert.title}` : `Exported security alert: ${alert.title}`)
-    } catch (error) {
-      console.info('[admin-service]', error)
-      simulateAction(isZh ? '导出安全告警失败。' : 'Could not export security alert.')
-    } finally {
-      setExportingSecurityAlertId(null)
-    }
-  }
-
-  const loadMoreSecurityEvents = async () => {
-    if (!securityNextCursor || loadingMoreSecurityEvents || !canReadAudit) return
-    setLoadingMoreSecurityEvents(true)
-    try {
-      const page = await adminService.securityEvents({
-        ...securityQuery,
-        cursor: securityNextCursor,
-      })
-      setSecurityEvents((current) => [...current, ...page.events.filter((event) => !current.some((item) => item.id === event.id))])
-      setSecurityNextCursor(page.nextCursor)
-      simulateAction(isZh ? '已加载更多安全事件。' : 'Loaded more security events.')
-    } catch (error) {
-      console.info('[admin-service]', error)
-      simulateAction(isZh ? '加载更多安全事件失败。' : 'Could not load more security events.')
-    } finally {
-      setLoadingMoreSecurityEvents(false)
-    }
+  const beginSecurityOperation = (operation: PendingSecurityOperation) => {
+    setPendingSecurityOperation(operation)
+    setSecurityActionMessage(null)
+    setSecurityOperationCritical(false)
+    setSecurityOperationReason(
+      operation.kind === 'open-incident'
+        ? 'security_review_started'
+        : operation.kind === 'resolve-incident'
+          ? 'incident_contained'
+          : operation.kind === 'rollback-media-policy'
+            ? ''
+            : 'operator_24h_silence',
+    )
   }
 
   const copyAuditEventLink = async (event: AuditEvent) => {
@@ -1962,80 +1849,22 @@ export function AdminPage({
         },
       },
     }
-    const blob = new Blob([formatMetadataJson(payload)], { type: 'application/json;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `audit-event-${event.id}.json`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(url)
+    downloadTextArtifact({
+      content: formatMetadataJson(payload),
+      fileName: `audit-event-${event.id}.json`,
+      mimeType: 'application/json;charset=utf-8',
+    })
     simulateAction(isZh ? '已导出审计事件 JSON。' : 'Exported the audit event JSON.')
   }
 
   const setMediaPolicyDraftValue = (key: MediaPolicyDraftKey, value: string) => {
-    setConfirmingMediaPolicySave(false)
+    cancelMediaPolicySaveConfirmation()
     setMediaPolicyDraft((current) => ({ ...current, [key]: value }))
-  }
-
-  const commitMediaGovernancePolicy = async () => {
-    const patch = mediaPolicyPatchFromDraft(mediaPolicyDraft)
-    if (!patch) {
-      simulateAction(isZh ? '请填写有效的正整数策略值。' : 'Enter positive integer policy values.')
-      return
-    }
-    setSavingMediaPolicy(true)
-    setConfirmingMediaPolicySave(false)
-    try {
-      const updated = await mediaService.updateGovernancePolicy(patch)
-      setMediaGovernanceConfig(updated)
-      setMediaPolicyDraft(mediaPolicyDraftFromConfig(updated))
-      void mediaPolicyHistoryStatus.refresh()
-      void mediaScanAlertStatus.refresh()
-      void auditStatus.refresh()
-      simulateAction(isZh ? '已更新媒体治理策略。' : 'Updated media governance policy.')
-    } catch (error) {
-      console.info('[media-service]', error)
-      simulateAction(isZh ? '媒体治理策略保存失败。' : 'Could not save media governance policy.')
-    } finally {
-      setSavingMediaPolicy(false)
-    }
-  }
-
-  const saveMediaGovernancePolicy = async () => {
-    if (hasInvalidMediaPolicyDraft) {
-      simulateAction(isZh ? '请先修正无效的策略值。' : 'Fix invalid policy values before saving.')
-      return
-    }
-    if (highRiskMediaPolicyChanges.length > 0) {
-      setConfirmingMediaPolicySave(true)
-      simulateAction(isZh ? '请确认高风险媒体治理策略变更。' : 'Confirm high-risk media governance policy changes.')
-      return
-    }
-    await commitMediaGovernancePolicy()
-  }
-
-  const rollbackMediaGovernancePolicy = async (eventId: string) => {
-    setRollingBackMediaPolicy(eventId)
-    try {
-      const updated = await mediaService.rollbackGovernancePolicy(eventId)
-      setMediaGovernanceConfig(updated)
-      setMediaPolicyDraft(mediaPolicyDraftFromConfig(updated))
-      void mediaPolicyHistoryStatus.refresh()
-      void mediaScanAlertStatus.refresh()
-      void auditStatus.refresh()
-      simulateAction(isZh ? '已回滚媒体治理策略。' : 'Rolled back media governance policy.')
-    } catch (error) {
-      console.info('[media-service]', error)
-      simulateAction(isZh ? '媒体治理策略回滚失败。' : 'Could not roll back media governance policy.')
-    } finally {
-      setRollingBackMediaPolicy(null)
-    }
   }
 
   const reviewQueueItem = async (item: AdminReviewQueueItemDto, decision: AdminReviewDecision) => {
     setReviewingQueueItems((current) => ({ ...current, [item.id]: decision }))
+    setReviewActionMessage(null)
     try {
       const reviewed = await adminService.reviewQueueItem(
         item.id,
@@ -2056,14 +1885,15 @@ export function AdminPage({
         void auditStatus.refresh()
         void notificationStatus.refresh()
       }
-      simulateAction(
-        isZh
-          ? `已${decision === 'approve' ? '通过' : '驳回'}队列事项：${item.title}`
-          : `Queue item ${decision === 'approve' ? 'approved' : 'rejected'}: ${item.title}`,
-      )
+      setReviewActionMessage({
+        kind: 'success',
+        text: isZh
+          ? `已${decision === 'approve' ? '通过' : '驳回'}：${item.title}`
+          : `${decision === 'approve' ? 'Approved' : 'Rejected'}: ${item.title}`,
+      })
     } catch (error) {
       console.info('[admin-service]', error)
-      simulateAction(isZh ? `队列事项处理失败：${item.title}` : `Queue action failed: ${item.title}`)
+      setReviewActionMessage({ kind: 'error', text: isZh ? `处理失败：${item.title}` : `Action failed: ${item.title}` })
     } finally {
       setReviewingQueueItems((current) => {
         const next = { ...current }
@@ -2155,13 +1985,11 @@ export function AdminPage({
     setExportingLedger(true)
     try {
       const csv = await adminService.exportPointLedgerCsv({ ...ledgerQuery, limit: 100 })
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `points-ledger-${ledgerUserHandle || 'all'}.csv`
-      link.click()
-      URL.revokeObjectURL(url)
+      downloadTextArtifact({
+        content: csv,
+        fileName: `points-ledger-${ledgerUserHandle || 'all'}.csv`,
+        mimeType: 'text/csv;charset=utf-8',
+      })
       simulateAction(isZh ? '已导出积分账本 CSV。' : 'Exported points ledger CSV.')
     } catch (error) {
       console.info('[admin-service]', error)
@@ -2171,35 +1999,16 @@ export function AdminPage({
     }
   }
 
-  const scanAccounting = async () => {
-    if (!canScanAccounting || scanningAccounting) return
-    setScanningAccounting(true)
-    try {
-      const page = await adminService.scanAccountingReconciliation(accountingQuery)
-      setAccountingIssues(page.items)
-      setAccountingSummary(page.summary)
-      setAccountingGeneratedAt(page.generatedAt)
-      simulateAction(isZh ? `对账扫描完成：${page.summary.open} 个未解决问题。` : `Accounting scan complete: ${page.summary.open} open issue(s).`)
-    } catch (error) {
-      console.info('[admin-service]', error)
-      simulateAction(isZh ? '内部对账扫描失败。' : 'Internal accounting scan failed.')
-    } finally {
-      setScanningAccounting(false)
-    }
-  }
-
   const exportAccounting = async () => {
     if (!canReadAccounting || exportingAccounting) return
     setExportingAccounting(true)
     try {
       const json = await adminService.exportAccountingReconciliationJson({ ...accountingQuery, limit: 100 })
-      const blob = new Blob([json], { type: 'application/json;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `accounting-reconciliation-${new Date().toISOString().slice(0, 10)}.json`
-      link.click()
-      URL.revokeObjectURL(url)
+      downloadTextArtifact({
+        content: json,
+        fileName: `accounting-reconciliation-${new Date().toISOString().slice(0, 10)}.json`,
+        mimeType: 'application/json;charset=utf-8',
+      })
       simulateAction(isZh ? '已导出内部对账证据。' : 'Exported internal accounting evidence.')
     } catch (error) {
       console.info('[admin-service]', error)
@@ -2209,34 +2018,15 @@ export function AdminPage({
     }
   }
 
-  const previewBillingPolicy = async () => {
-    setPreviewingBillingPolicy(true)
-    try {
-      const roleLimits = Object.fromEntries(pointPolicyRoles.map((role) => [role, Number.parseInt(policyRoleLimits[role] ?? '0', 10)])) as PointAdjustmentPolicy['roleLimits']
-      const candidate: PointAdjustmentPolicy = {
-        roleLimits,
-        reasonCodes: policyReasonCodes.split(',').map((item) => item.trim()).filter(Boolean),
-        approvalTemplates: policyApprovalTemplates.split('\n').map((item) => item.trim()).filter(Boolean),
-      }
-      setBillingPreview(await adminService.previewBillingPointPolicy(candidate))
-    } catch (error) {
-      console.info('[admin-service]', error)
-      simulateAction(isZh ? '账务策略影响预览失败。' : 'Could not preview billing policy impact.')
-    } finally {
-      setPreviewingBillingPolicy(false)
-    }
-  }
-
   const exportBillingMetrics = async () => {
     setExportingBillingMetrics(true)
     try {
       const artifact = await adminService.exportBillingMetrics(billingMetricsQuery)
-      const url = URL.createObjectURL(new Blob([JSON.stringify(artifact, null, 2)], { type: 'application/json' }))
-      const link = document.createElement('a')
-      link.href = url
-      link.download = 'accounting-business-metrics.json'
-      link.click()
-      URL.revokeObjectURL(url)
+      downloadJsonArtifact({
+        value: artifact,
+        fileName: 'accounting-business-metrics.json',
+        mimeType: 'application/json',
+      })
     } catch (error) {
       console.info('[admin-service]', error)
       simulateAction(isZh ? '账务统计导出失败。' : 'Could not export accounting metrics.')
@@ -2248,76 +2038,27 @@ export function AdminPage({
   const exportPersonalBilling = async () => {
     try {
       const csv = await adminService.exportPersonalBillingCsv(ledgerUserHandle.trim(), { unit: billingUnitFilter, sourceType: billingSourceType || null, dateFrom: billingDateFrom || null, dateTo: billingDateTo || null, sort: 'desc' })
-      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `billing-${ledgerUserHandle.trim() || 'user'}.csv`
-      link.click()
-      URL.revokeObjectURL(url)
+      downloadTextArtifact({
+        content: csv,
+        fileName: `billing-${ledgerUserHandle.trim() || 'user'}.csv`,
+        mimeType: 'text/csv;charset=utf-8',
+      })
     } catch (error) {
       console.info('[admin-service]', error)
       simulateAction(isZh ? '用户账务导出失败。' : 'Could not export user billing ledger.')
     }
   }
 
-  const accountingIssueCanRepair = (issue: AdminAccountingIssueDto) =>
-    issue.status === 'open' && (
-      (issue.type === 'point_balance_drift' && issue.sourceType === 'internal_point_account') ||
-      (issue.type === 'quota_state_mismatch' && issue.sourceType === 'creative_quota_window')
-    )
-
-  const requestAccountingRepair = async (issue: AdminAccountingIssueDto) => {
-    if (!canRepairAccounting || requestingAccountingRepairId) return
-    setRequestingAccountingRepairId(issue.id)
-    try {
-      const result = await adminService.requestAccountingRepair(issue.id, {
-        repairKind: 'compensation',
-        reasonCode: issue.type === 'point_balance_drift' ? 'repair_balance_drift' : 'repair_missing_movement',
-        reason: `Compensate ${issue.issueKey} without rewriting historical accounting evidence.`,
-      })
-      setAccountingIssues((current) => current.map((item) => item.id === issue.id ? result.issue : item))
-      setAccountingSummary((current) => ({
-        ...current,
-        open: Math.max(0, current.open - 1),
-        repairPending: current.repairPending + 1,
-      }))
-      setQueueItems((current) => [result.review, ...current.filter((item) => item.id !== result.review.id)])
-      setReviewQueueFilter('accounting_reconciliation')
-      void queueStatus.refresh()
-      void auditStatus.refresh()
-      simulateAction(isZh ? '补偿申请已提交双人审批。' : 'Compensation request sent for dual review.')
-    } catch (error) {
-      console.info('[admin-service]', error)
-      simulateAction(error instanceof Error ? error.message : (isZh ? '补偿申请失败。' : 'Could not request compensation.'))
-    } finally {
-      setRequestingAccountingRepairId(null)
-    }
-  }
-
   const exportAuditEvents = async () => {
     setExportingAudit(true)
     try {
-      const json = await adminService.exportAuditJson({
-        action: auditActionFilter || null,
-        resourceType: auditResourceTypeFilter || null,
-        resourceId: auditResourceIdFilter || null,
-        actorType: auditActorTypeFilter === 'all' ? null : auditActorTypeFilter,
-        actorId: auditActorIdFilter || null,
-        dateFrom: auditDateFrom || null,
-        dateTo: auditDateTo || null,
-        direction: auditDirection,
-        limit: 100,
-      })
-      const blob = new Blob([json], { type: 'application/json;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
+      const json = await adminService.exportAuditJson({ ...auditQuery, limit: 100 })
       const filterName = [auditActionFilter, auditResourceTypeFilter].filter(Boolean).join('-') || 'all'
-      link.href = url
-      link.download = `audit-events-${filterName}.json`
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      URL.revokeObjectURL(url)
+      downloadTextArtifact({
+        content: json,
+        fileName: `audit-events-${filterName}.json`,
+        mimeType: 'application/json;charset=utf-8',
+      })
       simulateAction(isZh ? '已导出审计事件 JSON。' : 'Exported audit events JSON.')
     } catch (error) {
       console.info('[admin-service]', error)
@@ -2327,93 +2068,8 @@ export function AdminPage({
     }
   }
 
-  const verifyAuditIntegrity = async () => {
-    setVerifyingAudit(true)
-    try {
-      const result = await adminService.verifyAuditIntegrity()
-      setAuditIntegrity(result)
-      setAuditArchives(await adminService.auditArchives())
-      simulateAction(result.verified
-        ? (isZh ? '审计链完整。' : 'Audit chain is complete.')
-        : (isZh ? '审计链验证失败。' : 'Audit chain verification failed.'))
-    } catch (error) {
-      console.info('[admin-service]', error)
-      setAuditIntegrity({ status: 'unverifiable', verified: false, count: 0, rootHash: null, failures: [{ reason: 'request_failed' }] })
-      simulateAction(isZh ? '无法验证审计链。' : 'Could not verify the audit chain.')
-    } finally {
-      setVerifyingAudit(false)
-    }
-  }
-
-  const archiveAuditEvidence = async () => {
-    setArchivingAudit(true)
-    try {
-      const result = await adminService.archiveAudit()
-      setAuditIntegrity(result.integrity)
-      const manifest = result.manifest
-      if (manifest) setAuditArchives((current) => [manifest, ...current.filter((item) => item.id !== manifest.id)])
-      void auditStatus.refresh()
-      simulateAction(isZh ? '已创建不可变归档清单。' : 'Created immutable archive manifest.')
-    } catch (error) {
-      console.info('[admin-service]', error)
-      simulateAction(isZh ? '创建审计归档失败。' : 'Could not create audit archive.')
-    } finally {
-      setArchivingAudit(false)
-    }
-  }
-
-  const savePointPolicy = async () => {
-    const roleLimits = Object.fromEntries(pointPolicyRoles.map((role) => [role, Number.parseInt(policyRoleLimits[role] ?? '0', 10)])) as PointAdjustmentPolicy['roleLimits']
-    if (pointPolicyRoles.some((role) => !Number.isInteger(roleLimits[role]) || roleLimits[role] < 0)) {
-      simulateAction(isZh ? '请填写有效的角色额度。' : 'Enter valid role limits.')
-      return
-    }
-    const reasonCodes = policyReasonCodes.split(',').map((item) => item.trim()).filter(Boolean)
-    const approvalTemplates = policyApprovalTemplates.split('\n').map((item) => item.trim()).filter(Boolean)
-    if (reasonCodes.length === 0 || approvalTemplates.length === 0) {
-      simulateAction(isZh ? '请至少保留一个原因分类和审批模板。' : 'Keep at least one reason code and approval template.')
-      return
-    }
-    setSavingPointPolicy(true)
-    try {
-      const updated = await adminService.updatePointPolicy({ roleLimits, reasonCodes, approvalTemplates })
-      setPointPolicy(updated)
-      setPolicyRoleLimits(Object.fromEntries(pointPolicyRoles.map((role) => [role, String(updated.roleLimits[role] ?? 0)])))
-      setPolicyReasonCodes(updated.reasonCodes.join(', '))
-      setPolicyApprovalTemplates(updated.approvalTemplates.join('\n'))
-      void auditStatus.refresh()
-      void pointPolicyHistoryStatus.refresh()
-      simulateAction(isZh ? '已更新积分调整策略。' : 'Updated point adjustment policy.')
-    } catch (error) {
-      console.info('[admin-service]', error)
-      simulateAction(isZh ? '积分策略保存失败。' : 'Could not save point policy.')
-    } finally {
-      setSavingPointPolicy(false)
-    }
-  }
-
   const applyApprovalTemplate = (itemId: string, template: string) => {
     setReviewNotes((current) => ({ ...current, [itemId]: template }))
-  }
-
-  const rollbackPointPolicy = async (eventId: string) => {
-    setRollingBackPolicy(eventId)
-    try {
-      const updated = await adminService.rollbackPointPolicy(eventId)
-      setPointPolicy(updated)
-      setPolicyRoleLimits(Object.fromEntries(pointPolicyRoles.map((role) => [role, String(updated.roleLimits[role] ?? 0)])))
-      setPolicyReasonCodes(updated.reasonCodes.join(', '))
-      setPolicyApprovalTemplates(updated.approvalTemplates.join('\n'))
-      void pointPolicyHistoryStatus.refresh()
-      void auditStatus.refresh()
-      void notificationStatus.refresh()
-      simulateAction(isZh ? '已回滚积分调整策略。' : 'Rolled back point adjustment policy.')
-    } catch (error) {
-      console.info('[admin-service]', error)
-      simulateAction(isZh ? '积分策略回滚失败。' : 'Could not roll back point policy.')
-    } finally {
-      setRollingBackPolicy(null)
-    }
   }
 
   const markNotificationRead = async (notification: ApiNotification) => {
@@ -2432,207 +2088,100 @@ export function AdminPage({
     }
   }
 
-  const reviewMediaAsset = async (asset: ApiMediaAsset, decision: 'clean' | 'reject') => {
-    setReviewingMediaId(asset.id)
-    try {
-      const reviewed = await mediaService.reviewUpload(asset.id, {
-        decision,
-        note: decision === 'clean'
-          ? 'Manual review approved in Admin Center.'
-          : 'Manual review rejected in Admin Center.',
-      })
-      setMediaRows((current) => current.map((item) => (item.id === reviewed.id ? reviewed : item)))
-      void mediaReviewStatus.refresh()
-      if (selectedMediaAssetId === asset.id) {
-        void mediaScanHistoryStatus.refresh()
-      }
-      simulateAction(
-        isZh
-          ? `媒体资产已${decision === 'clean' ? '放行' : '拒绝'}：${asset.fileName}`
-          : `Media asset ${decision === 'clean' ? 'released' : 'rejected'}: ${asset.fileName}`,
-      )
-    } catch (error) {
-      console.info('[media-service]', error)
-      simulateAction(isZh ? '媒体审核操作失败。' : 'Media review action failed.')
-    } finally {
-      setReviewingMediaId(null)
-    }
-  }
+  const securityOperationBusy = pendingSecurityOperation
+    ? pendingSecurityOperation.kind === 'rollback-media-policy'
+      ? rollingBackMediaPolicy === pendingSecurityOperation.eventId
+      : pendingSecurityOperation.kind === 'silence-scan-alert'
+        ? handlingScanAlertId === pendingSecurityOperation.alert.id
+        : pendingSecurityOperation.kind === 'silence-security-alert'
+          ? handlingSecurityAlertId === pendingSecurityOperation.alert.id
+          : handlingSecurityIncidentId !== null
+    : false
 
-  const retryMediaAsset = async (asset: ApiMediaAsset) => {
-    setReviewingMediaId(asset.id)
-    try {
-      const retried = await mediaService.retryScan(asset.id)
-      setMediaRows((current) => current.map((item) => (item.id === retried.id ? retried : item)))
-      void mediaReviewStatus.refresh()
-      if (selectedMediaAssetId === asset.id) {
-        void mediaScanHistoryStatus.refresh()
-      }
-      simulateAction(isZh ? `媒体扫描已重新排队：${asset.fileName}` : `Media scan requeued: ${asset.fileName}`)
-    } catch (error) {
-      console.info('[media-service]', error)
-      simulateAction(isZh ? '媒体扫描重试失败。' : 'Media scan retry failed.')
-    } finally {
-      setReviewingMediaId(null)
-    }
-  }
-
-  const loadMoreMediaScanHistory = async () => {
-    if (!selectedMediaAssetId || !mediaScanHistoryNextCursor || loadingMoreMediaScanHistory) return
-    setLoadingMoreMediaScanHistory(true)
-    try {
-      const page = await mediaService.scanJobHistoryPage(selectedMediaAssetId, {
-        cursor: mediaScanHistoryNextCursor,
-        limit: mediaScanHistoryPageSize,
-      })
-      setMediaScanHistory((current) => {
-        const seen = new Set(current.map((item) => item.id))
-        return [...current, ...page.items.filter((item) => !seen.has(item.id))]
-      })
-      setMediaScanHistoryNextCursor(page.nextCursor)
-    } catch (error) {
-      console.info('[media-service]', error)
-      simulateAction(isZh ? '加载更多扫描历史失败。' : 'Could not load more scan history.')
-    } finally {
-      setLoadingMoreMediaScanHistory(false)
-    }
-  }
-
-  const updateScanAlert = (updated: ApiMediaScanAlert) => {
-    setMediaScanAlerts((current) => current.map((item) => (item.id === updated.id ? updated : item)))
-    void auditStatus.refresh()
-    void operationsMetricsStatus.refresh()
-  }
-
-  const acknowledgeScanAlert = async (alert: ApiMediaScanAlert) => {
-    setHandlingScanAlertId(alert.id)
-    try {
-      const updated = await mediaService.acknowledgeScanAlert(
-        alert.id,
-        isZh ? '已在管理中心确认告警。' : 'Acknowledged from Admin Center.',
-      )
-      updateScanAlert(updated)
-      simulateAction(isZh ? `已确认扫描告警：${alert.title}` : `Scanner alert acknowledged: ${alert.title}`)
-    } catch (error) {
-      console.info('[media-service]', error)
-      simulateAction(isZh ? '扫描告警确认失败。' : 'Could not acknowledge scanner alert.')
-    } finally {
-      setHandlingScanAlertId(null)
-    }
-  }
-
-  const silenceScanAlert = async (alert: ApiMediaScanAlert) => {
-    setHandlingScanAlertId(alert.id)
-    try {
-      const until = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-      const updated = await mediaService.silenceScanAlert(
-        alert.id,
-        until,
-        isZh ? '管理中心静默 24 小时。' : 'Silenced from Admin Center for 24 hours.',
-      )
-      updateScanAlert(updated)
-      simulateAction(isZh ? `已静默扫描告警：${alert.title}` : `Scanner alert silenced: ${alert.title}`)
-    } catch (error) {
-      console.info('[media-service]', error)
-      simulateAction(isZh ? '扫描告警静默失败。' : 'Could not silence scanner alert.')
-    } finally {
-      setHandlingScanAlertId(null)
-    }
-  }
-
-  const unsilenceScanAlert = async (alert: ApiMediaScanAlert) => {
-    setHandlingScanAlertId(alert.id)
-    try {
-      const updated = await mediaService.unsilenceScanAlert(
-        alert.id,
-        isZh ? '管理中心解除静默。' : 'Unsilenced from Admin Center.',
-      )
-      updateScanAlert(updated)
-      simulateAction(isZh ? `已解除扫描告警静默：${alert.title}` : `Scanner alert unsilenced: ${alert.title}`)
-    } catch (error) {
-      console.info('[media-service]', error)
-      simulateAction(isZh ? '解除扫描告警静默失败。' : 'Could not unsilence scanner alert.')
-    } finally {
-      setHandlingScanAlertId(null)
-    }
-  }
-
-  const toggleScanAlertEvents = async (alert: ApiMediaScanAlert) => {
-    if (selectedScanAlertId === alert.id) {
-      setSelectedScanAlertId(null)
-      setScanAlertEvents([])
-      setScanAlertEventsError(null)
-      return
-    }
-    setSelectedScanAlertId(alert.id)
-    setScanAlertEvents([])
-    setScanAlertEventsError(null)
-    setLoadingScanAlertEvents(true)
-    try {
-      const events = await mediaService.scanAlertEvents(alert.id)
-      setScanAlertEvents(events)
-    } catch (error) {
-      console.info('[media-service]', error)
-      setScanAlertEventsError(isZh ? '无法读取告警样本。' : 'Could not load alert events.')
-    } finally {
-      setLoadingScanAlertEvents(false)
-    }
-  }
-
-  const sweepMediaJobs = async () => {
-    setSweepingMediaJobs(true)
-    try {
-      const result = await mediaService.sweepScanJobs()
-      setMediaRows((current) => current.map((item) => result.items.find((updated) => updated.id === item.id) ?? item))
-      void mediaReviewStatus.refresh()
-      void mediaScanAlertStatus.refresh()
-      void operationsMetricsStatus.refresh()
-      const pruned = result.pruned ?? 0
-      simulateAction(
-        isZh
-          ? `媒体扫描巡检完成：检查 ${result.inspected}，重试 ${result.retried}，升级 ${result.failed}，清理历史 ${pruned}`
-          : `Media scan sweep completed: inspected ${result.inspected}, retried ${result.retried}, escalated ${result.failed}, pruned ${pruned}`,
-      )
-    } catch (error) {
-      console.info('[media-service]', error)
-      simulateAction(isZh ? '媒体扫描巡检失败。' : 'Media scan sweep failed.')
-    } finally {
-      setSweepingMediaJobs(false)
+  const confirmSecurityOperation = () => {
+    if (!pendingSecurityOperation) return
+    const reason = securityOperationReason.trim()
+    switch (pendingSecurityOperation.kind) {
+      case 'open-incident':
+        void createSecurityIncident(pendingSecurityOperation.event, reason, securityOperationCritical)
+        break
+      case 'resolve-incident':
+        void resolveSecurityIncident(pendingSecurityOperation.incident, reason)
+        break
+      case 'silence-security-alert':
+        void silenceSecurityAlert(pendingSecurityOperation.alert, reason)
+        break
+      case 'silence-scan-alert':
+        void silenceScanAlert(pendingSecurityOperation.alert, reason)
+        break
+      case 'rollback-media-policy':
+        void rollbackMediaGovernancePolicy(pendingSecurityOperation.eventId)
+        break
     }
   }
 
   return (
-    <div className="stack">
-      <SectionHeader
-        eyebrow={textFor(t, 'Operations', '运营')}
-        title={t.adminTitle}
-        action={
-          <button className="ghost-button" type="button" onClick={() => setPage('points')}>
-            <Trophy size={17} />
-            {textFor(t, 'Points ledger', '积分流水')}
-          </button>
-        }
-      />
-      <div className="chip-row admin-tabs">
-        {adminTabs.map((item) => (
-          <button
-            className={activeTab === item ? 'chip active' : 'chip'}
-            type="button"
-            key={item}
-            onClick={() => {
-              setActiveTab(item)
-              simulateAction(isZh ? `管理中心已切换：${adminTabLabels[item]}` : `Admin tab changed: ${item}`)
-            }}
-          >
-            {adminTabLabels[item]}
-          </button>
-        ))}
+    <div className="admin-center">
+      <div className="admin-center-header">
+        <SectionHeader
+          eyebrow={textFor(t, 'Operations', '运营')}
+          title={t.adminTitle}
+          action={
+            <button className="ghost-button" type="button" onClick={() => setPage('points')}>
+              <Trophy size={17} />
+              {textFor(t, 'Points ledger', '积分流水')}
+            </button>
+          }
+        />
       </div>
+      <div className="admin-center-layout">
+        <nav className="admin-section-rail" aria-label={textFor(t, 'Admin sections', '管理中心分区')} data-testid="admin-section-rail">
+          {adminTabGroups.map((group) => {
+            const GroupIcon = group.icon
+            return (
+              <div className="admin-section-group" data-active={group.id === activeAdminGroup.id ? 'true' : 'false'} key={group.id}>
+                <div className="admin-section-group-label">
+                  <GroupIcon size={14} aria-hidden="true" />
+                  <span>{group.label}</span>
+                </div>
+                <div className="admin-section-links">
+                  {group.tabs.map((item) => (
+                    <button
+                      className={activeTab === item ? 'admin-section-link active' : 'admin-section-link'}
+                      type="button"
+                      aria-current={activeTab === item ? 'page' : undefined}
+                      key={item}
+                      onClick={() => selectAdminTab(item)}
+                    >
+                      {adminTabLabels[item]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </nav>
+        <div className="admin-center-content">
+          <label className="admin-tab-select">
+            <span>{textFor(t, 'Current section', '当前分区')}</span>
+            <select aria-label={textFor(t, 'Current section', '当前分区')} value={activeTab} onChange={(event) => selectAdminTab(event.target.value)}>
+              {adminTabGroups.map((group) => (
+                <optgroup label={group.label} key={group.id}>
+                  {group.tabs.map((item) => <option value={item} key={item}>{adminTabLabels[item]}</option>)}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+          <header className="admin-current-section-header" data-testid="admin-current-section">
+            <span>{activeAdminGroup.label}</span>
+            <h2>{adminTabLabels[activeTab]}</h2>
+            <p>{adminTabDescriptions[activeTab]}</p>
+          </header>
+      <Suspense fallback={<div className="route-loading" role="status" aria-live="polite"><span className="status-dot loading" aria-hidden="true" />{textFor(t, 'Loading section', '正在加载分区')}</div>}>
       {activeTab === 'Observability' && (
         <ObservabilityPanel
           hasPermission={account.hasPermission}
           isZh={isZh}
-          notify={(message) => simulateAction(message)}
           initialAlertId={observabilityAlertId}
           onInitialAlertHandled={clearObservabilityAlertId}
         />
@@ -2642,12 +2191,10 @@ export function AdminPage({
           <SystemSettingsPanel
             hasPermission={account.hasPermission}
             isZh={isZh}
-            notify={(message) => simulateAction(message)}
           />
           <ConfigurationResourcesPanel
             hasPermission={account.hasPermission}
             isZh={isZh}
-            notify={(message) => simulateAction(message)}
           />
         </div>
       )}
@@ -2655,63 +2202,58 @@ export function AdminPage({
         <ModelControlPanel
           hasPermission={account.hasPermission}
           isZh={isZh}
-          notify={(message) => simulateAction(message)}
         />
       )}
-      {activeTab === 'Users' && (
+      {(activeTab === 'Users' || activeTab === 'Tags') && (
         <div className="admin-settings-stack">
           <UserAdminPanel
             t={t}
             canRead={account.hasPermission('admin:users:read')}
             canManage={account.hasPermission('admin:users:manage')}
-            notify={(message) => simulateAction(message)}
           />
-          <DataRightsAdminPanel
-            isZh={isZh}
-            canRead={account.hasPermission('admin:data-rights:read')}
-            canManage={account.hasPermission('admin:data-rights:manage')}
-            notify={(message) => simulateAction(message)}
-          />
+          {activeTab === 'Users' && (
+            <DataRightsAdminPanel
+              isZh={isZh}
+              canRead={account.hasPermission('admin:data-rights:read')}
+              canManage={account.hasPermission('admin:data-rights:manage')}
+            />
+          )}
         </div>
       )}
       {activeTab === 'Notifications' && (
         <NotificationAdminPanel
           hasPermission={account.hasPermission}
           isZh={isZh}
-          notify={(message) => simulateAction(message)}
         />
       )}
       {activeTab === 'Support' && (
-        <SupportAdminPanel isZh={isZh} canRead={account.hasPermission('admin:support:read')} canManage={account.hasPermission('admin:support:manage')} notify={(message) => simulateAction(message)} />
+        <SupportAdminPanel isZh={isZh} canRead={account.hasPermission('admin:support:read')} canManage={account.hasPermission('admin:support:manage')} />
       )}
       {activeTab === 'Trust & Safety' && (
-        <div className="admin-settings-stack">
-          <RiskAdminPanel
-            t={t}
-            canRead={account.hasPermission('admin:risk:read')}
-            canManage={account.hasPermission('admin:risk:manage')}
-            canExport={account.hasPermission('admin:risk:export')}
-            notify={(message) => simulateAction(message)}
-          />
-          <TrustSafetyAdminPanel hasPermission={account.hasPermission} isZh={isZh} notify={(message) => simulateAction(message)} />
-        </div>
+        <TrustSafetyWorkspace t={t} hasPermission={account.hasPermission} isZh={isZh} />
       )}
-      {activeTab !== 'Settings' && activeTab !== 'AI config' && activeTab !== 'Users' && activeTab !== 'Notifications' && activeTab !== 'Support' && activeTab !== 'Trust & Safety' && <>
-      <AdminOverviewPanel t={t} target={overviewTarget} />
-      <ReleaseControlPanel
-        hasPermission={account.hasPermission}
-        isZh={isZh}
-        notify={(message) => simulateAction(message)}
-      />
+      {activeTab === 'Overview' && <AdminOverviewPanel t={t} target={overviewTarget} />}
+      {activeTab === 'Release' && (
+        <ReleaseControlPanel
+          hasPermission={account.hasPermission}
+          isZh={isZh}
+        />
+      )}
       {activeTab === 'Task review' && (
         <TaskAdminPanel
           hasPermission={account.hasPermission}
           isZh={isZh}
-          notify={(message) => simulateAction(message)}
         />
       )}
       {activeTab === 'Community' && (
-        <CommunityAdminPanel hasPermission={account.hasPermission} isZh={isZh} notify={(message) => simulateAction(message)} />
+        <CommunityAdminPanel hasPermission={account.hasPermission} isZh={isZh} />
+      )}
+      {activeTab === 'Inspiration' && (
+        <InspirationAdminPanel
+          isZh={isZh}
+          canRead={account.hasPermission('admin:inspiration:read')}
+          canManage={account.hasPermission('admin:inspiration:manage')}
+        />
       )}
       {activeTab === 'Access' && (
         <div className="admin-settings-stack">
@@ -2719,25 +2261,21 @@ export function AdminPage({
             t={t}
             canRead={account.hasPermission('admin:auth:read')}
             canManage={account.hasPermission('admin:auth:manage')}
-            notify={(message) => simulateAction(message)}
           />
           <OAuthAdminPanel
             t={t}
             canRead={account.hasPermission('admin:auth:read')}
             canManage={account.hasPermission('admin:auth:manage')}
-            notify={(message) => simulateAction(message)}
           />
           <DeveloperAccessAdminPanel
             t={t}
             canRead={account.hasPermission('admin:developer:read')}
             canManage={account.hasPermission('admin:developer:manage')}
-            notify={(message) => simulateAction(message)}
           />
           <WebhookAdminPanel
             t={t}
             canRead={account.hasPermission('admin:webhooks:read')}
             canManage={account.hasPermission('admin:webhooks:manage')}
-            notify={(message) => simulateAction(message)}
           />
         </div>
       )}
@@ -2745,10 +2283,10 @@ export function AdminPage({
         <EntitlementAdminPanel
           hasPermission={account.hasPermission}
           isZh={isZh}
-          notify={(message) => simulateAction(message)}
         />
       )}
-      <section className="panel">
+      </Suspense>
+      <section className="panel" hidden={activeTab !== 'Notifications'}>
         <SectionHeader
           eyebrow={textFor(t, 'Notifications', '通知')}
           title={textFor(t, `Reminders ${notifications.length}`, `提醒 ${notifications.length}`)}
@@ -2817,7 +2355,7 @@ export function AdminPage({
           emptyBody={textFor(t, 'Point approvals and policy changes will appear here.', '积分审批和策略变更会出现在这里。')}
         />
       </section>
-      <section className="panel">
+      <section className="panel" hidden={activeTab !== 'Access'}>
         <SectionHeader
           eyebrow={textFor(t, 'Access', '权限')}
           title={textFor(t, 'Role permission matrix', '角色权限矩阵')}
@@ -2912,576 +2450,109 @@ export function AdminPage({
           ))}
         </div>
       </section>
-      <section className="panel admin-media-governance-panel">
-        <SectionHeader
-          eyebrow={textFor(t, 'Media governance', '媒体治理')}
-          title={textFor(t, 'Upload review queue', '上传审核队列')}
-          action={
-            <>
-              <button className="ghost-button" type="button" onClick={() => void mediaReviewStatus.refresh()} disabled={!canReadQueues}>
-                {textFor(t, 'Refresh', '刷新')}
-              </button>
-              <button className="ghost-button" type="button" onClick={() => void sweepMediaJobs()} disabled={!canReadQueues || sweepingMediaJobs}>
-                {sweepingMediaJobs ? textFor(t, 'Sweeping', '巡检中') : textFor(t, 'Sweep jobs', '扫描任务巡检')}
-              </button>
-            </>
-          }
-        />
-        <AdminMediaLifecyclePanel t={t} canRead={canReadMedia} canReview={canManageMedia} canExport={canExportMedia}/>
-        <div className="admin-detail-panel">
-          <div>
-            <strong>{textFor(t, 'Governance config', '治理配置')}</strong>
-            <button className="ghost-button" type="button" onClick={() => void mediaGovernanceConfigStatus.refresh()} disabled={!canReadQueues || mediaGovernanceConfigStatus.loading}>
-              {mediaGovernanceConfigStatus.loading ? textFor(t, 'Loading', '加载中') : textFor(t, 'Refresh', '刷新')}
-            </button>
-          </div>
-          {mediaGovernanceConfigStatus.error && (
-            <p>{mediaGovernanceConfigStatus.error}</p>
-          )}
-          {!mediaGovernanceConfigStatus.error && mediaGovernanceConfig && (
-            <>
-              <div className="button-row compact-buttons">
-                <button className="ghost-button small" type="button" onClick={focusMediaGovernanceAudit} disabled={!canReadAudit}>
-                  {textFor(t, 'View policy audit', '查看策略审计')}
-                </button>
-              </div>
-              <div className="governance-config-grid">
-                <div>
-                  <strong>{mediaGovernanceConfig.storage.driver}</strong>
-                  <span>{textFor(t, 'Storage driver', '存储驱动')}</span>
-                </div>
-                <div>
-                  <strong>{enabledLabel(mediaGovernanceConfig.storage.privateDownloadConfigured)}</strong>
-                  <span>{textFor(t, 'Private CDN', '私有 CDN')} · {mediaGovernanceConfig.storage.downloadTtlSeconds}s</span>
-                </div>
-                <div>
-                  <strong>{enabledLabel(mediaGovernanceConfig.storage.cleanupWorkerEnabled)}</strong>
-                  <span>{textFor(t, 'Object cleanup', '对象清理')} · {mediaGovernanceConfig.storage.cleanupWorkerIntervalSeconds}s · {mediaGovernanceConfig.storage.cleanupBatchSize}/{textFor(t, 'run', '次')}</span>
-                </div>
-                <div>
-                  <strong>{mediaGovernanceConfig.scanner.provider}</strong>
-                  <span>
-                    {textFor(t, 'Scanner provider', '扫描提供方')} · {mediaGovernanceConfig.scanner.requestAdapter}
-                  </span>
-                </div>
-                <div>
-                  <strong>{enabledLabel(mediaGovernanceConfig.scanner.requestDispatchConfigured)}</strong>
-                  <span>
-                    {textFor(t, 'Dispatch', '派发')} · {mediaGovernanceConfig.scanner.requestTimeoutSeconds}s · {enabledLabel(mediaGovernanceConfig.scanner.requestSigningConfigured)}
-                  </span>
-                </div>
-                <div>
-                  <strong>{enabledLabel(mediaGovernanceConfig.scanner.callbackSignatureConfigured)}</strong>
-                  <span>
-                    {textFor(t, 'Callback signature', '回调签名')} · {mediaGovernanceConfig.scanner.callbackSignatureToleranceSeconds}s
-                  </span>
-                </div>
-                <div>
-                  <strong>{mediaGovernanceConfig.scanner.timeoutSeconds}s</strong>
-                  <span>
-                    {textFor(t, 'Scan timeout', '扫描超时')} · {textFor(t, 'attempts', '尝试')} {mediaGovernanceConfig.scanner.maxAttempts}
-                  </span>
-                </div>
-                <div>
-                  <strong>{enabledLabel(mediaGovernanceConfig.scanner.workerEnabled)}</strong>
-                  <span>
-                    {textFor(t, 'Sweep worker', '巡检 Worker')} · {mediaGovernanceConfig.scanner.workerIntervalSeconds}s
-                  </span>
-                </div>
-                <div>
-                  <strong>{mediaGovernanceConfig.retention.historyRetentionDays}d</strong>
-                  <span>
-                    {textFor(t, 'History retention', '历史保留')} · {mediaGovernanceConfig.retention.historyRetentionMaxPerAsset}/{textFor(t, 'asset', '资产')}
-                  </span>
-                </div>
-                <div>
-                  <strong>{mediaGovernanceConfig.alerts.windowMinutes}m</strong>
-                  <span>
-                    {textFor(t, 'Alert window', '告警窗口')} · {mediaGovernanceConfig.alerts.thresholds.callbackDenied}/{mediaGovernanceConfig.alerts.thresholds.dispatchFailed}/{mediaGovernanceConfig.alerts.thresholds.timeout}/{mediaGovernanceConfig.alerts.thresholds.alertDeliveryFailed}
-                  </span>
-                </div>
-                <div>
-                  <strong>
-                    {[
-                      mediaGovernanceConfig.alerts.channels.webhook.configured ? 'webhook' : null,
-                      mediaGovernanceConfig.alerts.channels.slack.configured ? 'slack' : null,
-                      mediaGovernanceConfig.alerts.channels.email.configured ? 'email' : null,
-                    ].filter(Boolean).join(', ') || textFor(t, 'none', '无')}
-                  </strong>
-                  <span>
-                    {textFor(t, 'External alert channels', '外部告警通道')} · {textFor(t, 'email recipients', '邮件收件人')} {mediaGovernanceConfig.alerts.channels.email.recipientCount}
-                  </span>
-                </div>
-              </div>
-              <div className="governance-policy-form">
-                {[
-                  ['retryDelaySeconds', textFor(t, 'Retry delay seconds', '重试延迟秒')],
-                  ['timeoutSeconds', textFor(t, 'Scan timeout seconds', '扫描超时秒')],
-                  ['maxAttempts', textFor(t, 'Max attempts', '最大尝试')],
-                  ['workerIntervalSeconds', textFor(t, 'Worker interval seconds', 'Worker 间隔秒')],
-                  ['historyRetentionDays', textFor(t, 'Retention days', '保留天数')],
-                  ['historyRetentionMaxPerAsset', textFor(t, 'Max history per asset', '单资产历史上限')],
-                  ['storageCleanupRetentionDays', textFor(t, 'Object cleanup retention days', '对象清理保留天数')],
-                  ['windowMinutes', textFor(t, 'Alert window minutes', '告警窗口分钟')],
-                  ['callbackDenied', textFor(t, 'Callback denied threshold', '回调拒绝阈值')],
-                  ['dispatchFailed', textFor(t, 'Dispatch failed threshold', '派发失败阈值')],
-                  ['timeoutThreshold', textFor(t, 'Timeout threshold', '超时阈值')],
-                  ['alertDeliveryFailed', textFor(t, 'Alert delivery failed threshold', '告警投递失败阈值')],
-                ].map(([key, label]) => (
-                  <label key={key}>
-                    <span>{label}</span>
-                    <input
-                      min="1"
-                      type="number"
-                      value={mediaPolicyDraft[key as MediaPolicyDraftKey]}
-                      onChange={(event) => setMediaPolicyDraftValue(key as MediaPolicyDraftKey, event.target.value)}
-                      disabled={!canManagePermissions || savingMediaPolicy}
-                    />
-                  </label>
-                ))}
-                <button
-                  className="primary-button"
-                  type="button"
-                  onClick={() => void saveMediaGovernancePolicy()}
-                  disabled={!canManagePermissions || savingMediaPolicy || hasInvalidMediaPolicyDraft}
-                >
-                  {savingMediaPolicy ? textFor(t, 'Saving policy', '保存策略中') : textFor(t, 'Save policy', '保存策略')}
-                </button>
-              </div>
-              <div className="policy-impact-preview">
-                <div className="policy-impact-header">
-                  <strong>{textFor(t, 'Pending runtime impact', '待保存运行影响')}</strong>
-                  <span>
-                    {mediaPolicyImpactPreview.length === 0
-                      ? textFor(t, 'No pending changes', '暂无待保存变更')
-                      : textFor(t, `${mediaPolicyImpactPreview.length} pending item${mediaPolicyImpactPreview.length === 1 ? '' : 's'}`, `${mediaPolicyImpactPreview.length} 项待处理`)}
-                  </span>
-                </div>
-                {mediaPolicyImpactPreview.length === 0 && (
-                  <span>{textFor(t, 'Current draft matches the active media governance policy.', '当前草稿与生效的媒体治理策略一致。')}</span>
-                )}
-                {mediaPolicyImpactPreview.map((item) => (
-                  <div className={item.status === 'invalid' ? 'policy-impact-row invalid' : 'policy-impact-row'} key={item.key}>
-                    <div>
-                      <strong>{textFor(t, item.en, item.zh)}</strong>
-                      <span>{item.from} -&gt; {item.to || textFor(t, 'empty', '空值')}</span>
-                    </div>
-                    <span>{textFor(t, item.impactEn, item.impactZh)}</span>
-                  </div>
-                ))}
-              </div>
-              {confirmingMediaPolicySave && highRiskMediaPolicyChanges.length > 0 && (
-                <div className="policy-save-confirmation" role="alert">
-                  <div className="policy-impact-header">
-                    <strong>{textFor(t, 'Confirm high-risk changes', '确认高风险变更')}</strong>
-                    <span>{textFor(t, 'Review these operational impacts before saving.', '保存前请复核这些运营影响。')}</span>
-                  </div>
-                  {highRiskMediaPolicyChanges.map((item) => (
-                    <div className="policy-impact-row warning" key={item.key}>
-                      <div>
-                        <strong>{textFor(t, item.en, item.zh)}</strong>
-                        <span>{item.from} -&gt; {item.to}</span>
-                      </div>
-                      <span>{textFor(t, item.riskEn, item.riskZh)}</span>
-                    </div>
-                  ))}
-                  <div className="button-row compact-buttons">
-                    <button className="ghost-button small" type="button" onClick={() => setConfirmingMediaPolicySave(false)} disabled={savingMediaPolicy}>
-                      {textFor(t, 'Cancel', '取消')}
-                    </button>
-                    <button className="primary-button small" type="button" onClick={() => void commitMediaGovernancePolicy()} disabled={savingMediaPolicy}>
-                      {savingMediaPolicy ? textFor(t, 'Saving', '保存中') : textFor(t, 'Confirm save', '确认保存')}
-                    </button>
-                  </div>
-                </div>
-              )}
-              <div className="policy-history">
-                <div className="policy-history-header">
-                  <strong>{textFor(t, 'Governance policy history', '治理策略历史')}</strong>
-                  <button className="ghost-button small" type="button" onClick={() => void mediaPolicyHistoryStatus.refresh()} disabled={!canReadQueues}>
-                    {textFor(t, 'Refresh', '刷新')}
-                  </button>
-                </div>
-                {mediaPolicyHistoryStatus.loading && (
-                  <span>{textFor(t, 'Loading policy history', '正在加载策略历史')}</span>
-                )}
-                {!mediaPolicyHistoryStatus.loading && mediaPolicyHistoryStatus.error && (
-                  <span>{mediaPolicyHistoryStatus.error}</span>
-                )}
-                {!mediaPolicyHistoryStatus.loading && !mediaPolicyHistoryStatus.error && mediaPolicyHistory.length === 0 && (
-                  <span>{textFor(t, 'No governance policy changes yet', '暂无治理策略变更')}</span>
-                )}
-                {!mediaPolicyHistoryStatus.loading && !mediaPolicyHistoryStatus.error && mediaPolicyHistory.map((event) => {
-                  const diffRows = mediaGovernanceDiffRows(event.diff)
-                  const expanded = Boolean(expandedMediaPolicyEventIds[event.id])
-                  return (
-                    <div className="policy-history-entry" key={event.id}>
-                      <div className="policy-history-row">
-                        <div>
-                          <strong>{event.action.replace('media.governance_policy.', '')}</strong>
-                          <span>{event.summary}</span>
-                          <small>{event.actorId ?? 'system'} · {formatAuditTime(event.createdAt)}</small>
-                        </div>
-                        <div className="button-row compact-buttons">
-                          <button
-                            className="ghost-button small"
-                            type="button"
-                            onClick={() => setExpandedMediaPolicyEventIds((current) => ({ ...current, [event.id]: !expanded }))}
-                            disabled={diffRows.length === 0}
-                          >
-                            {expanded ? textFor(t, 'Hide diff', '收起差异') : textFor(t, 'View diff', '查看差异')}
-                          </button>
-                          <button
-                            className="ghost-button small"
-                            type="button"
-                            onClick={() => focusAuditEvent(event.id, 'media_governance_policy')}
-                            disabled={!canReadAudit}
-                          >
-                            {textFor(t, 'Audit', '审计')}
-                          </button>
-                          <button
-                            className="ghost-button small"
-                            type="button"
-                            onClick={() => void rollbackMediaGovernancePolicy(event.id)}
-                            disabled={!canManagePermissions || !event.previous || rollingBackMediaPolicy === event.id}
-                          >
-                            {rollingBackMediaPolicy === event.id ? textFor(t, 'Rolling back', '回滚中') : textFor(t, 'Rollback', '回滚')}
-                          </button>
-                        </div>
-                      </div>
-                      {expanded && (
-                        <div className="policy-diff-grid">
-                          {diffRows.length === 0 && (
-                            <span>{textFor(t, 'No material field changes', '无实质字段变化')}</span>
-                          )}
-                          {diffRows.map((row) => (
-                            <div className="policy-diff-row" key={row.key}>
-                              <strong>{textFor(t, row.en, row.zh)}</strong>
-                              <span>{row.from}</span>
-                              <span aria-hidden="true">-&gt;</span>
-                              <span>{row.to}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </>
-          )}
-        </div>
-        <div className="permission-summary">
-          <label>
-            <span>{textFor(t, 'Scan status', '扫描状态')}</span>
-            <select
-              aria-label={textFor(t, 'Media scan status', '媒体扫描状态')}
-              value={mediaStatus}
-              onChange={(event) => setMediaStatus(event.target.value as NonNullable<MediaReviewQueueQuery['status']>)}
-            >
-              {mediaReviewStatuses.map((status) => (
-                <option value={status} key={status}>{status}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>{textFor(t, 'Purpose', '用途')}</span>
-            <select
-              aria-label={textFor(t, 'Media purpose', '媒体用途')}
-              value={mediaPurpose ?? ''}
-              onChange={(event) => setMediaPurpose(event.target.value ? event.target.value as MediaAssetPurpose : null)}
-            >
-              <option value="">{textFor(t, 'All purposes', '全部用途')}</option>
-              {mediaPurposes.map((purpose) => (
-                <option value={purpose} key={purpose}>{purpose}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>{textFor(t, 'Search', '搜索')}</span>
-            <input
-              aria-label={textFor(t, 'Search media queue', '搜索媒体队列')}
-              value={mediaSearch}
-              onChange={(event) => setMediaSearch(event.target.value)}
-              placeholder={textFor(t, 'Filename, type, owner', '文件名、类型、所有者')}
+      {activeTab === 'Security' && (
+        <>
+          <SecurityWorkspaceNavigation
+            t={t}
+            workspace={securityWorkspace}
+            onChange={(workspace) => {
+              setSecurityWorkspace(workspace)
+              setPendingSecurityOperation(null)
+              setSecurityActionMessage(null)
+            }}
+          />
+          <AdminActionFeedback message={securityActionMessage} />
+          {pendingSecurityOperation && (
+            <SecurityOperationConfirmation
+              t={t}
+              operation={pendingSecurityOperation}
+              reason={securityOperationReason}
+              criticalConfirmed={securityOperationCritical}
+              busy={securityOperationBusy}
+              onReasonChange={setSecurityOperationReason}
+              onCriticalChange={setSecurityOperationCritical}
+              onConfirm={confirmSecurityOperation}
+              onCancel={() => setPendingSecurityOperation(null)}
             />
-          </label>
-        </div>
-        <div className="admin-table">
-          {mediaReviewStatus.loading && (
-            <div className="empty-state">
-              <strong>{textFor(t, 'Loading media queue', '正在加载媒体队列')}</strong>
-              <span>{textFor(t, 'Reading scan and quarantine candidates.', '正在读取扫描与隔离候选项。')}</span>
-            </div>
           )}
-          {!mediaReviewStatus.loading && mediaReviewStatus.error && (
-            <div className="empty-state">
-              <strong>{textFor(t, 'Media queue unavailable', '媒体队列暂不可用')}</strong>
-              <span>{mediaReviewStatus.error}</span>
-            </div>
-          )}
-          {!mediaReviewStatus.loading && !mediaReviewStatus.error && mediaRows.length === 0 && (
-            <div className="empty-state">
-              <strong>{textFor(t, 'No media assets', '暂无媒体资产')}</strong>
-              <span>{textFor(t, 'Try another scan status, purpose, or search term.', '尝试其他扫描状态、用途或搜索词。')}</span>
-            </div>
-          )}
-          {!mediaReviewStatus.loading && !mediaReviewStatus.error && mediaRows.map((asset) => {
-            const security = asset.metadata && typeof asset.metadata === 'object' && !Array.isArray(asset.metadata)
-              ? (asset.metadata as { security?: Record<string, unknown> }).security ?? {}
-              : {}
-            const scanStatus = String(security.scanStatus ?? 'pending')
-            const scanJobStatus = String(security.scanJobStatus ?? '')
-            return (
-              <div className={highlightedMediaAssetId === asset.id ? 'admin-row deep-linked' : 'admin-row'} key={asset.id}>
-                <StatusBadge status={scanStatus} t={t} />
-                <strong>{asset.fileName}</strong>
-                <span>{asset.purpose}</span>
-                <small>
-                  {asset.contentType} · {asset.sizeBytes} bytes · {String(security.scanProvider ?? 'manual')}
-                  {scanJobStatus ? ` · ${scanJobStatus}` : ''}
-                  {security.scanAttempts ? ` · ${textFor(t, 'attempts', '尝试')} ${String(security.scanAttempts)}` : ''}
-                  {security.scanTimeoutAt ? ` · ${textFor(t, 'timeout', '超时')} ${String(security.scanTimeoutAt).slice(0, 16)}` : ''}
-                  {security.rejectionReason ? ` · ${String(security.rejectionReason)}` : ''}
-                  {security.scanDispatchStatus ? ` · dispatch ${String(security.scanDispatchStatus)}` : ''}
-                </small>
-                <div className="button-row">
-                  <button
-                    className={selectedMediaAssetId === asset.id ? 'ghost-button active' : 'ghost-button'}
-                    type="button"
-                    onClick={() => {
-                      setMediaScanHistory([])
-                      setMediaScanHistoryNextCursor(null)
-                      setLoadingMoreMediaScanHistory(false)
-                      setSelectedMediaAssetId(selectedMediaAssetId === asset.id ? null : asset.id)
-                    }}
-                  >
-                    {textFor(t, 'History', '历史')}
-                  </button>
-                  <button
-                    className="ghost-button"
-                    type="button"
-                    onClick={() => void retryMediaAsset(asset)}
-                    disabled={reviewingMediaId === asset.id || scanJobStatus === 'queued' || scanJobStatus === 'retrying'}
-                  >
-                    {reviewingMediaId === asset.id ? textFor(t, 'Saving', '保存中') : textFor(t, 'Retry scan', '重试扫描')}
-                  </button>
-                  <button
-                    className="ghost-button"
-                    type="button"
-                    onClick={() => void reviewMediaAsset(asset, 'reject')}
-                    disabled={reviewingMediaId === asset.id || scanStatus === 'rejected'}
-                  >
-                    {reviewingMediaId === asset.id ? textFor(t, 'Saving', '保存中') : textFor(t, 'Reject', '拒绝')}
-                  </button>
-                  <button
-                    className="primary-button"
-                    type="button"
-                    onClick={() => void reviewMediaAsset(asset, 'clean')}
-                    disabled={reviewingMediaId === asset.id || scanStatus === 'clean'}
-                  >
-                    {reviewingMediaId === asset.id ? textFor(t, 'Saving', '保存中') : textFor(t, 'Release', '放行')}
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-        {selectedMediaAssetId && (
-          <div className="admin-detail-panel">
-            <div>
-              <strong>{textFor(t, 'Scan job history', '扫描任务历史')}</strong>
-              <span>{selectedMediaAssetId}</span>
-            </div>
-            {mediaScanHistoryStatus.loading && mediaScanHistory.length === 0 && (
-              <p>{textFor(t, 'Loading scan attempts.', '正在加载扫描尝试。')}</p>
-            )}
-            {mediaScanHistoryStatus.loading && mediaScanHistory.length > 0 && (
-              <p>{textFor(t, 'Refreshing scan attempts.', '正在刷新扫描尝试。')}</p>
-            )}
-            {!mediaScanHistoryStatus.loading && mediaScanHistoryStatus.error && (
-              <p>{mediaScanHistoryStatus.error}</p>
-            )}
-            {!mediaScanHistoryStatus.loading && !mediaScanHistoryStatus.error && mediaScanHistory.length === 0 && (
-              <p>{textFor(t, 'No scan job records yet.', '暂无扫描任务记录。')}</p>
-            )}
-            {!mediaScanHistoryStatus.loading && !mediaScanHistoryStatus.error && mediaScanHistory.map((job) => {
-              const metadata = job.metadata && typeof job.metadata === 'object' && !Array.isArray(job.metadata)
-                ? job.metadata as Record<string, unknown>
-                : {}
-              return (
-                <div className="admin-row compact" key={job.id}>
-                  <StatusBadge status={job.scanStatus} t={t} />
-                  <strong>{job.provider} · {job.status}</strong>
-                  <span>{textFor(t, 'attempt', '尝试')} {job.attempts}</span>
-                  <small>
-                    {job.externalScanId ? `${job.externalScanId} · ` : ''}
-                    {job.requestedAt ? `${textFor(t, 'requested', '请求')} ${job.requestedAt.slice(0, 16)} · ` : ''}
-                    {job.timeoutAt ? `${textFor(t, 'timeout', '超时')} ${job.timeoutAt.slice(0, 16)} · ` : ''}
-                    {job.callbackAt ? `${textFor(t, 'callback', '回调')} ${job.callbackAt.slice(0, 16)} · ` : ''}
-                    {job.failedAt ? `${textFor(t, 'failed', '失败')} ${job.failedAt.slice(0, 16)} · ` : ''}
-                    {metadata.dispatchStatus ? `dispatch ${String(metadata.dispatchStatus)} · ` : ''}
-                    {metadata.dispatchError ? `${String(metadata.dispatchError)} · ` : ''}
-                    {job.rejectionReason ? String(job.rejectionReason) : job.note ?? ''}
-                  </small>
-                </div>
-              )
-            })}
-            {!mediaScanHistoryStatus.error && mediaScanHistoryNextCursor && (
-              <button
-                className="ghost-button"
-                type="button"
-                onClick={() => void loadMoreMediaScanHistory()}
-                disabled={loadingMoreMediaScanHistory || mediaScanHistoryStatus.loading}
-              >
-                {loadingMoreMediaScanHistory
-                  ? textFor(t, 'Loading more', '加载更多中')
-                  : textFor(t, 'Load more history', '加载更多历史')}
-              </button>
-            )}
-          </div>
-        )}
-        <div className="admin-detail-panel">
-          <div>
-            <strong>{textFor(t, 'Scan alerts', '扫描告警')}</strong>
-            <button className="ghost-button" type="button" onClick={() => void mediaScanAlertStatus.refresh()} disabled={!canReadQueues || mediaScanAlertStatus.loading}>
-              {mediaScanAlertStatus.loading ? textFor(t, 'Loading', '加载中') : textFor(t, 'Refresh', '刷新')}
-            </button>
-          </div>
-          {mediaScanAlertStatus.error && (
-            <p>{mediaScanAlertStatus.error}</p>
-          )}
-          {!mediaScanAlertStatus.loading && !mediaScanAlertStatus.error && mediaScanAlerts.length === 0 && (
-            <p>{textFor(t, 'No scanner alert thresholds are currently breached.', '当前没有触发扫描告警阈值。')}</p>
-          )}
-          {!mediaScanAlertStatus.error && mediaScanAlerts.map((alert) => {
-            const isHandling = handlingScanAlertId === alert.id
-            const state = alert.state ?? 'active'
-            const statusCopy = state === 'silenced'
-              ? textFor(t, 'silenced', '已静默')
-              : state === 'acknowledged'
-                ? textFor(t, 'acknowledged', '已确认')
-                : textFor(t, 'active', '活跃')
-            return (
-              <div className="admin-row compact" key={alert.id}>
-                <StatusBadge status={state === 'active' ? alert.severity : state} t={t} />
-                <strong>{alert.title}</strong>
-                <span>{statusCopy} · {textFor(t, 'count', '次数')} {alert.count} / {alert.threshold}</span>
-                <small>
-                  {alert.summary} · {textFor(t, 'window', '窗口')} {alert.windowMinutes}m
-                  {alert.acknowledgedBy ? ` · ${textFor(t, 'ack', '确认')} @${alert.acknowledgedBy}` : ''}
-                  {alert.silencedUntil ? ` · ${textFor(t, 'silent until', '静默至')} ${alert.silencedUntil.slice(0, 16)}` : ''}
-                </small>
-                <div className="button-row">
-                  <button
-                    className="ghost-button"
-                    type="button"
-                    onClick={() => void toggleScanAlertEvents(alert)}
-                    disabled={!canReadQueues || loadingScanAlertEvents}
-                  >
-                    {selectedScanAlertId === alert.id ? textFor(t, 'Hide events', '收起样本') : textFor(t, 'Events', '样本')}
-                  </button>
-                  <button
-                    className="ghost-button"
-                    type="button"
-                    onClick={() => void acknowledgeScanAlert(alert)}
-                    disabled={!canReviewQueues || isHandling}
-                  >
-                    {isHandling ? textFor(t, 'Saving', '保存中') : textFor(t, 'Acknowledge', '确认')}
-                  </button>
-                  {state === 'silenced' ? (
-                    <button
-                      className="ghost-button"
-                      type="button"
-                      onClick={() => void unsilenceScanAlert(alert)}
-                      disabled={!canReviewQueues || isHandling}
-                    >
-                      {isHandling ? textFor(t, 'Saving', '保存中') : textFor(t, 'Unsilence', '解除静默')}
-                    </button>
-                  ) : (
-                    <button
-                      className="ghost-button"
-                      type="button"
-                      onClick={() => void silenceScanAlert(alert)}
-                      disabled={!canReviewQueues || isHandling}
-                    >
-                      {isHandling ? textFor(t, 'Saving', '保存中') : textFor(t, 'Silence 24h', '静默24小时')}
-                    </button>
-                  )}
-                </div>
-                {selectedScanAlertId === alert.id && (
-                  <div className="admin-inline-list">
-                    {loadingScanAlertEvents && (
-                      <small>{textFor(t, 'Loading alert events.', '正在加载告警样本。')}</small>
-                    )}
-                    {scanAlertEventsError && (
-                      <small>{scanAlertEventsError}</small>
-                    )}
-                    {!loadingScanAlertEvents && !scanAlertEventsError && scanAlertEvents.length === 0 && (
-                      <small>{textFor(t, 'No recent samples for this alert.', '暂无该告警的近期样本。')}</small>
-                    )}
-                    {!loadingScanAlertEvents && !scanAlertEventsError && scanAlertEvents.map((event) => {
-                      const metadata = asRecord(event.metadata)
-                      const details = [
-                        metadata.reason,
-                        metadata.dispatchStatus,
-                        metadata.dispatchStatusCode,
-                        metadata.dispatchError,
-                        metadata.status,
-                        metadata.statusCode,
-                        metadata.error,
-                        metadata.externalScanId,
-                      ].filter((item) => item !== undefined && item !== null && item !== '').map(String)
-                      return (
-                        <small key={event.id}>
-                          {event.action} · {event.resourceId ?? event.resourceType} · {formatAuditTime(event.createdAt)}
-                          {details.length > 0 ? ` · ${details.slice(0, 3).join(' · ')}` : ''}
-                        </small>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-        <div className="admin-detail-panel">
-          <div>
-            <strong>{textFor(t, 'Callback failures', '回调失败')}</strong>
-            <button className="ghost-button" type="button" onClick={() => void callbackFailureStatus.refresh()} disabled={!canReadQueues || !canReadAudit || callbackFailureStatus.loading}>
-              {callbackFailureStatus.loading ? textFor(t, 'Loading', '加载中') : textFor(t, 'Refresh', '刷新')}
-            </button>
-          </div>
-          {!canReadAudit && (
-            <p>{textFor(t, 'Audit read permission is required to inspect denied callbacks.', '需要审计读取权限才能查看被拒绝的回调。')}</p>
-          )}
-          {callbackFailureStatus.error && (
-            <p>{callbackFailureStatus.error}</p>
-          )}
-          {canReadAudit && !callbackFailureStatus.loading && !callbackFailureStatus.error && callbackFailureEvents.length === 0 && (
-            <p>{textFor(t, 'No recent denied scanner callbacks.', '暂无近期被拒绝的扫描回调。')}</p>
-          )}
-          {canReadAudit && !callbackFailureStatus.error && callbackFailureEvents.map((event) => {
-            const metadata = asRecord(event.metadata)
-            const headers = asRecord(metadata.headers)
-            const externalScanId = metadata.externalScanId ? String(metadata.externalScanId) : ''
-            const yes = textFor(t, 'yes', '是')
-            const no = textFor(t, 'no', '否')
-            return (
-              <div className="admin-row compact" key={event.id}>
-                <StatusBadge status="rejected" t={t} />
-                <strong>{String(metadata.reason ?? event.action)}</strong>
-                <span>{event.resourceId ?? textFor(t, 'Unknown asset', '未知资产')}</span>
-                <small>
-                  {externalScanId ? `${externalScanId} · ` : ''}
-                  {textFor(t, 'secret', '密钥')} {headers.hasSecret ? yes : no} · {textFor(t, 'timestamp', '时间戳')} {headers.hasTimestamp ? yes : no} · {textFor(t, 'signature', '签名')} {headers.hasSignature ? yes : no} · {formatAuditTime(event.createdAt)}
-                </small>
-              </div>
-            )
-          })}
-        </div>
-      </section>
-      <section className="panel">
+        </>
+      )}
+      {activeTab === 'Security' && securityWorkspace === 'media' && (
+        <SecurityMediaWorkspace
+          t={t}
+          canReadQueues={canReadQueues}
+          canReviewQueues={canReviewQueues}
+          canReadAudit={canReadAudit}
+          canReadMedia={canReadMedia}
+          canManageMedia={canManageMedia}
+          canExportMedia={canExportMedia}
+          reviewStatus={mediaReviewStatus}
+          rows={mediaRows}
+          filters={{ status: mediaStatus, purpose: mediaPurpose, search: mediaSearch }}
+          highlightedAssetId={highlightedMediaAssetId}
+          selectedAssetId={selectedMediaAssetId}
+          reviewingAssetId={reviewingMediaId}
+          sweeping={sweepingMediaJobs}
+          scanHistory={{
+            status: mediaScanHistoryStatus,
+            items: mediaScanHistory,
+            nextCursor: mediaScanHistoryNextCursor,
+            loadingMore: loadingMoreMediaScanHistory,
+          }}
+          scanAlerts={{
+            status: mediaScanAlertStatus,
+            items: mediaScanAlerts,
+            handlingId: handlingScanAlertId,
+            selectedId: selectedScanAlertId,
+            events: scanAlertEvents,
+            eventsLoading: loadingScanAlertEvents,
+            eventsError: scanAlertEventsError,
+          }}
+          callbackStatus={callbackFailureStatus}
+          callbackEvents={callbackFailureEvents}
+          onFilterStatus={setMediaStatus}
+          onFilterPurpose={setMediaPurpose}
+          onFilterSearch={setMediaSearch}
+          onSelectAsset={selectMediaAsset}
+          onRetryAsset={(asset) => void retryMediaAsset(asset)}
+          onReviewAsset={(asset, decision) => void reviewMediaAsset(asset, decision)}
+          onLoadMoreHistory={() => void loadMoreMediaScanHistory()}
+          onToggleAlertEvents={(alert) => void toggleScanAlertEvents(alert)}
+          onAcknowledgeAlert={(alert) => void acknowledgeScanAlert(alert)}
+          onUnsilenceAlert={(alert) => void unsilenceScanAlert(alert)}
+          onBeginOperation={beginSecurityOperation}
+          onSweep={() => void sweepMediaJobs()}
+        />
+      )}
+      {activeTab === 'Security' && securityWorkspace === 'governance' && (
+        <SecurityGovernanceWorkspace
+          t={t}
+          canReadQueues={canReadQueues}
+          canReadAudit={canReadAudit}
+          canManagePermissions={canManagePermissions}
+          status={mediaGovernanceConfigStatus}
+          config={mediaGovernanceConfig}
+          draft={mediaPolicyDraft}
+          saving={savingMediaPolicy}
+          hasInvalidDraft={hasInvalidMediaPolicyDraft}
+          impactPreview={mediaPolicyImpactPreview}
+          confirmingSave={confirmingMediaPolicySave}
+          highRiskChanges={highRiskMediaPolicyChanges}
+          historyStatus={mediaPolicyHistoryStatus}
+          history={mediaPolicyHistory}
+          expandedEventIds={expandedMediaPolicyEventIds}
+          rollingBackEventId={rollingBackMediaPolicy}
+          onFocusPolicyAudit={focusMediaGovernanceAudit}
+          onDraftChange={setMediaPolicyDraftValue}
+          onSave={() => void saveMediaGovernancePolicy()}
+          onCancelConfirmation={cancelMediaPolicySaveConfirmation}
+          onCommit={() => void commitMediaGovernancePolicy()}
+          onToggleHistoryEvent={(eventId) => setExpandedMediaPolicyEventIds((current) => ({ ...current, [eventId]: !current[eventId] }))}
+          onFocusAuditEvent={(eventId) => focusAuditEvent(eventId, 'media_governance_policy')}
+          onBeginRollback={(eventId) => beginSecurityOperation({ kind: 'rollback-media-policy', eventId })}
+        />
+     )}
+     <section className="panel" data-testid="admin-finance-ledger" hidden={activeTab !== 'Finance'}>
         <SectionHeader
           eyebrow={textFor(t, 'Finance', '账务')}
           title={textFor(t, 'User ledger operations', '用户账本运营')}
@@ -3491,6 +2562,7 @@ export function AdminPage({
             </button>
           }
         />
+        <AdminActionFeedback message={accountingActionMessage} />
         <div className="permission-summary">
           <label>
             <span>{textFor(t, 'User', '用户')}</span>
@@ -3536,7 +2608,7 @@ export function AdminPage({
           ].map(([label, value]) => (
             <article className="metric-card highlight" key={label}>
               <span>{label}</span>
-              <strong>{pointText(String(value ?? 0))}</strong>
+              <strong>{pointText(String(value ?? 0), t)}</strong>
               <small>{textFor(t, 'API-backed ledger projection', 'API 返回的账务投影')}</small>
             </article>
           ))}
@@ -3694,7 +2766,7 @@ export function AdminPage({
           ))}
         </div>
       </section>
-      <section className="panel accounting-reconciliation-panel" data-testid="admin-accounting-reconciliation">
+      <section className="panel accounting-reconciliation-panel" data-testid="admin-accounting-reconciliation" hidden={activeTab !== 'Accounting'}>
         <SectionHeader
           eyebrow={textFor(t, 'Internal accounting', '内部账务')}
           title={textFor(t, 'Reconciliation', '对账中心')}
@@ -3711,6 +2783,7 @@ export function AdminPage({
             </div>
           }
         />
+        <AdminActionFeedback message={accountingActionMessage} />
         <div className="billing-policy-overview">
           <div><span>{textFor(t, 'Point policy version', '积分策略版本')}</span><strong>v{billingPolicies?.pointAdjustment.version ?? 0}</strong><small>{billingPolicies?.pointAdjustment.updatedAt ? formatAuditTime(billingPolicies.pointAdjustment.updatedAt) : textFor(t, 'Default policy', '默认策略')}</small></div>
           <div><span>{textFor(t, 'Creative policy', '创作计费策略')}</span><strong>{billingPolicies?.creative.activeVersion ?? textFor(t, 'Unavailable', '不可用')}</strong><small>{textFor(t, 'Immutable history', '不可变历史')}</small></div>
@@ -3856,1388 +2929,239 @@ export function AdminPage({
           ))}
         </div>
       </section>
-      <section className="panel" data-testid="admin-provider-controls">
-        <SectionHeader
-          eyebrow={textFor(t, 'Creative operations', '创作运营')}
-          title={textFor(t, 'Provider controls', 'Provider 控制')}
-          action={
-            <button className="ghost-button" type="button" onClick={() => void providerControlStatus.refresh()} disabled={!canReadProviderControls || providerControlStatus.loading}>
-              {providerControlStatus.loading ? textFor(t, 'Loading', '加载中') : textFor(t, 'Refresh', '刷新')}
-            </button>
-          }
+      <AdminGenerationWorkspaceNavigation
+        t={t}
+        workspace={generationOperationsWorkspace}
+        hidden={activeTab !== 'Generations'}
+        actionMessage={generationActionMessage}
+        onChange={changeGenerationOperationsWorkspace}
+      />
+      <AdminProviderControlsPanel
+        t={t}
+        hidden={activeTab !== 'Generations' || generationOperationsWorkspace !== 'providers'}
+        status={providerControlStatus}
+        controls={providerControls}
+        reason={providerControlReason}
+        runningAction={runningProviderControlAction}
+        canRead={canReadProviderControls}
+        canManage={canManageProviderControls}
+        canRecover={canRecoverProviderControls}
+        setReason={setProviderControlReason}
+        formatAmount={formatProviderCostAmount}
+        formatTime={formatAuditTime}
+        onRunAction={runProviderControlAction}
+      />
+      <AdminGenerationWorkspacePanel
+        t={t}
+        workspace={generationOperationsWorkspace}
+        hidden={activeTab !== 'Generations' || generationOperationsWorkspace === 'providers'}
+        loading={generationOperationsWorkspace === 'records'
+          ? generationHistoryStatus.loading
+          : generationOperationsWorkspace === 'recovery'
+            ? generationExecutionStatus.loading
+            : generationMetricsStatus.loading}
+        exporting={generationOperationsWorkspace === 'records' ? exportingGenerations : exportingGenerationMetrics}
+        canRead={canReadAudit}
+        canExport={canExportAudit}
+        onRefresh={() => {
+          if (generationOperationsWorkspace === 'records') void generationHistoryStatus.refresh()
+          else if (generationOperationsWorkspace === 'recovery') void generationExecutionStatus.refresh()
+          else void generationMetricsStatus.refresh()
+        }}
+        onExport={generationOperationsWorkspace === 'records'
+          ? () => void exportGenerations()
+          : generationOperationsWorkspace === 'metrics'
+            ? () => void exportGenerationMetrics()
+            : undefined}
+      >
+        {generationOperationsWorkspace === 'records' && (
+          <AdminGenerationRecordsPanel
+            t={t}
+            state={generationState.state}
+            setters={generationState.setters}
+            status={generationHistoryStatus}
+            canRead={canReadAudit}
+            canReadQueues={canReadQueues}
+            canCancel={canCancelGenerations}
+            canRequestRetries={canRequestGenerationRetries}
+            canRequestManualReplay={canRequestManualReplay}
+            canRepairAccounting={canRepairAccounting}
+            onClearFilters={clearGenerationFilters}
+            onChangeBulkAction={changeGenerationBulkAction}
+            onPreviewBulkAction={previewGenerationBulkAction}
+            onExecuteBulkAction={executeGenerationBulkAction}
+            onToggleSelection={toggleGenerationSelection}
+            onToggleDetail={toggleGenerationDetail}
+            onFocusMedia={focusGenerationMediaAsset}
+            onFocusAudit={(generationId) => focusGenerationAudit(generationId)}
+            onLoadMore={loadMoreGenerations}
+            onMutation={runGenerationMutation}
+            onSettleProviderCost={settleSelectedProviderCost}
+            formatTime={formatAuditTime}
+            formatNumber={formatMetricNumber}
+            formatProviderCostAmount={formatProviderCostAmount}
+            formatProviderCostSummary={formatProviderCostSummary}
+            formatProviderBudgetSummary={formatProviderBudgetSummary}
+          />
+        )}
+        {generationOperationsWorkspace === 'metrics' && (
+          <AdminGenerationMetricsPanel
+            t={t}
+            state={generationState.state}
+            setters={generationState.setters}
+            status={generationMetricsStatus}
+            canRead={canReadAudit}
+            onClearFilters={clearGenerationMetricsFilters}
+            formatNumber={formatMetricNumber}
+          />
+        )}
+        {generationOperationsWorkspace === 'recovery' && (
+          <AdminGenerationRecoveryPanel
+            t={t}
+            status={generationExecutionStatus}
+            executions={generationExecutions}
+            reason={generationRecoveryReason}
+            errorCode={generationRecoveryError}
+            recoveringExecutionId={recoveringGenerationExecutionId}
+            canRecover={canRequestGenerationRetries}
+            setReason={setGenerationRecoveryReason}
+            setErrorCode={setGenerationRecoveryError}
+            formatTime={formatAuditTime}
+            onRecover={recoverGenerationExecution}
+          />
+        )}
+      </AdminGenerationWorkspacePanel>
+      {activeTab === 'Submissions' && <SubmissionReviewPanel
+        t={t}
+        items={visibleQueueItems}
+        loading={queueStatus.loading}
+        error={queueStatus.error}
+        filter={reviewQueueFilter}
+        pointReviewCount={pointReviewCount}
+        selectedId={selectedReviewId}
+        highlightedId={highlightedReviewId}
+        reviewing={reviewingQueueItems}
+        notes={reviewNotes}
+        approvalTemplates={pointPolicy?.approvalTemplates ?? []}
+        actionMessage={reviewActionMessage}
+        canReview={canReviewQueues}
+        onFilterChange={setReviewQueueFilter}
+        onSelect={setSelectedReviewId}
+        onNoteChange={(id, value) => setReviewNotes((current) => ({ ...current, [id]: value }))}
+        onApplyTemplate={applyApprovalTemplate}
+        onReview={(item, decision) => void reviewQueueItem(item, decision)}
+        onRefresh={() => void queueStatus.refresh()}
+        onClearHighlight={() => setHighlightedReviewId(null)}
+        onClearActionMessage={() => setReviewActionMessage(null)}
+      />}
+      {activeTab === 'Security' && securityWorkspace === 'overview' && (
+        <SecurityOperationsWorkspace
+          t={t}
+          canReadAudit={canReadAudit}
+          canReadQueues={canReadQueues}
+          canReviewQueues={canReviewQueues}
+          status={operationsMetricsStatus}
+          metrics={operationsMetrics}
+          handoff={operationsMetrics ? buildOperationsHandoff(operationsMetrics) : null}
+          windowMinutes={operationsMetricsWindow}
+          windowOptions={operationsMetricWindows}
+          exporting={exportingOperationsSnapshot}
+          writingArchive={writingScanArchive}
+          sampleKey={operationsSampleKey}
+          sampleTitle={operationsSampleKey ? operationSampleConfig(operationsSampleKey).title : ''}
+          samples={operationsSamples}
+          samplesLoading={loadingOperationsSamples}
+          samplesError={operationsSamplesError}
+          formatNumber={formatMetricNumber}
+          formatAmount={formatMetricAmount}
+          formatBytes={formatMetricBytes}
+          formatLatency={formatMetricLatency}
+          formatAuditTime={formatAuditTime}
+          formatCountSummary={metricCountSummary}
+          sampleMetaEntries={operationSampleMetaEntries}
+          onRefresh={() => void operationsMetricsStatus.refresh()}
+          onWindowChange={setOperationsMetricsWindow}
+          onExport={() => void exportOperationsSnapshot()}
+          onOpenMediaQueue={focusMediaGovernanceFromMetrics}
+          onWriteArchive={() => void writeScanArchiveFromMetrics()}
+          onToggleSamples={(key) => void toggleOperationSamples(key)}
+          onFocusAudit={focusAuditFilter}
+          onCloseSamples={() => {
+            setOperationsSampleKey(null)
+            setOperationsSamples([])
+            setOperationsSamplesError(null)
+          }}
         />
-        <div className="permission-summary">
-          <label>
-            <span>{textFor(t, 'Reason code', '原因代码')}</span>
-            <input
-              aria-label={textFor(t, 'Provider control reason code', 'Provider 控制原因代码')}
-              value={providerControlReason}
-              onChange={(event) => setProviderControlReason(event.target.value)}
-              placeholder="operator_requested"
-            />
-          </label>
-        </div>
-        {providerControlStatus.error && (
-          <div className="empty-state">
-            <strong>{textFor(t, 'Provider controls unavailable', 'Provider 控制不可用')}</strong>
-            <span>{providerControlStatus.error}</span>
-          </div>
-        )}
-        {!providerControlStatus.error && (
-          <div className="admin-table">
-            {providerControls.controls.map((control) => {
-              const resourceId = control.id ?? ''
-              const actionKey = `${resourceId}:${control.enabled ? 'disable' : 'enable'}`
-              return (
-                <div className="admin-row" key={resourceId}>
-                  <StatusBadge status={control.enabled ? 'Enabled' : 'Disabled'} t={t} />
-                  <strong>{control.providerId ?? control.scopeType}</strong>
-                  <span>{control.workspace ?? control.scopeType}{control.modelFamily ? ` / ${control.modelFamily}` : ''}</span>
-                  <small>{control.reasonCode} · v{control.version}</small>
-                  <button
-                    className={control.enabled ? 'danger-button' : 'ghost-button'}
-                    type="button"
-                    onClick={() => void runProviderControlAction(resourceId, control.version, control.enabled ? 'disable' : 'enable')}
-                    disabled={!resourceId || (control.enabled ? !canManageProviderControls : !canRecoverProviderControls) || Boolean(runningProviderControlAction)}
-                  >
-                    {runningProviderControlAction === actionKey
-                      ? textFor(t, 'Working', '处理中')
-                      : control.enabled
-                        ? textFor(t, 'Disable', '停用')
-                        : textFor(t, 'Request enable', '申请启用')}
-                  </button>
-                </div>
-              )
-            })}
-            {providerControls.circuits.map((circuit) => {
-              const resourceId = circuit.id ?? ''
-              const target: AdminProviderControlRecoveryTarget | null = circuit.status === 'open'
-                ? 'half_open'
-                : circuit.status === 'half_open'
-                  ? 'closed'
-                  : null
-              return (
-                <div className="admin-row" key={`circuit-${resourceId}`}>
-                  <StatusBadge status={circuit.status} t={t} />
-                  <strong>{circuit.providerId ?? '-'}</strong>
-                  <span>{circuit.workspace}{circuit.modelFamily ? ` / ${circuit.modelFamily}` : ''}</span>
-                  <small>{circuit.failureCount} {textFor(t, 'failures', '次故障')} · {circuit.reasonCode ?? '-'}</small>
-                  {target && (
-                    <button
-                      className="ghost-button"
-                      type="button"
-                      onClick={() => void runProviderControlAction(resourceId, circuit.version, target)}
-                      disabled={!resourceId || !canRecoverProviderControls || Boolean(runningProviderControlAction)}
-                    >
-                      {target === 'half_open' ? textFor(t, 'Request probe', '申请探测') : textFor(t, 'Request close', '申请关闭熔断')}
-                    </button>
-                  )}
-                </div>
-              )
-            })}
-            {providerControls.capEvidence.map((evidence) => (
-              <div className="admin-row" key={`cap-${evidence.id}`}>
-                <StatusBadge status={evidence.active ? 'Active' : 'Inactive'} t={t} />
-                <strong>{evidence.providerId ?? '-'}</strong>
-                <span>{formatProviderCostAmount(evidence.capAmount, evidence.currency)}</span>
-                <small>{textFor(t, 'remaining', '剩余')} {formatProviderCostAmount(evidence.remainingAmount, evidence.currency)} · {evidence.sourceType} · {formatAuditTime(evidence.expiresAt)}</small>
-                <span>SHA-256 {evidence.evidenceHashPreview ?? '-'}</span>
-              </div>
-            ))}
-            {!providerControlStatus.loading && providerControls.controls.length === 0 && providerControls.circuits.length === 0 && (
-              <div className="empty-state">
-                <strong>{textFor(t, 'No Provider controls', '暂无 Provider 控制')}</strong>
-                <span>{textFor(t, 'No durable control state is available.', '暂无可用的持久化控制状态。')}</span>
-              </div>
-            )}
-          </div>
-        )}
-      </section>
-      <section className="panel admin-generation-operations-panel" data-testid="admin-generation-history">
-        <SectionHeader
-          eyebrow={textFor(t, 'Creative operations', '创作运营')}
-          title={textFor(t, 'Generation history', '生成历史')}
+      )}
+      {activeTab === 'Security' && securityWorkspace === 'incidents' && (
+        <SecurityWorkspacePanel
+          t={t}
+          workspace="incidents"
           action={
-            <div className="inline-actions">
-              <button className="icon-button" type="button" onClick={() => void exportGenerationMetrics()} disabled={!canExportAudit || exportingGenerationMetrics} aria-label={textFor(t, 'Export generation metrics CSV', '导出生成统计 CSV')} title={textFor(t, 'Export generation metrics CSV', '导出生成统计 CSV')}>
-                <BarChart3 size={16} />
-              </button>
-              <button className="ghost-button" type="button" onClick={() => void exportGenerations()} disabled={!canExportAudit || exportingGenerations} title={textFor(t, 'Export generation records', '导出生成记录')}>
-                <Download size={16} /> {exportingGenerations ? textFor(t, 'Exporting', '导出中') : 'CSV'}
-              </button>
-              <button className="ghost-button" type="button" onClick={() => void generationHistoryStatus.refresh()} disabled={!canReadAudit || generationHistoryStatus.loading}>
-                {generationHistoryStatus.loading ? textFor(t, 'Loading', '加载中') : textFor(t, 'Refresh', '刷新')}
-              </button>
-            </div>
-          }
-        />
-        <div className="permission-summary">
-          <label>
-            <span>{textFor(t, 'Sort', '排序')}</span>
-            <select aria-label={textFor(t, 'Generation sort', '生成记录排序')} value={generationSort} onChange={(event) => setGenerationSort(event.target.value as typeof generationSort)} disabled={!canReadAudit}>
-              <option value="createdAt">{textFor(t, 'Created', '创建时间')}</option>
-              <option value="updatedAt">{textFor(t, 'Updated', '更新时间')}</option>
-              <option value="status">{textFor(t, 'Status', '状态')}</option>
-            </select>
-          </label>
-          <label>
-            <span>{textFor(t, 'Direction', '方向')}</span>
-            <select aria-label={textFor(t, 'Generation sort direction', '生成记录排序方向')} value={generationDirection} onChange={(event) => setGenerationDirection(event.target.value as typeof generationDirection)} disabled={!canReadAudit}>
-              <option value="desc">{textFor(t, 'Descending', '降序')}</option>
-              <option value="asc">{textFor(t, 'Ascending', '升序')}</option>
-            </select>
-          </label>
-          <label>
-            <span>{textFor(t, 'User', '用户')}</span>
-            <input
-              aria-label={textFor(t, 'Generation user handle', '生成用户 Handle')}
-              value={generationUserHandle}
-              onChange={(event) => setGenerationUserHandle(event.target.value)}
-              placeholder="promptlin"
-              disabled={!canReadAudit}
-            />
-          </label>
-          <label>
-            <span>{textFor(t, 'Workspace', '工作区')}</span>
-            <select
-              aria-label={textFor(t, 'Generation workspace', '生成工作区')}
-              value={generationWorkspace}
-              onChange={(event) => setGenerationWorkspace(event.target.value)}
-              disabled={!canReadAudit}
-            >
-              <option value="">{textFor(t, 'All workspaces', '全部工作区')}</option>
-              {creativeHistoryWorkspaces.map((workspace) => (
-                <option value={workspace} key={workspace}>{workspace}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>{textFor(t, 'Provider', '提供方')}</span>
-            <input
-              aria-label={textFor(t, 'Generation provider', '生成提供方')}
-              value={generationProviderId}
-              onChange={(event) => setGenerationProviderId(event.target.value)}
-              placeholder="mock-image"
-              disabled={!canReadAudit}
-            />
-          </label>
-          <label>
-            <span>{textFor(t, 'Status', '状态')}</span>
-            <select
-              aria-label={textFor(t, 'Generation status', '生成状态')}
-              value={generationStatusFilter}
-              onChange={(event) => setGenerationStatusFilter(event.target.value)}
-              disabled={!canReadAudit}
-            >
-              <option value="">{textFor(t, 'All statuses', '全部状态')}</option>
-              {creativeHistoryStatuses.map((status) => (
-                <option value={status} key={status}>{formatGenerationStatus(status)}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>{textFor(t, 'Review', '复核')}</span>
-            <select
-              aria-label={textFor(t, 'Generation review filter', '生成复核筛选')}
-              value={generationReviewFilter}
-              onChange={(event) => setGenerationReviewFilter(event.target.value as 'all' | 'true' | 'false')}
-              disabled={!canReadAudit}
-            >
-              <option value="all">{textFor(t, 'All', '全部')}</option>
-              <option value="true">{textFor(t, 'Review required', '需要复核')}</option>
-              <option value="false">{textFor(t, 'No review gate', '无需复核')}</option>
-            </select>
-          </label>
-          <label>
-            <span>{textFor(t, 'Media asset', '媒体资产')}</span>
-            <input
-              aria-label={textFor(t, 'Generation media asset id', '生成媒体资产 ID')}
-              value={generationMediaAssetId}
-              onChange={(event) => setGenerationMediaAssetId(event.target.value)}
-              placeholder="media-..."
-              disabled={!canReadAudit}
-            />
-          </label>
-          <label>
-            <span>{textFor(t, 'From', '开始日期')}</span>
-            <input
-              aria-label={textFor(t, 'Generation date from', '生成开始日期')}
-              type="date"
-              value={generationDateFrom}
-              onChange={(event) => setGenerationDateFrom(event.target.value)}
-              disabled={!canReadAudit}
-            />
-          </label>
-          <label>
-            <span>{textFor(t, 'To', '结束日期')}</span>
-            <input
-              aria-label={textFor(t, 'Generation date to', '生成结束日期')}
-              type="date"
-              value={generationDateTo}
-              onChange={(event) => setGenerationDateTo(event.target.value)}
-              disabled={!canReadAudit}
-            />
-          </label>
-          <button
-            className="ghost-button"
-            type="button"
-            onClick={clearGenerationFilters}
-            disabled={!canReadAudit || (!generationUserHandle && !generationWorkspace && !generationProviderId && !generationStatusFilter && generationReviewFilter === 'all' && !generationMediaAssetId && !generationDateFrom && !generationDateTo)}
-          >
-            {textFor(t, 'Clear filters', '清除筛选')}
-          </button>
-        </div>
-        <div className="market-dashboard">
-          {[
-            [textFor(t, 'Total records', '记录总数'), generationSummary.total, textFor(t, 'Complete filtered dataset', '完整筛选数据集')],
-            [textFor(t, 'Active', '进行中'), generationSummary.active, textFor(t, 'Queued or running', '排队中或运行中')],
-            [textFor(t, 'Needs review', '需要复核'), generationSummary.reviewRequired, textFor(t, 'Safety or media gate active', '安全或媒体门禁生效')],
-            [textFor(t, 'Output assets', '输出资产'), generationSummary.outputAssets, textFor(t, 'Linked governed assets', '已关联治理资产')],
-          ].map(([label, value, detail]) => (
-            <article className="metric-card highlight" key={label}>
-              <span>{label}</span>
-              <strong>{formatMetricNumber(Number(value))}</strong>
-              <small>{detail}</small>
-            </article>
-          ))}
-        </div>
-        {generationBusinessMetrics && (
-          <div className="market-dashboard generation-business-metrics" data-testid="generation-business-metrics">
-            {[
-              [textFor(t, 'Success rate', '成功率'), `${generationBusinessMetrics.quality.successRatePercent}%`, `${generationBusinessMetrics.quality.completed}/${generationBusinessMetrics.totals.terminal} ${textFor(t, 'terminal', '终态')}`],
-              [textFor(t, 'P95 latency', 'P95 时延'), generationBusinessMetrics.latency.p95Ms == null ? textFor(t, 'Unavailable', '不可用') : `${Math.round(generationBusinessMetrics.latency.p95Ms / 1000)}s`, `${generationBusinessMetrics.latency.samples} ${textFor(t, 'samples', '样本')}`],
-              [textFor(t, 'Settled credits', '已结算 Credit'), formatMetricNumber(generationBusinessMetrics.internalUnits.settledCredits), `${formatMetricNumber(generationBusinessMetrics.internalUnits.compensatedCredits)} ${textFor(t, 'internally compensated', '内部补偿')}`],
-              [textFor(t, 'Reuse conversion', '复用转化'), `${generationBusinessMetrics.conversion.conversionRatePercent}%`, `${generationBusinessMetrics.conversion.convertedOutputAssets}/${generationBusinessMetrics.conversion.eligibleOutputAssets} ${textFor(t, 'outputs', '输出')}`],
-              [textFor(t, 'Review rate', '复核率'), `${generationBusinessMetrics.quality.reviewRatePercent}%`, `${generationBusinessMetrics.quality.reviewRequired} ${textFor(t, 'gated', '已进入门禁')}`],
-              [textFor(t, 'Provider cost', 'Provider 成本'), generationBusinessMetrics.providerCost.availability === 'available' ? generationBusinessMetrics.providerCost.currencies.map((item) => item.currency).join(', ') : textFor(t, 'Unavailable', '不可用'), generationBusinessMetrics.providerCost.availability === 'available' ? `${generationBusinessMetrics.providerCost.currencies.reduce((sum, item) => sum + item.ledgers, 0)} ${textFor(t, 'ledgers', '台账')}` : textFor(t, 'No cost ledger in this window', '当前窗口无成本台账')],
-            ].map(([label, value, detail]) => (
-              <article className="metric-card" key={label}>
-                <span>{label}</span>
-                <strong>{value}</strong>
-                <small>{detail}</small>
-              </article>
-            ))}
-          </div>
-        )}
-        <div className="admin-detail-panel" data-testid="admin-generation-bulk-actions">
-          <div>
-            <strong>{textFor(t, 'Batch disposition', '批量处置')}</strong>
-            <span>{selectedGenerationIds.length}/50 {textFor(t, 'selected', '已选择')}</span>
-          </div>
-          <div className="permission-summary generation-mutation-controls">
-            <label>
-              <span>{textFor(t, 'Action', '操作')}</span>
-              <select
-                aria-label={textFor(t, 'Generation bulk action', '生成批量操作')}
-                value={generationBulkAction}
-                onChange={(event) => {
-                  setGenerationBulkAction(event.target.value as AdminCreativeGenerationBulkAction)
-                  setGenerationBulkPreview(null)
-                  setGenerationBulkResult(null)
-                  setGenerationBulkConfirmation('')
-                }}
-                disabled={runningGenerationBulkAction}
-              >
-                <option value="cancel">{textFor(t, 'Cancel eligible', '取消可处置任务')}</option>
-                <option value="authorize_retry">{textFor(t, 'Authorize eligible retries', '授权可重试任务')}</option>
-              </select>
-            </label>
-            <label>
-              <span>{textFor(t, 'Reason code', '原因代码')}</span>
-              <input
-                aria-label={textFor(t, 'Generation bulk reason code', '生成批量原因代码')}
-                value={generationMutationReason}
-                onChange={(event) => setGenerationMutationReason(event.target.value)}
-                disabled={runningGenerationBulkAction}
-              />
-            </label>
-            <label>
-              <span>{textFor(t, 'Operator note', '操作说明')}</span>
-              <input
-                aria-label={textFor(t, 'Generation bulk operator note', '生成批量操作说明')}
-                value={generationMutationNote}
-                onChange={(event) => setGenerationMutationNote(event.target.value)}
-                disabled={runningGenerationBulkAction}
-              />
-            </label>
-            <button
-              className="ghost-button"
-              type="button"
-              onClick={() => void previewGenerationBulkAction()}
-              disabled={!selectedGenerationIds.length || runningGenerationBulkAction || (generationBulkAction === 'cancel' ? !canCancelGenerations : !canRequestGenerationRetries)}
-            >
-              {textFor(t, 'Preview', '预检')}
-            </button>
-            {generationBulkPreview && (
-              <>
-                <span data-testid="generation-bulk-preview-counts">
-                  {textFor(t, 'Eligible', '可执行')} {generationBulkPreview.eligibleCount}
-                  {' · '}{textFor(t, 'Blocked', '已阻止')} {generationBulkPreview.blockedCount}
-                  {' · '}{textFor(t, 'Missing', '不存在')} {generationBulkPreview.missingCount}
-                </span>
-                <label>
-                  <span>{generationBulkPreview.requiredConfirmationText}</span>
-                  <input
-                    aria-label={textFor(t, 'Generation bulk confirmation', '生成批量确认短语')}
-                    value={generationBulkConfirmation}
-                    onChange={(event) => setGenerationBulkConfirmation(event.target.value)}
-                    disabled={runningGenerationBulkAction}
-                  />
-                </label>
-                <button
-                  className="primary-button"
-                  type="button"
-                  onClick={() => void executeGenerationBulkAction()}
-                  disabled={runningGenerationBulkAction || generationBulkConfirmation !== generationBulkPreview.requiredConfirmationText}
-                >
-                  {runningGenerationBulkAction ? textFor(t, 'Executing', '执行中') : textFor(t, 'Execute', '执行')}
-                </button>
-              </>
-            )}
-          </div>
-          {generationBulkResult && (
-            <p data-testid="generation-bulk-result">
-              {textFor(t, 'Succeeded', '成功')} {generationBulkResult.counts.succeeded}
-              {' · '}{textFor(t, 'Duplicate', '重复')} {generationBulkResult.counts.duplicate}
-              {' · '}{textFor(t, 'Blocked', '已阻止')} {generationBulkResult.counts.blocked}
-              {' · '}{textFor(t, 'Missing', '不存在')} {generationBulkResult.counts.missing}
-            </p>
-          )}
-        </div>
-        <div className="admin-table">
-          {generationHistoryStatus.loading && (
-            <div className="empty-state">
-              <strong>{textFor(t, 'Loading generation history', '正在加载生成历史')}</strong>
-              <span>{textFor(t, 'Reading durable generation, quota, credit, and safety metadata.', '正在读取持久化生成、额度、Credit 与安全元数据。')}</span>
-            </div>
-          )}
-          {!generationHistoryStatus.loading && generationHistoryStatus.error && (
-            <div className="empty-state">
-              <strong>{textFor(t, 'Generation history unavailable', '生成历史不可用')}</strong>
-              <span>{generationHistoryStatus.error}</span>
-              <button className="ghost-button" type="button" onClick={() => void generationHistoryStatus.refresh()}>
-                {textFor(t, 'Retry sync', '重试同步')}
-              </button>
-            </div>
-          )}
-          {!generationHistoryStatus.loading && !generationHistoryStatus.error && generationRows.length === 0 && (
-            <div className="empty-state">
-              <strong>{textFor(t, 'No generation records', '暂无生成记录')}</strong>
-              <span>{textFor(t, 'Try another user, provider, media asset, date, or status filter.', '尝试其他用户、提供方、媒体资产、日期或状态筛选。')}</span>
-            </div>
-          )}
-          {!generationHistoryStatus.error && generationRows.map((generation) => {
-            const firstOutputAssetId = generation.outputAssetIds[0]
-            const title = generation.promptPreview || `${generation.promptHash.slice(0, 12)}...`
-            const creditStatus = generationCreditStatus(generation)
-            const quotaUsed = generationQuotaAmount(generation, 'used')
-            const quotaLimit = generationQuotaAmount(generation, 'limit')
-            const providerCost = generationProviderCost(generation)
-            const isSelected = selectedGenerationId === generation.id
-            return (
-              <div className={isSelected ? 'admin-row generation-row deep-linked' : 'admin-row generation-row'} key={generation.id}>
-                <label title={textFor(t, 'Select generation', '选择生成任务')}>
-                  <input
-                    type="checkbox"
-                    aria-label={`${textFor(t, 'Select generation', '选择生成任务')} ${generation.id}`}
-                    checked={selectedGenerationIds.includes(generation.id)}
-                    onChange={() => toggleGenerationSelection(generation.id)}
-                    disabled={runningGenerationBulkAction}
-                  />
-                </label>
-                <StatusBadge status={formatGenerationStatus(generation.status)} t={t} />
-                <strong>{title}</strong>
-                <span>
-                  @{generation.actorHandle ?? generation.actorId ?? 'system'} · {generation.workspace}/{generation.mode} · {generation.providerId}
-                </span>
-                <small>
-                  {formatAuditTime(generation.createdAt)}
-                  {' · '}
-                  {creditStatus} {generationCreditAmount(generation, 'settled')}/{generationCreditAmount(generation, 'reserved')}
-                  {' · '}
-                  {textFor(t, 'quota', '额度')} {quotaUsed}/{quotaLimit || '-'}
-                  {' · '}
-                  {textFor(t, 'outputs', '输出')} {generation.outputAssetIds.length}
-                  {' · '}
-                  {textFor(t, 'replays', 'Replay')} {generationReplayCount(generation)}
-                  {providerCost ? ` · ${textFor(t, 'cost', '成本')} ${formatProviderCostSummary(generation)} · ${textFor(t, 'budget', '预算')} ${providerCost.budget.status ?? '-'}` : ''}
-                  {generationReviewRequired(generation) ? ` · ${textFor(t, 'review required', '需要复核')}` : ''}
-                </small>
-                <div className="button-row">
-                  <button className={isSelected ? 'ghost-button active' : 'ghost-button'} type="button" onClick={() => void toggleGenerationDetail(generation)}>
-                    {isSelected ? textFor(t, 'Hide details', '收起详情') : textFor(t, 'Details', '详情')}
-                  </button>
-                  <button className="ghost-button" type="button" onClick={() => firstOutputAssetId && focusGenerationMediaAsset(firstOutputAssetId)} disabled={!firstOutputAssetId || !canReadQueues}>
-                    {textFor(t, 'Media', '媒体')}
-                  </button>
-                  <button className="ghost-button" type="button" onClick={() => focusGenerationAudit(generation.id)} disabled={!canReadAudit}>
-                    {textFor(t, 'Audit', '审计')}
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-        {generationNextCursor && !generationHistoryStatus.error && (
-          <div className="button-row">
-            <button className="ghost-button" type="button" onClick={() => void loadMoreGenerations()} disabled={loadingMoreGenerations || !canReadAudit}>
-              {loadingMoreGenerations ? textFor(t, 'Loading', '加载中') : textFor(t, 'Load more', '加载更多')}
-            </button>
-          </div>
-        )}
-        {selectedGenerationId && (
-          <div className="admin-detail-panel">
-            <div>
-              <strong>{textFor(t, 'Generation detail', '生成详情')}</strong>
-              <span>{selectedGenerationId}</span>
-            </div>
-            {loadingGenerationDetail && (
-              <p>{textFor(t, 'Refreshing detail from the API.', '正在从 API 刷新详情。')}</p>
-            )}
-            {generationDetailError && (
-              <p>{generationDetailError}</p>
-            )}
-            {selectedGeneration && (
-              <>
-                <div className="permission-summary generation-mutation-controls">
-                  <label>
-                    <span>{textFor(t, 'Reason code', '原因代码')}</span>
-                    <input
-                      aria-label={textFor(t, 'Generation action reason code', '生成操作原因代码')}
-                      value={generationMutationReason}
-                      onChange={(event) => setGenerationMutationReason(event.target.value)}
-                      disabled={Boolean(runningGenerationAction)}
-                    />
-                  </label>
-                  <label>
-                    <span>{textFor(t, 'Operator note', '操作说明')}</span>
-                    <input
-                      aria-label={textFor(t, 'Generation action note', '生成操作说明')}
-                      value={generationMutationNote}
-                      onChange={(event) => setGenerationMutationNote(event.target.value)}
-                      disabled={Boolean(runningGenerationAction)}
-                    />
-                  </label>
-                  <label>
-                    <span>{textFor(t, 'Replay status', '重放状态')}</span>
-                    <select
-                      aria-label={textFor(t, 'Manual replay status', '人工重放状态')}
-                      value={generationReplayStatus}
-                      onChange={(event) => setGenerationReplayStatus(event.target.value as typeof generationReplayStatus)}
-                      disabled={Boolean(runningGenerationAction)}
-                    >
-                      {(['queued', 'running', 'completed', 'failed', 'cancelled'] as const).map((status) => (
-                        <option value={status} key={status}>{formatGenerationStatus(status)}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <div className="button-row">
-                    <button
-                      className="ghost-button"
-                      type="button"
-                      onClick={() => void runGenerationMutation('cancel')}
-                      disabled={!canCancelGenerations || !['queued', 'running'].includes(selectedGeneration.status) || Boolean(runningGenerationAction)}
-                      title={textFor(t, 'Cancel generation', '取消生成任务')}
-                    >
-                      <XCircle size={16} aria-hidden="true" />
-                      {textFor(t, 'Cancel', '取消')}
-                    </button>
-                    <button
-                      className="ghost-button"
-                      type="button"
-                      onClick={() => void runGenerationMutation('retry')}
-                      disabled={!canRequestGenerationRetries || !['failed', 'cancelled'].includes(selectedGeneration.status) || Boolean(runningGenerationAction)}
-                      title={textFor(t, 'Authorize user retry', '授权用户重试')}
-                    >
-                      <RotateCcw size={16} aria-hidden="true" />
-                      {textFor(t, 'Authorize retry', '授权重试')}
-                    </button>
-                    <button
-                      className="ghost-button"
-                      type="button"
-                      onClick={() => void runGenerationMutation('manual_replay')}
-                      disabled={!canRequestManualReplay || !selectedGeneration.providerJobId || Boolean(runningGenerationAction) || (generationReplayStatus === 'completed' && selectedGeneration.outputAssetIds.length === 0)}
-                      title={textFor(t, 'Request manual Provider replay', '申请人工 Provider 重放')}
-                    >
-                      <PlayCircle size={16} aria-hidden="true" />
-                      {textFor(t, 'Request replay', '申请重放')}
-                    </button>
-                  </div>
-                </div>
-                <div className="audit-metadata-grid">
-                  <div>
-                    <strong>{textFor(t, 'Prompt', '提示词')}</strong>
-                    <span>{selectedGeneration.promptPreview ?? textFor(t, 'Preview unavailable', '无预览')} · {selectedGeneration.promptHash}</span>
-                  </div>
-                  <div>
-                    <strong>{textFor(t, 'Provider job', '提供方任务')}</strong>
-                    <span>{selectedGeneration.providerRequestId ?? '-'} / {selectedGeneration.providerJobId ?? '-'}</span>
-                  </div>
-                  <div>
-                    <strong>{textFor(t, 'Attempt', '尝试次数')}</strong>
-                    <span>#{selectedGeneration.attemptNumber}{selectedGeneration.retryOfId ? ` · ${textFor(t, 'retry of', '重试来源')} ${selectedGeneration.retryOfId}` : ''}</span>
-                  </div>
-                  <div>
-                    <strong>{textFor(t, 'Provider replay', 'Provider replay')}</strong>
-                    <span>{providerReplayEvidenceSummary(selectedGeneration, t)}</span>
-                  </div>
-                  <div>
-                    <strong>{textFor(t, 'Latest operation', '最新操作')}</strong>
-                    <span>
-                      {selectedGeneration.mutationEvidence?.latest
-                        ? `${selectedGeneration.mutationEvidence.latest.type ?? '-'} · ${selectedGeneration.mutationEvidence.latest.status ?? '-'} · ${selectedGeneration.mutationEvidence.latest.reasonCode ?? '-'}`
-                        : textFor(t, 'No generation operations', '暂无生成操作')}
-                    </span>
-                  </div>
-                  <div>
-                    <strong>{textFor(t, 'Output ingestion', '输出摄取')}</strong>
-                    <span>
-                      {selectedGeneration.outputIngestionEvidence?.available
-                        ? `${selectedGeneration.outputIngestionEvidence.completedCount}/${selectedGeneration.outputIngestionEvidence.count} ${textFor(t, 'completed', '已完成')}${selectedGeneration.outputIngestionEvidence.failedCount ? ` · ${selectedGeneration.outputIngestionEvidence.failedCount} ${textFor(t, 'failed', '失败')}` : ''}`
-                        : textFor(t, 'Ingestion ledger unavailable', '摄取账本不可用')}
-                    </span>
-                  </div>
-                  {selectedGeneration.outputIngestionEvidence?.latest && (
-                    <div>
-                      <strong>{textFor(t, 'Latest ingestion', '最新摄取')}</strong>
-                      <span>
-                        #{selectedGeneration.outputIngestionEvidence.latest.outputIndex ?? '-'} · {selectedGeneration.outputIngestionEvidence.latest.status ?? '-'}
-                        {' · '}{selectedGeneration.outputIngestionEvidence.latest.detectedContentType ?? '-'}
-                        {' · '}{selectedGeneration.outputIngestionEvidence.latest.sizeBytes ?? 0} B
-                        {selectedGeneration.outputIngestionEvidence.latest.sha256Present
-                          ? ` · SHA-256 ${selectedGeneration.outputIngestionEvidence.latest.sha256Preview ?? textFor(t, 'present', '存在')}`
-                          : ''}
-                        {selectedGeneration.outputIngestionEvidence.latest.errorCode
-                          ? ` · ${selectedGeneration.outputIngestionEvidence.latest.errorCode}`
-                          : ''}
-                      </span>
-                    </div>
-                  )}
-                  <div>
-                    <strong>{textFor(t, 'Provider cost', 'Provider cost')}</strong>
-                    <span>{formatProviderCostSummary(selectedGeneration)}</span>
-                  </div>
-                  <div>
-                    <strong>{textFor(t, 'Provider budget', 'Provider budget')}</strong>
-                    <span>{formatProviderBudgetSummary(selectedGeneration)}</span>
-                  </div>
-                  <div>
-                    <strong>{textFor(t, 'Cost ledger', '成本账本')}</strong>
-                    <span>
-                      {selectedGeneration.providerCostLedgerEvidence?.status
-                        ? [
-                            selectedGeneration.providerCostLedgerEvidence.status,
-                            `${textFor(t, 'estimate', '预估')} ${formatProviderCostAmount(selectedGeneration.providerCostLedgerEvidence.estimateAmount, selectedGeneration.providerCostLedgerEvidence.currency)}`,
-                            `${textFor(t, 'actual', '实际')} ${formatProviderCostAmount(selectedGeneration.providerCostLedgerEvidence.actualAmount, selectedGeneration.providerCostLedgerEvidence.currency)}`,
-                            `${textFor(t, 'reserved', '预留')} ${formatProviderCostAmount(selectedGeneration.providerCostLedgerEvidence.budget?.reservedAmount, selectedGeneration.providerCostLedgerEvidence.currency)}`,
-                            `${textFor(t, 'spent', '已用')} ${formatProviderCostAmount(selectedGeneration.providerCostLedgerEvidence.budget?.spentAmount, selectedGeneration.providerCostLedgerEvidence.currency)}`,
-                            selectedGeneration.providerCostLedgerEvidence.reasonCode ?? null,
-                          ].filter(Boolean).join(' · ')
-                        : textFor(t, 'Cost ledger unavailable', '成本账本不可用')}
-                    </span>
-                  </div>
-                  {selectedGeneration.providerReplayEvidence?.latest && (
-                    <div>
-                      <strong>{textFor(t, 'Latest replay', '最新 replay')}</strong>
-                      <span>
-                        {textFor(t, 'previous', '之前')} {selectedGeneration.providerReplayEvidence.latest.previousStatus ?? '-'}
-                        {' -> '}
-                        {selectedGeneration.providerReplayEvidence.latest.normalizedStatus ?? '-'}
-                        {' · '}
-                        {textFor(t, 'reason', '原因')} {selectedGeneration.providerReplayEvidence.latest.reasonCode ?? '-'}
-                        {' · '}
-                        {textFor(t, 'ops', '操作')} {selectedGeneration.providerReplayEvidence.latest.completedOperationCount}
-                        {selectedGeneration.providerReplayEvidence.latest.failedOperationType
-                          ? ` · ${textFor(t, 'failed', '失败')} ${selectedGeneration.providerReplayEvidence.latest.failedOperationType}`
-                          : ''}
-                        {selectedGeneration.providerReplayEvidence.latest.errorPreviewPresent
-                          ? ` · ${textFor(t, 'error preview present', '存在错误预览')}`
-                          : ''}
-                      </span>
-                    </div>
-                  )}
-                  <div>
-                    <strong>{textFor(t, 'Timeline', '时间线')}</strong>
-                    <span>
-                      {textFor(t, 'started', '开始')} {selectedGeneration.startedAt ? formatAuditTime(selectedGeneration.startedAt) : '-'}
-                      {' · '}
-                      {textFor(t, 'completed', '完成')} {selectedGeneration.completedAt ? formatAuditTime(selectedGeneration.completedAt) : '-'}
-                      {' · '}
-                      {textFor(t, 'failed', '失败')} {selectedGeneration.failedAt ? formatAuditTime(selectedGeneration.failedAt) : '-'}
-                    </span>
-                  </div>
-                  <div>
-                    <strong>{textFor(t, 'Error', '错误')}</strong>
-                    <span>{selectedGeneration.errorCode ?? '-'} {selectedGeneration.errorMessagePreview ?? ''}</span>
-                  </div>
-                  <div>
-                    <strong>{textFor(t, 'Quota', '额度')}</strong>
-                    <span>{formatMetadataJson(selectedGeneration.quota ?? {})}</span>
-                  </div>
-                  <div>
-                    <strong>{textFor(t, 'Credit', 'Credit')}</strong>
-                    <span>{formatMetadataJson(selectedGeneration.credit ?? {})}</span>
-                  </div>
-                  <div>
-                    <strong>{textFor(t, 'Safety', '安全')}</strong>
-                    <span>{formatMetadataJson(selectedGeneration.safety ?? {})}</span>
-                  </div>
-                  <div>
-                    <strong>{textFor(t, 'Policy', '策略')}</strong>
-                    <span>{formatMetadataJson(selectedGeneration.policy ?? {})}</span>
-                  </div>
-                </div>
-                <div className="permission-chip-grid">
-                  {selectedGeneration.inputAssetIds.map((assetId) => (
-                    <span className="permission-chip" key={`input-${assetId}`}>{textFor(t, 'input', '输入')}:{assetId}</span>
-                  ))}
-                  {selectedGeneration.outputAssetIds.map((assetId) => (
-                    <button className="permission-chip editable" type="button" key={`output-${assetId}`} onClick={() => focusGenerationMediaAsset(assetId)} disabled={!canReadQueues}>
-                      {textFor(t, 'output', '输出')}:{assetId}
-                    </button>
-                  ))}
-                  {selectedGeneration.parameterKeys.map((key) => (
-                    <span className="permission-chip granted" key={`parameter-${key}`}>{textFor(t, 'parameter', '参数')}:{key}</span>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-        <div className="admin-detail-panel" data-testid="admin-generation-recovery">
-          <div>
-            <strong>{textFor(t, 'Execution recovery', '执行恢复')}</strong>
-            <button className="ghost-button" type="button" onClick={() => void generationExecutionStatus.refresh()} disabled={!canReadAudit || generationExecutionStatus.loading}>
-              {generationExecutionStatus.loading ? textFor(t, 'Loading', '加载中') : textFor(t, 'Refresh', '刷新')}
-            </button>
-          </div>
-          <div className="permission-summary generation-mutation-controls">
-            <label>
-              <span>{textFor(t, 'Reason code', '原因代码')}</span>
-              <input aria-label={textFor(t, 'Execution recovery reason', '执行恢复原因')} value={generationRecoveryReason} onChange={(event) => setGenerationRecoveryReason(event.target.value)} disabled={!canRequestGenerationRetries || Boolean(recoveringGenerationExecutionId)} />
-            </label>
-            <label>
-              <span>{textFor(t, 'Error code', '错误代码')}</span>
-              <input aria-label={textFor(t, 'Execution recovery error', '执行恢复错误')} value={generationRecoveryError} onChange={(event) => setGenerationRecoveryError(event.target.value)} disabled={!canRequestGenerationRetries || Boolean(recoveringGenerationExecutionId)} />
-            </label>
-          </div>
-          {generationExecutionStatus.error && <p>{generationExecutionStatus.error}</p>}
-          {!generationExecutionStatus.loading && !generationExecutionStatus.error && generationExecutions.length === 0 && (
-            <p>{textFor(t, 'No executions require recovery.', '暂无需要恢复的执行记录。')}</p>
-          )}
-          <div className="admin-table">
-            {generationExecutions.map((execution) => (
-              <div className="admin-row" key={execution.id}>
-                <StatusBadge status="Recovery required" t={t} />
-                <strong>{execution.generationId}</strong>
-                <span>{execution.workspace}/{execution.mode} · @{execution.actorHandle ?? execution.actorId}</span>
-                <small>{textFor(t, 'Lease expired', '租约过期')} {formatAuditTime(execution.leaseExpiresAt)} · #{execution.attempt}</small>
-                <button
-                  className="ghost-button"
-                  type="button"
-                  onClick={() => void recoverGenerationExecution(execution.id)}
-                  disabled={!canRequestGenerationRetries || Boolean(recoveringGenerationExecutionId)}
-                  title={textFor(t, 'Mark execution failed after evidence review', '证据复核后标记执行失败')}
-                >
-                  <RotateCcw size={16} aria-hidden="true" />
-                  {recoveringGenerationExecutionId === execution.id ? textFor(t, 'Recovering', '恢复中') : textFor(t, 'Resolve', '处置')}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-      <section className="panel">
-        <SectionHeader eyebrow={textFor(t, 'Queue', '队列')} title={textFor(t, 'Review and moderation', '审核与治理')} />
-        <div className="permission-summary">
-          <button
-            className={reviewQueueFilter === null ? 'chip active' : 'chip'}
-            type="button"
-            onClick={() => setReviewQueueFilter(null)}
-          >
-            {textFor(t, 'All queues', '全部队列')}
-          </button>
-          <button
-            className={reviewQueueFilter === 'points' ? 'chip active' : 'chip'}
-            type="button"
-            onClick={() => setReviewQueueFilter('points')}
-          >
-            {textFor(t, `Point approvals ${pointReviewCount}`, `积分审批 ${pointReviewCount}`)}
-          </button>
-        </div>
-        <div className="admin-table">
-          {queueStatus.loading && (
-            <div className="empty-state">
-              <strong>{textFor(t, 'Loading review queue', '正在加载审核队列')}</strong>
-              <span>{textFor(t, 'Reading operations review items from the API.', '正在从 API 读取运营审核事项。')}</span>
-            </div>
-          )}
-          {!queueStatus.loading && queueStatus.error && (
-            <div className="empty-state">
-              <strong>{textFor(t, 'Queue API unavailable', '队列 API 暂不可用')}</strong>
-              <span>{queueStatus.error}</span>
-              <button className="ghost-button" type="button" onClick={() => void queueStatus.refresh()}>
-                {textFor(t, 'Retry sync', '重试同步')}
-              </button>
-            </div>
-          )}
-          {!queueStatus.loading && !queueStatus.error && visibleQueueItems.length === 0 && (
-            <div className="empty-state">
-              <strong>{textFor(t, 'No review items', '暂无审核事项')}</strong>
-              <span>{textFor(t, 'Try another queue filter.', '尝试切换其他队列筛选。')}</span>
-            </div>
-          )}
-          {visibleQueueItems.map((item) => {
-            const pointMetadata = isPointAdjustmentMetadata(item.metadata) ? item.metadata : null
-            return (
-              <div className={highlightedReviewId === item.id ? 'admin-row review-row deep-linked' : 'admin-row review-row'} key={item.id}>
-                <StatusBadge status={item.status} t={t} />
-                <strong>{item.title}</strong>
-                <span>@{item.owner}</span>
-                <small>
-                  {item.decision
-                    ? textFor(t, `Reviewed by @${item.reviewedBy ?? 'system'}`, `已由 @${item.reviewedBy ?? 'system'} 处理`)
-                    : item.note}
-                </small>
-                {pointMetadata && (
-                  <div className="review-detail">
-                    <span>{textFor(t, 'Requester', '申请人')}: @{pointMetadata.requestedBy ?? '-'}</span>
-                    <span>{textFor(t, 'Reason', '原因')}: {pointMetadata.reasonCode ?? textFor(t, 'Uncategorized', '未分类')}</span>
-                    <span>{textFor(t, 'Impact', '影响')}: {`${pointText(String(pointMetadata.balanceBefore ?? 0))} -> ${pointText(String(pointMetadata.projectedBalance ?? 0))}`}</span>
-                    <span>{textFor(t, 'Limit', '额度')}: {pointText(String(pointMetadata.threshold ?? 0))}</span>
-                  </div>
-                )}
-                <label className="review-note">
-                  <span>{textFor(t, 'Review note', '审核备注')}</span>
-                  <textarea
-                    value={reviewNotes[item.id] ?? ''}
-                    onChange={(event) => setReviewNotes((current) => ({ ...current, [item.id]: event.target.value }))}
-                    disabled={Boolean(item.decision || reviewingQueueItems[item.id])}
-                  />
-                </label>
-                {pointMetadata && pointPolicy?.approvalTemplates?.length ? (
-                  <div className="button-row compact-buttons">
-                    {pointPolicy.approvalTemplates.slice(0, 3).map((template) => (
-                      <button
-                        className="ghost-button small"
-                        type="button"
-                        key={template}
-                        onClick={() => applyApprovalTemplate(item.id, template)}
-                        disabled={Boolean(item.decision || reviewingQueueItems[item.id])}
-                      >
-                        {template}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                <div className="button-row">
-                  <button
-                    className="ghost-button"
-                    type="button"
-                    onClick={() => void reviewQueueItem(item, 'reject')}
-                    disabled={Boolean(item.decision || reviewingQueueItems[item.id])}
-                  >
-                    {reviewingQueueItems[item.id] === 'reject' ? textFor(t, 'Rejecting', '正在驳回') : textFor(t, 'Reject', '驳回')}
-                  </button>
-                  <button
-                    className="primary-button"
-                    type="button"
-                    onClick={() => void reviewQueueItem(item, 'approve')}
-                    disabled={Boolean(item.decision || reviewingQueueItems[item.id])}
-                  >
-                    {reviewingQueueItems[item.id] === 'approve' ? textFor(t, 'Approving', '正在通过') : textFor(t, 'Approve', '通过')}
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </section>
-      <section className="panel">
-        <SectionHeader
-          eyebrow={textFor(t, 'Security', '安全')}
-          title={textFor(t, 'Security event stream', '安全事件流')}
-          action={
-            <button className="ghost-button" type="button" onClick={() => void refreshSecurityPanel()} disabled={!canReadAudit || securityStatus.loading || securityAlertStatus.loading || operationsMetricsStatus.loading}>
+            <button className="ghost-button" type="button" onClick={() => void refreshSecurityIncidents()} disabled={!canReadAudit || securityStatus.loading || securityAlertStatus.loading || securityIncidentStatus.loading}>
               <ShieldAlert size={17} />
-              {securityStatus.loading || securityAlertStatus.loading || operationsMetricsStatus.loading ? textFor(t, 'Loading', '加载中') : textFor(t, 'Refresh', '刷新')}
+              {securityStatus.loading || securityAlertStatus.loading || securityIncidentStatus.loading ? textFor(t, 'Loading', '加载中') : textFor(t, 'Refresh', '刷新')}
             </button>
           }
-        />
-        <div className="operations-overview" data-testid="admin-operations-metrics">
-          <div className="operations-overview-toolbar">
-            <div>
-              <span className="eyebrow">{textFor(t, 'Operations metrics', '运营指标')}</span>
-              <strong>{textFor(t, 'Security and media health', '安全与媒体健康')}</strong>
-            </div>
-            <div className="operations-toolbar-actions">
-              <div className="segmented-control" aria-label={textFor(t, 'Metrics window', '指标窗口')}>
-                {operationsMetricWindows.map((minutes) => (
-                  <button
-                    className={operationsMetricsWindow === minutes ? 'active' : ''}
-                    type="button"
-                    key={minutes}
-                    onClick={() => setOperationsMetricsWindow(minutes)}
-                    disabled={!canReadAudit || operationsMetricsStatus.loading}
-                  >
-                    {minutes < 60 ? `${minutes}m` : minutes === 1440 ? '24h' : `${minutes / 60}h`}
-                  </button>
-                ))}
-              </div>
-              <button className="ghost-button small" type="button" onClick={() => void exportOperationsSnapshot()} disabled={!canReadAudit || !operationsMetrics || exportingOperationsSnapshot}>
-                <Download size={15} />
-                {exportingOperationsSnapshot ? textFor(t, 'Exporting', '导出中') : textFor(t, 'Export snapshot', '导出快照')}
-              </button>
-            </div>
-          </div>
-          {operationsMetricsStatus.loading && (
-            <div className="empty-state compact">
-              <strong>{textFor(t, 'Loading operations metrics', '正在加载运营指标')}</strong>
-              <span>{textFor(t, 'Aggregating security events, alert actions, and scan archive signals.', '正在聚合安全事件、告警处置和扫描归档信号。')}</span>
-            </div>
-          )}
-          {!operationsMetricsStatus.loading && operationsMetricsStatus.error && (
-            <div className="empty-state compact">
-              <strong>{textFor(t, 'Operations metrics unavailable', '运营指标不可用')}</strong>
-              <span>{operationsMetricsStatus.error}</span>
-              <button className="ghost-button" type="button" onClick={() => void operationsMetricsStatus.refresh()}>
-                {textFor(t, 'Retry sync', '重试同步')}
-              </button>
-            </div>
-          )}
-          {!operationsMetricsStatus.loading && !operationsMetricsStatus.error && operationsMetrics && (
-            <>
-              {buildOperationsHandoff(operationsMetrics).remediationHints.length > 0 && (
-                <div className="operations-handoff-panel">
-                  <div>
-                    <strong>{textFor(t, 'Handoff notes', '交接提示')}</strong>
-                    <span>{buildOperationsHandoff(operationsMetrics).summary}</span>
-                  </div>
-                  <div className="operations-handoff-list">
-                    {buildOperationsHandoff(operationsMetrics).remediationHints.slice(0, 3).map((hint) => (
-                      <span className={`operations-handoff-item ${hint.severity}`} key={hint.id}>
-                        <b>{hint.title}</b>
-                        {hint.recommendedActions[0]}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div className="operations-metrics-grid">
-                <article className="operations-metric-card">
-                  <Activity size={18} />
-                  <span>{textFor(t, 'Security events', '安全事件')}</span>
-                  <strong>{formatMetricNumber(operationsMetrics.security.eventsTotal)}</strong>
-                  <small>{metricCountSummary(operationsMetrics.security.eventsBySource)}</small>
-                </article>
-                <article className="operations-metric-card">
-                  <ShieldAlert size={18} />
-                  <span>{textFor(t, 'Active alerts', '当前告警')}</span>
-                  <strong>{formatMetricNumber(operationsMetrics.security.alerts.total)}</strong>
-                  <small>{metricCountSummary(operationsMetrics.security.alerts.byState)}</small>
-                </article>
-                <article className="operations-metric-card">
-                  <BarChart3 size={18} />
-                  <span>{textFor(t, 'Disposition latency', '处置延迟')}</span>
-                  <strong>{formatMetricLatency(operationsMetrics.security.dispositions.acknowledgementLatency.averageMs)}</strong>
-                  <small>{`${operationsMetrics.security.dispositions.acknowledged} ${textFor(t, 'acknowledged', '已确认')} · ${operationsMetrics.security.dispositions.silenced} ${textFor(t, 'silenced', '已静默')}`}</small>
-                </article>
-                <article className="operations-metric-card">
-                  <Archive size={18} />
-                  <span>{textFor(t, 'Archive candidates', '归档候选')}</span>
-                  <strong>{formatMetricNumber(operationsMetrics.mediaScan.archiveCandidates.total)}</strong>
-                  <small>{`${formatMetricNumber(operationsMetrics.mediaScan.archiveWrites.total)} ${textFor(t, 'writes', '写入')} · ${formatMetricBytes(operationsMetrics.mediaScan.archiveWrites.bytes)}`}</small>
-                  <div className="operations-card-actions">
-                    <button className="ghost-button small" type="button" onClick={focusMediaGovernanceFromMetrics} disabled={!canReadQueues}>
-                      <Activity size={15} />
-                      {textFor(t, 'Media queue', '媒体队列')}
-                    </button>
-                    <button className="ghost-button small" type="button" onClick={() => void writeScanArchiveFromMetrics()} disabled={!canReviewQueues || writingScanArchive}>
-                      <Archive size={15} />
-                      {writingScanArchive ? textFor(t, 'Writing', '写入中') : textFor(t, 'Write archive', '写入归档')}
-                    </button>
-                    <button className="ghost-button small" type="button" onClick={() => void toggleOperationSamples('archiveWrites')} disabled={!canReadAudit || loadingOperationsSamples}>
-                      <Clipboard size={15} />
-                      {textFor(t, 'Archive records', '归档记录')}
-                    </button>
-                  </div>
-                </article>
-                <article className="operations-metric-card">
-                  <Bell size={18} />
-                  <span>{textFor(t, 'Provider budget alerts', 'Provider 预算告警')}</span>
-                  <strong>{formatMetricNumber(operationsMetrics.creativeProviderBudget.thresholdAlerts.total)}</strong>
-                  <small>{metricCountSummary(operationsMetrics.creativeProviderBudget.thresholdAlerts.byThreshold)}</small>
-                  <div className="operations-card-actions">
-                    <button
-                      className="ghost-button small"
-                      type="button"
-                      onClick={() => focusAuditFilter('creative.provider_budget.threshold_crossed', 'creative_provider_budget', {
-                        en: 'Filtered audit log to provider budget threshold events.',
-                        zh: '已筛选 Provider 预算阈值审计事件。',
-                      })}
-                      disabled={!canReadAudit}
-                    >
-                      <Clipboard size={15} />
-                      {textFor(t, 'Audit thresholds', '阈值审计')}
-                    </button>
-                    <button className="ghost-button small" type="button" onClick={() => void toggleOperationSamples('creativeProviderBudgetThresholds')} disabled={!canReadAudit || loadingOperationsSamples}>
-                      <Bell size={15} />
-                      {textFor(t, 'Recent alerts', '近期告警')}
-                    </button>
-                  </div>
-                </article>
-                <article className="operations-metric-card">
-                  <BarChart3 size={18} />
-                  <span>{textFor(t, 'Provider spend signals', 'Provider 成本信号')}</span>
-                  <strong>{formatMetricAmount(operationsMetrics.creativeProviderBudget.spend.projectedSpendAmount)}</strong>
-                  <small>{`${textFor(t, 'estimated', '预估')} ${formatMetricAmount(operationsMetrics.creativeProviderBudget.spend.estimatedAmount)} · ${textFor(t, 'actual', '实际')} ${formatMetricAmount(operationsMetrics.creativeProviderBudget.spend.actualAmount)}`}</small>
-                </article>
-                <article className="operations-metric-card">
-                  <ShieldAlert size={18} />
-                  <span>{textFor(t, 'Provider control plane', 'Provider 控制面')}</span>
-                  <strong>{formatMetricNumber(operationsMetrics.creativeProviderControl.dispatchBlocked)}</strong>
-                  <small>{`${formatMetricNumber(operationsMetrics.creativeProviderControl.circuitOpened)} ${textFor(t, 'circuits opened', '次熔断')} · ${formatMetricNumber(operationsMetrics.creativeProviderControl.capEvidenceExpired)} ${textFor(t, 'cap records expired', '条额度证据过期')}`}</small>
-                </article>
-              </div>
-              <div className="operations-breakdown-grid">
-                <div>
-                  <strong>{textFor(t, 'Security delivery failures', '安全告警投递失败')}</strong>
-                  <span>{`${formatMetricNumber(operationsMetrics.security.deliveryFailures.total)} · ${metricCountSummary(operationsMetrics.security.deliveryFailures.byChannel)}`}</span>
-                  <button
-                    className="ghost-button small"
-                    type="button"
-                    onClick={() => focusAuditFilter('security.alert.dispatch', 'security_alert', {
-                      en: 'Filtered audit log to security alert dispatches.',
-                      zh: '已筛选安全告警派发审计事件。',
-                    })}
-                    disabled={!canReadAudit}
-                  >
-                    <Clipboard size={15} />
-                    {textFor(t, 'Audit dispatches', '派发审计')}
-                  </button>
-                  <button className="ghost-button small" type="button" onClick={() => void toggleOperationSamples('securityDispatchFailures')} disabled={!canReadAudit || loadingOperationsSamples}>
-                    <ShieldAlert size={15} />
-                    {textFor(t, 'Recent failures', '近期失败')}
-                  </button>
-                </div>
-                <div>
-                  <strong>{textFor(t, 'Media alert delivery failures', '媒体告警投递失败')}</strong>
-                  <span>{`${formatMetricNumber(operationsMetrics.mediaScan.alertDeliveryFailures.total)} · ${metricCountSummary(operationsMetrics.mediaScan.alertDeliveryFailures.byChannel)}`}</span>
-                  <button
-                    className="ghost-button small"
-                    type="button"
-                    onClick={() => focusAuditFilter('media.scan.alert.dispatch', 'media_scan_alert', {
-                      en: 'Filtered audit log to media scan alert dispatches.',
-                      zh: '已筛选媒体扫描告警派发审计事件。',
-                    })}
-                    disabled={!canReadAudit}
-                  >
-                    <Clipboard size={15} />
-                    {textFor(t, 'Audit dispatches', '派发审计')}
-                  </button>
-                  <button className="ghost-button small" type="button" onClick={() => void toggleOperationSamples('mediaDispatchFailures')} disabled={!canReadAudit || loadingOperationsSamples}>
-                    <ShieldAlert size={15} />
-                    {textFor(t, 'Recent failures', '近期失败')}
-                  </button>
-                </div>
-                <div>
-                  <strong>{textFor(t, 'Provider dispatch blocked', 'Provider 派发阻断')}</strong>
-                  <span>{`${formatMetricNumber(operationsMetrics.creativeProviderBudget.dispatchBlocked.total)} · ${metricCountSummary(operationsMetrics.creativeProviderBudget.dispatchBlocked.byReason)}`}</span>
-                  <button
-                    className="ghost-button small"
-                    type="button"
-                    onClick={() => focusAuditFilter('creative.provider_budget.dispatch_blocked', 'creative_provider_budget', {
-                      en: 'Filtered audit log to provider budget dispatch blocks.',
-                      zh: '已筛选 Provider 预算派发阻断审计事件。',
-                    })}
-                    disabled={!canReadAudit}
-                  >
-                    <Clipboard size={15} />
-                    {textFor(t, 'Block audit', '阻断审计')}
-                  </button>
-                  <button className="ghost-button small" type="button" onClick={() => void toggleOperationSamples('creativeProviderBudgetDispatchBlocks')} disabled={!canReadAudit || loadingOperationsSamples}>
-                    <ShieldAlert size={15} />
-                    {textFor(t, 'Recent blocks', '近期阻断')}
-                  </button>
-                </div>
-                <div>
-                  <strong>{textFor(t, 'Provider recovery reviews', 'Provider 恢复审批')}</strong>
-                  <span>{`${formatMetricNumber(operationsMetrics.creativeProviderControl.recoveryApproved)} ${textFor(t, 'approved', '已批准')} · ${formatMetricNumber(operationsMetrics.creativeProviderControl.recoveryRejected)} ${textFor(t, 'rejected', '已拒绝')} · ${metricCountSummary(operationsMetrics.creativeProviderControl.byStatus)}`}</span>
-                  <button
-                    className="ghost-button small"
-                    type="button"
-                    onClick={() => focusAuditFilter('creative.provider_control.recovery_approved', 'admin_review', {
-                      en: 'Filtered audit log to provider control recovery approvals.',
-                      zh: '已筛选 Provider 控制恢复审批审计事件。',
-                    })}
-                    disabled={!canReadAudit}
-                  >
-                    <Clipboard size={15} />
-                    {textFor(t, 'Recovery audit', '恢复审计')}
-                  </button>
-                </div>
-                <div>
-                  <strong>{textFor(t, 'Provider cost anomalies', 'Provider 成本异常')}</strong>
-                  <span>{`${formatMetricNumber(operationsMetrics.creativeProviderBudget.costAnomalies.total)} · ${metricCountSummary(operationsMetrics.creativeProviderBudget.costAnomalies.byReason)}`}</span>
-                  <button
-                    className="ghost-button small"
-                    type="button"
-                    onClick={() => focusAuditFilter('creative.provider_cost.anomaly_detected', 'creative_provider_budget', {
-                      en: 'Filtered audit log to provider cost anomalies.',
-                      zh: '已筛选 Provider 成本异常审计事件。',
-                    })}
-                    disabled={!canReadAudit}
-                  >
-                    <Clipboard size={15} />
-                    {textFor(t, 'Anomaly audit', '异常审计')}
-                  </button>
-                  <button className="ghost-button small" type="button" onClick={() => void toggleOperationSamples('creativeProviderCostAnomalies')} disabled={!canReadAudit || loadingOperationsSamples}>
-                    <BarChart3 size={15} />
-                    {textFor(t, 'Recent anomalies', '近期异常')}
-                  </button>
-                </div>
-                <div>
-                  <strong>{textFor(t, 'Provider alert dispatches', 'Provider 告警派发')}</strong>
-                  <span>{`${formatMetricNumber(operationsMetrics.creativeProviderBudget.providerAlertDispatches.total)} · ${formatMetricNumber(operationsMetrics.creativeProviderBudget.providerAlertDispatches.failed)} ${textFor(t, 'failed', '失败')} · ${metricCountSummary(operationsMetrics.creativeProviderBudget.providerAlertDispatches.byChannel)} · ${textFor(t, 'dry-run', '演练')} ${formatMetricNumber(operationsMetrics.creativeProviderBudget.providerAlertDispatches.fixtureDryRuns.total)} · ${formatMetricNumber(operationsMetrics.creativeProviderBudget.providerAlertDispatches.fixtureDryRuns.failed)} ${textFor(t, 'failed', '失败')}`}</span>
-                  <button
-                    className="ghost-button small"
-                    type="button"
-                    onClick={() => focusAuditFilter('creative.provider_alert.dispatch', 'creative_provider_budget_alert', {
-                      en: 'Filtered audit log to provider alert dispatches.',
-                      zh: '已筛选 Provider 告警派发审计事件。',
-                    })}
-                    disabled={!canReadAudit}
-                  >
-                    <Clipboard size={15} />
-                    {textFor(t, 'Dispatch audit', '派发审计')}
-                  </button>
-                  <button className="ghost-button small" type="button" onClick={() => void toggleOperationSamples('creativeProviderAlertDispatches')} disabled={!canReadAudit || loadingOperationsSamples}>
-                    <Bell size={15} />
-                    {textFor(t, 'Recent dispatches', '近期派发')}
-                  </button>
-                </div>
-                <div>
-                  <strong>{textFor(t, 'Scan history pruned', '扫描历史清理')}</strong>
-                  <span>{`${formatMetricNumber(operationsMetrics.mediaScan.historyPruned.jobs)} ${textFor(t, 'jobs', '任务')} · ${operationsMetrics.mediaScan.historyPruned.latestAt ? formatAuditTime(operationsMetrics.mediaScan.historyPruned.latestAt) : '-'}`}</span>
-                  <button
-                    className="ghost-button small"
-                    type="button"
-                    onClick={() => focusAuditFilter('media.scan.history_pruned', 'media_scan_jobs', {
-                      en: 'Filtered audit log to scan history pruning.',
-                      zh: '已筛选扫描历史清理审计事件。',
-                    })}
-                    disabled={!canReadAudit}
-                  >
-                    <Clipboard size={15} />
-                    {textFor(t, 'Prune audit', '清理审计')}
-                  </button>
-                  <button className="ghost-button small" type="button" onClick={() => void toggleOperationSamples('historyPruned')} disabled={!canReadAudit || loadingOperationsSamples}>
-                    <Archive size={15} />
-                    {textFor(t, 'Recent prunes', '近期清理')}
-                  </button>
-                </div>
-              </div>
-              {operationsSampleKey && (
-                <div className="operations-sample-panel">
-                  <div className="operations-sample-header">
-                    <strong>{operationSampleConfig(operationsSampleKey).title}</strong>
-                    <button className="ghost-button small" type="button" onClick={() => {
-                      setOperationsSampleKey(null)
-                      setOperationsSamples([])
-                      setOperationsSamplesError(null)
-                    }}>
-                      {textFor(t, 'Close', '关闭')}
-                    </button>
-                  </div>
-                  {loadingOperationsSamples && (
-                    <small>{textFor(t, 'Loading metric samples.', '正在加载指标样本。')}</small>
-                  )}
-                  {operationsSamplesError && (
-                    <small>{operationsSamplesError}</small>
-                  )}
-                  {!loadingOperationsSamples && !operationsSamplesError && operationsSamples.length === 0 && (
-                    <small>{textFor(t, 'No matching recent samples.', '暂无匹配的近期样本。')}</small>
-                  )}
-                  {!loadingOperationsSamples && !operationsSamplesError && operationsSamples.map((event) => (
-                    <div className="operations-sample-row" key={event.id}>
-                      <div>
-                        <strong>{event.action}</strong>
-                        <span>{event.resourceId ?? event.resourceType} · {formatAuditTime(event.createdAt)}</span>
-                      </div>
-                      <div className="operations-sample-meta">
-                        {operationSampleMetaEntries(event).map(([key, value]) => (
-                          <span key={key}>
-                            <b>{key}</b>
-                            {typeof value === 'object' ? formatMetadataJson(value) : String(value)}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-        <div className="admin-table" data-testid="admin-security-alerts">
-          {securityAlertStatus.loading && (
-            <div className="empty-state">
-              <strong>{textFor(t, 'Loading security alerts', '正在加载安全告警')}</strong>
-              <span>{textFor(t, 'Checking rate-limit, body-size, and failed-login thresholds.', '正在检查限流、请求体和登录异常阈值。')}</span>
-            </div>
-          )}
-          {!securityAlertStatus.loading && securityAlertStatus.error && (
-            <div className="empty-state">
-              <strong>{textFor(t, 'Security alerts unavailable', '安全告警不可用')}</strong>
-              <span>{securityAlertStatus.error}</span>
-              <button className="ghost-button" type="button" onClick={() => void securityAlertStatus.refresh()}>
-                {textFor(t, 'Retry sync', '重试同步')}
-              </button>
-            </div>
-          )}
-          {!securityAlertStatus.loading && !securityAlertStatus.error && securityAlerts.length === 0 && (
-            <div className="empty-state">
-              <strong>{textFor(t, 'No active security alerts', '暂无活跃安全告警')}</strong>
-              <span>{textFor(t, 'Threshold-crossing security patterns will appear here before the raw event stream.', '超过阈值的安全模式会先出现在这里，再向下查看原始事件。')}</span>
-            </div>
-          )}
-          {!securityAlertStatus.error && securityAlerts.map((alert) => {
-            const metadata = asRecord(alert.metadata)
-            const recentEventIds = Array.isArray(metadata.recentEventIds) ? metadata.recentEventIds.map(String) : []
-            const recentClientKeys = Array.isArray(metadata.recentClientKeys) ? metadata.recentClientKeys.map(String) : []
-            const recentPaths = Array.isArray(metadata.recentPaths) ? metadata.recentPaths.map(String) : []
-            const recentChannels = Array.isArray(metadata.recentChannels) ? metadata.recentChannels.map(String) : []
-            const recentErrors = Array.isArray(metadata.recentErrors) ? metadata.recentErrors.map(String) : []
-            const source = typeof metadata.source === 'string' ? metadata.source : null
-            const isAlertDispatchSource = source === 'alert_dispatch'
-            const isHandling = handlingSecurityAlertId === alert.id
-            const state = alert.state ?? 'active'
-            const statusCopy = state === 'silenced'
-              ? textFor(t, 'silenced', '已静默')
-              : state === 'acknowledged'
-                ? textFor(t, 'acknowledged', '已确认')
-                : textFor(t, 'active', '活跃')
-            return (
-              <div className={highlightedSecurityAlertId === alert.id ? 'admin-row deep-linked' : 'admin-row'} key={alert.id}>
-                <StatusBadge status={state === 'active' ? alert.severity : state} t={t} />
-                <strong>{alert.title}</strong>
-                <span>{`${statusCopy} · ${alert.count}/${alert.threshold} · ${alert.windowMinutes}m`}</span>
-                <small>
-                  {alert.summary}
-                  {alert.acknowledgedBy ? ` · ${textFor(t, 'ack', '确认')} @${alert.acknowledgedBy}` : ''}
-                  {alert.silencedUntil ? ` · ${textFor(t, 'silent until', '静默至')} ${alert.silencedUntil.slice(0, 16)}` : ''}
-                </small>
-                <div className="audit-metadata-grid">
-                  <div>
-                    <strong>{textFor(t, 'Source', '来源')}</strong>
-                    <span>{source ?? alert.resourceType}</span>
-                  </div>
-                  <div>
-                    <strong>{isAlertDispatchSource ? textFor(t, 'Channels', '渠道') : textFor(t, 'Clients', '客户端')}</strong>
-                    <span>{isAlertDispatchSource ? recentChannels.join(', ') || '-' : recentClientKeys.join(', ') || '-'}</span>
-                  </div>
-                  <div>
-                    <strong>{isAlertDispatchSource ? textFor(t, 'Errors', '错误') : textFor(t, 'Paths', '路径')}</strong>
-                    <span>{isAlertDispatchSource ? recentErrors.join(', ') || '-' : recentPaths.join(', ') || '-'}</span>
-                  </div>
-                  <div>
-                    <strong>{textFor(t, 'Events', '事件')}</strong>
-                    <span>{recentEventIds.length ? recentEventIds.slice(0, 3).join(', ') : '-'}</span>
-                  </div>
-                </div>
-                {source && (
-                  <div className="button-row">
-                    <button
-                      className="ghost-button"
-                      type="button"
-                      onClick={() => void toggleSecurityAlertEvents(alert)}
-                      disabled={!canReadAudit || loadingSecurityAlertEvents}
-                    >
-                      {selectedSecurityAlertId === alert.id ? textFor(t, 'Hide events', '收起样本') : textFor(t, 'Events', '样本')}
-                    </button>
-                    <button
-                      className="ghost-button"
-                      type="button"
-                      onClick={() => void acknowledgeSecurityAlert(alert)}
-                      disabled={!canManageSecurityAlerts || isHandling}
-                    >
-                      {isHandling ? textFor(t, 'Saving', '保存中') : textFor(t, 'Acknowledge', '确认')}
-                    </button>
-                    {state === 'silenced' ? (
-                      <button
-                        className="ghost-button"
-                        type="button"
-                        onClick={() => void unsilenceSecurityAlert(alert)}
-                        disabled={!canManageSecurityAlerts || isHandling}
-                      >
-                        {isHandling ? textFor(t, 'Saving', '保存中') : textFor(t, 'Unsilence', '解除静默')}
-                      </button>
-                    ) : (
-                      <button
-                        className="ghost-button"
-                        type="button"
-                        onClick={() => void silenceSecurityAlert(alert)}
-                        disabled={!canManageSecurityAlerts || isHandling}
-                      >
-                        {isHandling ? textFor(t, 'Saving', '保存中') : textFor(t, 'Silence 24h', '静默24小时')}
-                      </button>
-                    )}
-                    <button
-                      className="ghost-button"
-                      type="button"
-                      onClick={() => void exportSecurityAlert(alert)}
-                      disabled={!canReadAudit || exportingSecurityAlertId === alert.id}
-                    >
-                      <Download size={17} />
-                      {exportingSecurityAlertId === alert.id ? textFor(t, 'Exporting', '导出中') : textFor(t, 'Export JSON', '导出 JSON')}
-                    </button>
-                    {!isAlertDispatchSource && (
-                      <button
-                        className="ghost-button"
-                        type="button"
-                        onClick={() => {
-                          setSecuritySourceFilter(source)
-                          setSecuritySeverityFilter('')
-                          setSecurityTypeFilter('')
-                          setSecurityNextCursor(null)
-                          simulateAction(isZh ? '已按告警来源筛选安全事件。' : 'Filtered security events by alert source.')
-                        }}
-                      >
-                        {textFor(t, 'View source events', '查看来源事件')}
-                      </button>
-                    )}
-                  </div>
-                )}
-                {selectedSecurityAlertId === alert.id && (
-                  <div className="admin-inline-list">
-                    {loadingSecurityAlertEvents && (
-                      <small>{textFor(t, 'Loading alert events.', '正在加载告警样本。')}</small>
-                    )}
-                    {securityAlertEventsError && (
-                      <small>{securityAlertEventsError}</small>
-                    )}
-                    {!loadingSecurityAlertEvents && !securityAlertEventsError && securityAlertEvents.length === 0 && (
-                      <small>{textFor(t, 'No recent samples for this alert.', '暂无该告警的近期样本。')}</small>
-                    )}
-                    {!loadingSecurityAlertEvents && !securityAlertEventsError && securityAlertEvents.map((event) => (
-                      <small key={event.id}>
-                        {event.type} · {event.source} · {event.clientKey ?? textFor(t, 'Unknown client', '未知来源')} · {event.pathname ?? '-'} · {formatAuditTime(event.occurredAt)}
-                      </small>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-        <div className="permission-summary">
-          <label>
-            <span>{textFor(t, 'Source', '来源')}</span>
-            <select
-              aria-label={textFor(t, 'Security event source', '安全事件来源')}
-              value={securitySourceFilter ?? ''}
-              onChange={(event) => {
+        >
+          <SecurityIncidentsWorkspace
+            t={t}
+            canReadAudit={canReadAudit}
+            canManageSecurityAlerts={canManageSecurityAlerts}
+            alerts={{
+              status: securityAlertStatus,
+              items: securityAlerts,
+              highlightedId: highlightedSecurityAlertId,
+              handlingId: handlingSecurityAlertId,
+              selectedId: selectedSecurityAlertId,
+              exportingId: exportingSecurityAlertId,
+              events: securityAlertEvents,
+              eventsLoading: loadingSecurityAlertEvents,
+              eventsError: securityAlertEventsError,
+            }}
+            incidents={{
+              status: securityIncidentStatus,
+              items: securityIncidents,
+              selectedOpenId: selectedOpenIncidentId,
+              handlingId: handlingSecurityIncidentId,
+            }}
+            eventStream={{
+              status: securityStatus,
+              items: securityEvents,
+              source: securitySourceFilter,
+              severity: securitySeverityFilter,
+              type: securityTypeFilter,
+              nextCursor: securityNextCursor,
+              loadingMore: loadingMoreSecurityEvents,
+            }}
+            actions={{
+              onToggleAlertEvents: (alert) => void toggleSecurityAlertEvents(alert),
+              onAcknowledgeAlert: (alert) => void acknowledgeSecurityAlert(alert),
+              onUnsilenceAlert: (alert) => void unsilenceSecurityAlert(alert),
+              onExportAlert: (alert) => void exportSecurityAlert(alert),
+              onFilterByAlertSource: filterSecurityEventsBySource,
+              onSelectOpenIncident: setSelectedOpenIncidentId,
+              onBeginOperation: beginSecurityOperation,
+              onAttachEvent: (event) => void attachSecurityEventToIncident(event),
+              onSourceChange: (source) => {
                 setSecurityNextCursor(null)
-                setSecuritySourceFilter(event.target.value || null)
-              }}
-              disabled={!canReadAudit}
-            >
-              <option value="">{textFor(t, 'All sources', '全部来源')}</option>
-              {securityEventSources.map((source) => (
-                <option value={source} key={source}>{source}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>{textFor(t, 'Severity', '级别')}</span>
-            <select
-              aria-label={textFor(t, 'Security event severity', '安全事件级别')}
-              value={securitySeverityFilter}
-              onChange={(event) => {
+                setSecuritySourceFilter(source)
+              },
+              onSeverityChange: (severity) => {
                 setSecurityNextCursor(null)
-                setSecuritySeverityFilter(event.target.value)
-              }}
-              disabled={!canReadAudit}
-            >
-              <option value="">{textFor(t, 'All severities', '全部级别')}</option>
-              {securityEventSeverities.map((severity) => (
-                <option value={severity} key={severity}>{severity}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>{textFor(t, 'Type', '类型')}</span>
-            <input
-              aria-label={textFor(t, 'Security event type', '安全事件类型')}
-              value={securityTypeFilter}
-              onChange={(event) => {
+                setSecuritySeverityFilter(severity)
+              },
+              onTypeChange: (type) => {
                 setSecurityNextCursor(null)
-                setSecurityTypeFilter(event.target.value)
-              }}
-              placeholder="auth.failed_login.ip_accounts"
-              disabled={!canReadAudit}
-            />
-          </label>
-          <button className="ghost-button" type="button" onClick={clearSecurityFilters} disabled={!canReadAudit || (!securitySourceFilter && !securitySeverityFilter && !securityTypeFilter)}>
-            {textFor(t, 'Clear filters', '清除筛选')}
-          </button>
-        </div>
-        <div className="admin-table" data-testid="admin-security-events">
-          {securityStatus.loading && (
-            <div className="empty-state">
-              <strong>{textFor(t, 'Loading security events', '正在加载安全事件')}</strong>
-              <span>{textFor(t, 'Reading rate-limit, body-size, and auth anomaly events.', '正在读取限流、请求体和登录异常事件。')}</span>
-            </div>
-          )}
-          {!securityStatus.loading && securityStatus.error && (
-            <div className="empty-state">
-              <strong>{textFor(t, 'Security events unavailable', '安全事件不可用')}</strong>
-              <span>{securityStatus.error}</span>
-              <button className="ghost-button" type="button" onClick={() => void securityStatus.refresh()}>
-                {textFor(t, 'Retry sync', '重试同步')}
-              </button>
-            </div>
-          )}
-          {!securityStatus.loading && !securityStatus.error && securityEvents.length === 0 && (
-            <div className="empty-state">
-              <strong>{textFor(t, 'No security events yet', '暂无安全事件')}</strong>
-              <span>{textFor(t, 'Rate limits, body-size rejections, and failed-login anomalies will appear here.', '限流、请求体拒绝和登录异常会出现在这里。')}</span>
-            </div>
-          )}
-          {!securityStatus.error && securityEvents.map((event) => {
-            const details = asRecord(event.details)
-            const detailEntries = Object.entries(details).filter(([key]) => !['method', 'pathname', 'clientKey', 'identity', 'occurredAt'].includes(key))
-            return (
-              <div className="admin-row" key={event.id}>
-                <StatusBadge status={event.severity} t={t} />
-                <strong>{event.type}</strong>
-                <span>{event.clientKey ? event.clientKey : textFor(t, 'Unknown client', '未知来源')}</span>
-                <small>
-                  {event.source} · {event.method ?? '-'} {event.pathname ?? '-'} · {event.identity ? `${event.identity} · ` : ''}{formatAuditTime(event.occurredAt)}
-                </small>
-                {detailEntries.length > 0 && (
-                  <div className="audit-metadata-grid">
-                    {detailEntries.slice(0, 8).map(([key, value]) => (
-                      <div key={key}>
-                        <strong>{key}</strong>
-                        <span>{typeof value === 'object' ? formatMetadataJson(value) : String(value ?? 'null')}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-        {securityNextCursor && !securityStatus.error && (
-          <div className="button-row">
-            <button className="ghost-button" type="button" onClick={() => void loadMoreSecurityEvents()} disabled={loadingMoreSecurityEvents || !canReadAudit}>
-              {loadingMoreSecurityEvents ? textFor(t, 'Loading', '加载中') : textFor(t, 'Load more', '加载更多')}
-            </button>
-          </div>
-        )}
-      </section>
-      <section className="panel admin-audit-panel">
+                setSecurityTypeFilter(type)
+              },
+              onClearFilters: clearSecurityFilters,
+              onLoadMore: () => void loadMoreSecurityEvents(),
+            }}
+          />
+        </SecurityWorkspacePanel>
+      )}
+      <section className="panel admin-audit-panel" hidden={activeTab !== 'Audit log'}>
         <SectionHeader
           eyebrow={textFor(t, 'Audit', '审计')}
           title={textFor(t, 'Recent privileged actions', '近期高权限操作')}
@@ -5247,6 +3171,7 @@ export function AdminPage({
             </button>
           }
         />
+        <AdminActionFeedback message={auditActionMessage} />
         <div className="permission-summary">
           <label>
             <span>{textFor(t, 'Action', '动作')}</span>
@@ -5351,17 +3276,20 @@ export function AdminPage({
             {auditIntegrity.rootHash && <code>{auditIntegrity.rootHash.slice(0, 16)}</code>}
           </div>
         )}
-        <AuditRetentionPanel
-          canRead={canReadAudit}
-          canExecute={canExecuteAuditRetention}
-          isZh={isZh}
-          t={t}
-          onChanged={() => {
-            void auditStatus.refresh()
-            void verifyAuditIntegrity()
-          }}
-          notify={simulateAction}
-        />
+        {activeTab === 'Audit log' && (
+          <Suspense fallback={<div className="route-loading" role="status" aria-live="polite"><span className="status-dot loading" aria-hidden="true" />{textFor(t, 'Loading retention controls', '正在加载保留策略')}</div>}>
+            <AuditRetentionPanel
+              canRead={canReadAudit}
+              canExecute={canExecuteAuditRetention}
+              isZh={isZh}
+              t={t}
+              onChanged={() => {
+                void auditStatus.refresh()
+                void verifyAuditIntegrity()
+              }}
+            />
+          </Suspense>
+        )}
         <div className="admin-table">
           {auditStatus.loading && (
             <div className="empty-state">
@@ -5538,7 +3466,8 @@ export function AdminPage({
           })}
         </div>
       </section>
-      </>}
+        </div>
+      </div>
     </div>
   )
 }

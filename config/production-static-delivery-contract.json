@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "document": "docs/PRODUCTION_STATIC_DELIVERY.md",
+  "rootDirectory": "dist",
+  "htmlCacheControl": "no-cache",
+  "assetCacheControl": "public, max-age=31536000, immutable",
+  "healthCacheControl": "no-store",
+  "compression": {
+    "minimumBytes": 1024,
+    "minimumSavingsRatio": 0.05,
+    "extensions": [".html", ".css", ".js", ".json", ".svg", ".txt", ".bin"]
+  },
+  "securityHeaders": {
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "strict-origin-when-cross-origin"
+  },
+  "requiredChecks": [
+    "health",
+    "html_revalidation",
+    "hashed_asset_immutable",
+    "brotli_javascript",
+    "gzip_stylesheet",
+    "point_cloud_mime",
+    "point_cloud_range",
+    "webp_mime",
+    "spa_fallback",
+    "backend_route_not_spa",
+    "asset_not_found",
+    "path_traversal_rejected"
+  ]
+}

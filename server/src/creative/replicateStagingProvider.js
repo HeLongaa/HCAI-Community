@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import { HttpError } from '../common/errors/httpError.js'
+import { providerNativeSafetyForGeneration } from './providerNativeSafety.js'
 import { buildProviderLifecycleReplay } from './providerLifecycleReplay.js'
 import { safeProviderFailure } from './providerAdapterContract.js'
 import { buildSafeProviderError } from './providerErrorPolicy.js'
@@ -411,6 +412,11 @@ export const mapReplicatePredictionToCreativeGeneration = ({
     safety: {
       moderationRequired: false,
       reviewRequired: false,
+      providerNative: providerNativeSafetyForGeneration({
+        providerId: provider.id,
+        status,
+        providerCategory: safeFailure?.providerCategory ?? null,
+      }),
     },
     createdBy: {
       id: actor.id,
@@ -572,7 +578,7 @@ export const buildReplicateLifecycleReplay = ({
         promptPreview: currentRecord.promptPreview ?? null,
         quota: currentRecord.quota ?? null,
         credit: currentRecord.credit ?? null,
-        safety: currentRecord.safety ?? mappedGeneration.safety,
+        safety: { ...currentRecord.safety, ...mappedGeneration.safety },
         policy: currentRecord.policy ?? null,
         usage: {
           ...mappedGeneration.usage,

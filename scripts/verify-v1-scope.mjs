@@ -232,7 +232,11 @@ addCheck(
 )
 addCheck(
   'content safety verification is part of the quick gate',
-  packageJson.scripts['test:v1-safety-policy'] === 'node scripts/verify-v1-content-safety-policy.mjs' &&
+  packageJson.scripts['test:v1-safety-policy']?.startsWith('node scripts/verify-v1-content-safety-policy.mjs') &&
+    packageJson.scripts['test:v1-safety-policy'].includes('server/src/creative/externalSafetyClassifier.test.js') &&
+    packageJson.scripts['test:v1-safety-policy'].includes('server/src/creative/inputSafety.test.js') &&
+    packageJson.scripts['test:v1-safety-policy'].includes('server/src/creative/outputSafety.test.js') &&
+    packageJson.scripts['test:v1-safety-policy'].includes('server/src/chat/chatSafety.test.js') &&
     packageJson.scripts['check:quick']?.includes('npm run test:v1-safety-policy'),
   packageJson.scripts['check:quick'],
 )

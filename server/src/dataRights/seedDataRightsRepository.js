@@ -4,6 +4,7 @@ import { HttpError } from '../common/errors/httpError.js'
 import { writeJsonArchive } from '../storage/archiveWriter.js'
 import {
   assertDataRightsIdentity,
+  assertDataRightsLegalHoldWindow,
   assertDataRightsTransition,
   buildDataExportPackage,
   buildDeletionPlan,
@@ -12,12 +13,16 @@ import {
   dataRightsRequiredBackupClasses,
   dataRightsSafeSubjectRef,
 } from './dataRightsLifecycle.js'
+import { buildProviderDeletionTargets, createProviderDeletionGateway, providerDeletionReceipt } from './providerDeletionGateway.js'
+import { deleteDataRightsExportObject } from './exportArtifactRetention.js'
 
 const dayMs = 86400_000
 const activeStatuses = new Set(['identity_verified', 'processing', 'primary_completed', 'blocked'])
 const iso = (value) => value?.toISOString?.() ?? value ?? null
 
 const actorRef = (actor) => `actor_${dataRightsEvidenceHash({ actorId: actor.id }).slice(0, 24)}`
+const legalHoldRef = (id) => `hold_${dataRightsEvidenceHash({ legalHoldId: id }).slice(0, 24)}`
+const legalHoldCutoffStatuses = new Set(['processing', 'primary_completed', 'completed'])
 
 const requestDto = (request, events, artifacts, deletionReceipts, backupReceipts) => ({
   id: request.id,
@@ -45,10 +50,13 @@ export const createSeedDataRightsRepository = ({
   accountForActor = (actor) => ({ ...actor, accountVersion: Number(actor.accountVersion ?? 1) }),
   snapshotForActor = async (actor) => ({ account: { id: actor.id, handle: actor.handle, role: actor.role } }),
   applyDeletion = async () => ({}),
+  listProviderDeletionRecords = async () => [],
+  dispatchProviderDeletion = null,
   scheduleDeletion = async () => {},
   cancelDeletion = async () => {},
   recordAudit = () => {},
   archiveWriter = writeJsonArchive,
+  exportObjectDeleter = null,
   source = {},
 } = {}) => {
   const requests = []
@@ -56,7 +64,55 @@ export const createSeedDataRightsRepository = ({
   const artifacts = []
   const deletionReceipts = []
   const backupReceipts = []
+  const legalHolds = []
+  const legalHoldEvents = []
   const exportPackages = new Map()
+  const providerDeletionGateway = dispatchProviderDeletion ?? createProviderDeletionGateway({ source })
+
+  const legalHoldDto = (hold, now = new Date()) => ({
+    id: hold.id,
+    subjectRef: hold.subjectRef,
+    scopeDomain: hold.scopeDomain,
+    reasonCode: hold.reasonCode,
+    authorityRole: hold.authorityRole,
+    authorityReferenceHash: hold.authorityReferenceHash,
+    ownerRef: hold.ownerRef,
+    reviewAt: iso(hold.reviewAt),
+    expiresAt: iso(hold.expiresAt),
+    releasedAt: iso(hold.releasedAt),
+    releaseReasonCode: hold.releaseReasonCode,
+    releasedByRef: hold.releasedByRef,
+    version: hold.version,
+    status: hold.releasedAt ? 'released' : hold.expiresAt <= now ? 'expired' : 'active',
+    createdAt: iso(hold.createdAt),
+    updatedAt: iso(hold.updatedAt),
+    events: legalHoldEvents.filter((item) => item.legalHoldId === hold.id).map((item) => ({ ...item, createdAt: iso(item.createdAt) })),
+  })
+
+  const appendLegalHoldEvent = (hold, actor, eventType, reasonCode, now) => {
+    const sequence = legalHoldEvents.filter((item) => item.legalHoldId === hold.id).length + 1
+    const evidence = { legalHoldId: hold.id, sequence, eventType, reasonCode }
+    legalHoldEvents.push({ id: randomUUID(), legalHoldId: hold.id, sequence, eventType, actorRef: actorRef(actor), reasonCode, evidenceHash: dataRightsEvidenceHash(evidence), createdAt: now })
+  }
+
+  const activeLegalHolds = (subjectId, now) => legalHolds.filter((item) => item.subjectId === subjectId && item.releasedAt == null && item.expiresAt > now)
+
+  const assertLegalHoldBeforeDeletionCutoff = (subject, scopeDomain) => {
+    if (subject.status === 'deleted') {
+      throw new HttpError(409, 'DATA_RIGHTS_LEGAL_HOLD_CUTOFF_PASSED', 'Account deletion has already passed the legal hold creation cutoff')
+    }
+    const deletion = requests
+      .filter((item) => item.subjectId === subject.id && item.requestType === 'account_deletion' && item.status !== 'cancelled')
+      .sort((left, right) => right.createdAt - left.createdAt)[0]
+    if (!deletion) return
+    const receipts = deletionReceipts.filter((item) => item.requestId === deletion.id)
+    const scopeDeleted = receipts.some((receipt) => receipt.domain === scopeDomain)
+      || (scopeDomain === 'creative' && receipts.some((receipt) => receipt.domain.startsWith('provider:')))
+    const providerDispatchUncertain = deletion.status === 'blocked' && deletion.blockedReasonCode === 'provider_deletion_failed'
+    if (legalHoldCutoffStatuses.has(deletion.status) || providerDispatchUncertain || scopeDeleted) {
+      throw new HttpError(409, 'DATA_RIGHTS_LEGAL_HOLD_CUTOFF_PASSED', 'Account deletion has already passed the legal hold creation cutoff')
+    }
+  }
 
   const appendEvent = (request, actor, eventType, reasonCode, { fromStatus = null, toStatus = null, metadata = null, now = new Date() } = {}) => {
     const sequence = events.filter((item) => item.requestId === request.id).length + 1
@@ -83,6 +139,46 @@ export const createSeedDataRightsRepository = ({
   }
 
   return {
+    createLegalHold: async (operator, payload, now = new Date()) => {
+      assertDataRightsLegalHoldWindow(payload, now)
+      const subject = await accountForActor({ id: payload.subjectId })
+      if (!subject) throw new HttpError(404, 'DATA_RIGHTS_LEGAL_HOLD_SUBJECT_NOT_FOUND', 'Legal hold subject was not found')
+      assertLegalHoldBeforeDeletionCutoff(subject, payload.scopeDomain)
+      const hold = {
+        id: randomUUID(), subjectId: payload.subjectId, subjectRef: dataRightsSafeSubjectRef(payload.subjectId),
+        scopeDomain: payload.scopeDomain, reasonCode: payload.reasonCode, authorityRole: payload.authorityRole,
+        authorityReferenceHash: payload.authorityReferenceHash, ownerRef: actorRef(operator), reviewAt: payload.reviewAt,
+        expiresAt: payload.expiresAt, releasedAt: null, releaseReasonCode: null, releasedByRef: null,
+        version: 1, createdAt: now, updatedAt: now,
+      }
+      legalHolds.push(hold)
+      appendLegalHoldEvent(hold, operator, 'legal_hold_created', payload.reasonCode, now)
+      await recordAudit({ actor: operator, action: 'admin.data_rights.legal_hold_created', resourceType: 'data_rights_legal_hold', resourceId: hold.id, metadata: { subjectRef: hold.subjectRef, scopeDomain: hold.scopeDomain, reviewAt: hold.reviewAt, expiresAt: hold.expiresAt } })
+      return legalHoldDto(hold, now)
+    },
+    listLegalHolds: async (query = {}, operator = null, now = new Date()) => {
+      const rows = legalHolds
+        .filter((item) => !query.subjectId || item.subjectId === query.subjectId)
+        .filter((item) => query.status === 'all' || legalHoldDto(item, now).status === query.status)
+        .sort((left, right) => right.createdAt - left.createdAt)
+        .slice(0, query.limit ?? 50)
+      await recordAudit({ actor: operator, action: 'admin.data_rights.legal_holds_listed', resourceType: 'data_rights_legal_hold', resourceId: 'registry', metadata: { status: query.status ?? 'active', limit: query.limit ?? 50 } })
+      return rows.map((item) => legalHoldDto(item, now))
+    },
+    releaseLegalHold: async (operator, id, payload, now = new Date()) => {
+      const hold = legalHolds.find((item) => item.id === id)
+      if (!hold) return null
+      if (hold.version !== payload.expectedVersion) throw new HttpError(409, 'DATA_RIGHTS_LEGAL_HOLD_VERSION_CONFLICT', 'Legal hold was updated by another operation')
+      if (hold.releasedAt) throw new HttpError(409, 'DATA_RIGHTS_LEGAL_HOLD_RELEASED', 'Legal hold has already been released')
+      hold.releasedAt = now
+      hold.releaseReasonCode = payload.reasonCode
+      hold.releasedByRef = actorRef(operator)
+      hold.version += 1
+      hold.updatedAt = now
+      appendLegalHoldEvent(hold, operator, 'legal_hold_released', payload.reasonCode, now)
+      await recordAudit({ actor: operator, action: 'admin.data_rights.legal_hold_released', resourceType: 'data_rights_legal_hold', resourceId: hold.id, metadata: { subjectRef: hold.subjectRef, scopeDomain: hold.scopeDomain, version: hold.version } })
+      return legalHoldDto(hold, now)
+    },
     create: async (actor, payload, { sessionIssuedAt, now = new Date() } = {}) => {
       const account = await accountForActor(actor)
       const identity = assertDataRightsIdentity({ actor, account, payload, sessionIssuedAt, now })
@@ -147,10 +243,40 @@ export const createSeedDataRightsRepository = ({
         exportPackages.set(request.id, built.package)
         transition(request, operator, 'completed', reasonCode, now, { checksumSha256: artifact.checksumSha256, sizeBytes: artifact.sizeBytes })
       } else {
+        const holds = activeLegalHolds(request.subjectId, now)
+        const heldScopes = new Set(holds.map((hold) => hold.scopeDomain))
+        const completedScopes = new Set(deletionReceipts.filter((receipt) => receipt.requestId === request.id && !receipt.domain.startsWith('provider:')).map((receipt) => receipt.domain))
+        const excludedScopes = new Set([...heldScopes, ...completedScopes])
+        let externalReceipts = []
+        try {
+          const targets = heldScopes.has('creative') || completedScopes.has('creative') ? [] : buildProviderDeletionTargets(await listProviderDeletionRecords(request))
+          externalReceipts = []
+          for (const target of targets) {
+            const result = await providerDeletionGateway({ requestId: request.id, subjectRef: request.subjectRef, target, now })
+            externalReceipts.push(providerDeletionReceipt({ requestId: request.id, result, now }))
+          }
+        } catch (error) {
+          transition(request, operator, 'blocked', 'provider_deletion_failed', now, { errorCode: String(error?.code ?? 'DATA_RIGHTS_PROVIDER_DELETION_FAILED').slice(0, 96) })
+          recordAudit({ actor: operator, action: 'admin.data_rights.provider_deletion_blocked', resourceType: 'data_rights_request', resourceId: request.id, metadata: { status: request.status, errorCode: String(error?.code ?? 'DATA_RIGHTS_PROVIDER_DELETION_FAILED').slice(0, 96) } })
+          throw error
+        }
         const plan = buildDeletionPlan({ requestId: request.id, subjectRef: request.subjectRef, primaryCompletedAt: now })
-        const counts = await applyDeletion(request, plan, now)
-        for (const receipt of plan.receipts) {
+        const eligibleReceipts = plan.receipts.filter((receipt) => !excludedScopes.has(receipt.domain))
+        const partialPlan = { ...plan, receipts: eligibleReceipts }
+        const counts = await applyDeletion(request, partialPlan, now)
+        for (const receipt of eligibleReceipts.filter((candidate) => !deletionReceipts.some((existing) => existing.requestId === request.id && existing.domain === candidate.domain))) {
           deletionReceipts.push({ id: randomUUID(), requestId: request.id, ...receipt, recordCount: Number(counts[receipt.domain] ?? 0), retentionExpiresAt: receipt.disposition === 'retained_minimal' ? new Date(now.getTime() + 7 * 365 * dayMs) : null, evidenceHash: dataRightsEvidenceHash({ requestId: request.id, ...receipt, recordCount: Number(counts[receipt.domain] ?? 0) }), createdAt: now })
+        }
+        deletionReceipts.push(...externalReceipts.filter((candidate) => !deletionReceipts.some((existing) => existing.requestId === request.id && existing.domain === candidate.domain)).map((receipt) => ({ id: randomUUID(), requestId: request.id, ...receipt })))
+        if (holds.length) {
+          const metadata = {
+            legalHoldRefs: holds.map((hold) => legalHoldRef(hold.id)),
+            scopeDomains: [...heldScopes].sort(),
+            nextExpiryAt: holds.map((hold) => hold.expiresAt).sort((left, right) => left - right)[0].toISOString(),
+          }
+          transition(request, operator, 'blocked', 'legal_hold_active', now, metadata)
+          await recordAudit({ actor: operator, action: 'admin.data_rights.legal_hold_blocked_deletion', resourceType: 'data_rights_request', resourceId: request.id, metadata })
+          throw new HttpError(409, 'DATA_RIGHTS_LEGAL_HOLD_ACTIVE', 'Account deletion retained scoped data while unrelated domains were processed', metadata)
         }
         transition(request, operator, 'primary_completed', reasonCode, now, { backupExpiryDueAt: plan.backupExpiryDueAt })
       }
@@ -179,6 +305,42 @@ export const createSeedDataRightsRepository = ({
       if (new Date(artifact.expiresAt) <= now) throw new HttpError(410, 'DATA_EXPORT_EXPIRED', 'Data export artifact has expired')
       await recordAudit({ actor, action: 'data_rights.export_downloaded', resourceType: 'data_rights_request', resourceId: request.id, metadata: { checksumSha256: artifact.checksumSha256, expiresAt: artifact.expiresAt } })
       return { artifact, package: structuredClone(exportPackages.get(id)) }
+    },
+    sweepExpiredExports: async ({ now = new Date(), limit = 25 } = {}) => {
+      const boundedLimit = Math.max(1, Math.min(Number.parseInt(limit, 10) || 25, 100))
+      const due = artifacts
+        .filter((item) => new Date(item.expiresAt) <= now)
+        .sort((left, right) => new Date(left.expiresAt) - new Date(right.expiresAt) || left.id.localeCompare(right.id))
+        .slice(0, boundedLimit)
+      const failures = []
+      let deleted = 0
+      for (const artifact of due) {
+        try {
+          const receipt = await deleteDataRightsExportObject(artifact, { now, source, deleteObject: exportObjectDeleter ?? undefined })
+          const index = artifacts.findIndex((item) => item.id === artifact.id && new Date(item.expiresAt) <= now)
+          if (index < 0) continue
+          artifacts.splice(index, 1)
+          exportPackages.delete(artifact.requestId)
+          const request = requests.find((item) => item.id === artifact.requestId)
+          if (request) appendEvent(request, { id: 'system-data-rights-retention' }, 'export_artifact_expired', 'export_retention_elapsed', {
+            metadata: { artifactId: artifact.id, receiptHash: receipt.receiptHash },
+            now,
+          })
+          await recordAudit({
+            actor: null,
+            action: 'data_rights.export_artifact_expired',
+            resourceType: 'data_rights_request',
+            resourceId: artifact.requestId,
+            metadata: { artifactId: artifact.id, receiptHash: receipt.receiptHash },
+          })
+          deleted += 1
+        } catch (error) {
+          failures.push({ artifactId: artifact.id, errorCode: String(error?.code ?? 'DATA_EXPORT_RETENTION_DELETE_FAILED').slice(0, 96) })
+        }
+      }
+      const result = { inspected: due.length, due: due.length, deleted, failed: failures.length, failures }
+      if (failures.length > 0) throw new HttpError(503, 'DATA_EXPORT_RETENTION_PARTIAL_FAILURE', 'One or more expired data export artifacts could not be deleted', result)
+      return result
     },
     metrics: async (actor = null) => {
       await recordAudit({ actor, action: 'admin.data_rights.metrics_viewed', resourceType: 'data_rights_request', resourceId: 'metrics', metadata: {} })

@@ -8,13 +8,15 @@ const moduleFiles = fs.readdirSync(path.join(root, 'server/src/modules'), { recu
 const source = moduleFiles.map((file) => fs.readFileSync(path.join(root, 'server/src/modules', String(file)), 'utf8')).join('\n')
 const discovered = [...source.matchAll(/router\.add\(['"](POST|PUT|PATCH|DELETE)['"],\s*['"](\/api\/admin\/[^'"]+)['"]/g)].map((match) => `${match[1]} ${match[2]}`)
 const classified = contract.routes.map((route) => `${route.method} ${route.path}`)
+const missingClassifications = discovered.filter((route) => !classified.includes(route))
+const staleClassifications = classified.filter((route) => !discovered.includes(route))
 const checks = []
 const add = (name, pass, detail = '') => checks.push({ name, pass: Boolean(pass), detail })
 
 add('admin mutation routes are unique', new Set(discovered).size === discovered.length, `${discovered.length} route(s)`)
 add('classifications are unique', new Set(classified).size === classified.length, `${classified.length} route(s)`)
-add('every admin mutation is classified', discovered.every((route) => classified.includes(route)), discovered.join(','))
-add('no stale route classifications exist', classified.every((route) => discovered.includes(route)), classified.join(','))
+add('every admin mutation is classified', missingClassifications.length === 0, missingClassifications.join(','))
+add('no stale route classifications exist', staleClassifications.length === 0, staleClassifications.join(','))
 for (const route of contract.routes) {
   add(`${route.method} ${route.path} has stable audit data`, Boolean(route.action && route.resourceType && route.reasonCode), route.mode)
   add(`${route.method} ${route.path} has supported mode`, ['automatic', 'domain_audited', 'exception'].includes(route.mode), route.mode)

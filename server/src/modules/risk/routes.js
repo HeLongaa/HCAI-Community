@@ -75,6 +75,7 @@ export const registerRiskRoutes = (router, options = {}) => {
     const payload = parseRiskCaseTransition((await readJsonBody(request)) ?? {})
     const result = await routeRepositories.risk.transition(context.params.id, payload, actor)
     if (!result) throw notFound(`/api/admin/risk/cases/${context.params.id}`)
+    if (result.retentionRedacted) throw new HttpError(409, 'RISK_CASE_RETENTION_REDACTED', 'Retention-redacted risk cases cannot transition')
     if (result.conflict) throw new HttpError(409, 'RISK_CASE_VERSION_CONFLICT', 'Risk case was modified concurrently')
     if (result.appealDecisionRequired) throw new HttpError(409, 'RISK_APPEAL_DECISION_REQUIRED', 'The pending appeal must be decided with this transition')
     ok(response, result.case)

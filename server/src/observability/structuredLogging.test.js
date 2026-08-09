@@ -5,6 +5,7 @@ import {
   buildStructuredLogEntry,
   createCorrelationContext,
   projectAsyncCorrelation,
+  projectPersistedObservabilityLog,
   projectRedMetricLabels,
   sanitizeLogPayload,
 } from './structuredLogging.js'
@@ -79,4 +80,36 @@ test('async correlation projection is explicit and sanitized payload helper is r
   assert.equal(sanitizeLogPayload({ storageUrl: 'https://signed.example.test' }).storageUrl, '[REDACTED]')
   const timestamp = new Date('2026-07-15T00:00:00.000Z')
   assert.equal(sanitizeLogPayload({ timestamp }).timestamp, timestamp)
+})
+
+test('persistent observability logs enforce event-specific fields at the write boundary', () => {
+  const base = {
+    id: 'log-1', timestamp: new Date('2026-07-28T00:00:00.000Z'), level: 'info', service: 'newchat-api', environment: 'test',
+    event: 'http.request.completed', requestId: 'request-1', traceId: 'a'.repeat(32), spanId: 'b'.repeat(16), parentSpanId: null,
+    module: 'tasks', operation: 'GET /api/tasks', outcome: 'success', durationMs: 12, errorCode: null, method: 'GET',
+    routeTemplate: '/api/tasks', statusCode: 200, resourceType: null, resourceId: null,
+    attributes: { statusClass: '2xx', sampled: false }, attributesSchemaVersion: 99,
+  }
+  const projected = projectPersistedObservabilityLog(base)
+  assert.deepEqual(projected.attributes, { statusClass: '2xx', sampled: false })
+  assert.equal(projected.attributesSchemaVersion, 1)
+  assert.throws(() => projectPersistedObservabilityLog({ ...base, prompt: 'private input' }), /unsupported field: prompt/)
+  assert.throws(() => projectPersistedObservabilityLog({ ...base, attributes: { note: 'private input' } }), /unsupported field: note/)
+  assert.throws(() => projectPersistedObservabilityLog({ ...base, attributes: { statusClass: '200', sampled: false } }), /status family/)
+  assert.throws(() => projectPersistedObservabilityLog({ ...base, attributes: { statusClass: '2xx', sampled: { raw: true } } }), /sampled attribute/)
+  assert.throws(() => projectPersistedObservabilityLog({ ...base, operation: `GET /api/tasks\nprivate=${'x'.repeat(20)}` }), /bounded scalar/)
+  assert.throws(() => projectPersistedObservabilityLog({ ...base, durationMs: -1 }), /non-negative integer/)
+})
+
+test('persistent client telemetry accepts only bounded identifiers and hashes', () => {
+  const projected = projectPersistedObservabilityLog({
+    id: 'log-client', timestamp: '2026-07-28T00:00:00.000Z', level: 'error', service: 'newchat-web', environment: 'test',
+    event: 'client.runtime.error', requestId: 'request-1', traceId: 'a'.repeat(32), spanId: 'b'.repeat(16), parentSpanId: null,
+    module: 'frontend', operation: 'window_error', outcome: 'client_error', durationMs: null, errorCode: 'CLIENT_RUNTIME_ERROR',
+    method: null, routeTemplate: null, statusCode: null, resourceType: 'client_route', resourceId: 'workspace/video',
+    attributes: { errorName: 'TypeError', release: 'release-1', clientOccurredAt: '2026-07-28T00:00:00.000Z', messageHash: 'A'.repeat(64), stackHash: null, componentStackHash: null },
+  })
+  assert.equal(projected.attributes.messageHash, 'a'.repeat(64))
+  assert.throws(() => projectPersistedObservabilityLog({ ...projected, attributes: { ...projected.attributes, messageHash: 'not-a-hash' } }), /SHA-256/)
+  assert.throws(() => projectPersistedObservabilityLog({ ...projected, attributes: { ...projected.attributes, context: { prompt: 'private' } } }), /unsupported field: context/)
 })

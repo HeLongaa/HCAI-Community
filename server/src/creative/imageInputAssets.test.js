@@ -13,6 +13,7 @@ const cleanAsset = (overrides = {}) => ({
   contentType: 'image/png',
   sizeBytes: 128,
   status: 'uploaded',
+  storageKey: 'private/creator/source.png',
   metadata: { security: { scanStatus: 'clean' } },
   ...overrides,
 })
@@ -37,7 +38,21 @@ test('resolveImageGenerationInputs assigns stable source and mask roles', async 
     { id: 'source', role: 'source' },
     { id: 'mask', role: 'mask' },
   ])
+  assert.deepEqual(resolved.map(({ storageKey }) => storageKey), [
+    'private/creator/source.png',
+    'private/creator/source.png',
+  ])
   assert.equal(JSON.stringify(resolved).includes('storageKey'), false)
+})
+
+test('resolveImageGenerationInputs rejects invalid declared sizes', async () => {
+  await assert.rejects(
+    resolveImageGenerationInputs(request('image_to_image', ['source']), {
+      actor,
+      mediaRepository: { findAccessibleCreativeInput: async () => cleanAsset({ sizeBytes: 20 * 1024 * 1024 + 1 }) },
+    }),
+    (error) => error.details.reasonCode === 'declared_size_not_allowed',
+  )
 })
 
 test('resolveImageGenerationInputs rejects duplicates and unavailable assets', async () => {

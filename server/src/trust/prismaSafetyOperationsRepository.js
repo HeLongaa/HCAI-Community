@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { HttpError } from '../common/errors/httpError.js'
+import { dataRightsSafeSubjectRef } from '../dataRights/dataRightsLifecycle.js'
+import { moderationCaseState } from './moderationCases.js'
 import {
   assertSafetyRuleTransition,
   deriveQueueState,
   dueAtForPriority,
+  moderationBulkIdempotencyHash,
   moderationBulkRequestHash,
   moderationBulkTargetHash,
   safetyRuleApplies,
@@ -16,6 +19,7 @@ const ruleInclude = { createdBy: { include: userInclude }, transitions: { includ
 
 export const createPrismaSafetyOperationsRepository = (client, { moderationCases, recordAudit }) => {
   const audit = (actor, action, resourceType, resourceId, metadata, db = client) => recordAudit({ actor, action, resourceType, resourceId, metadata }, db)
+  const lock = (db, key) => db.$queryRawUnsafe('SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext($1))', key)
 
   const queueRows = async (query = {}) => {
     const items = []
@@ -55,6 +59,11 @@ export const createPrismaSafetyOperationsRepository = (client, { moderationCases
     const priority = payload.priority ?? current.priority
     const dueAt = payload.action === 'enqueue' ? dueAtForPriority(priority, moderationCase.createdAt) : ['set_priority', 'escalate'].includes(payload.action) ? dueAtForPriority(priority) : new Date(current.dueAt)
     const event = await client.$transaction(async (transaction) => {
+      await lock(transaction, `moderation-case:${caseId}`)
+      const lockedCase = await transaction.moderationCase.findUnique({ where: { id: caseId }, select: { retentionRedactedAt: true, decisions: { select: { stage: true, createdAt: true } }, appeals: { select: { id: true } } } })
+      if (!lockedCase || lockedCase.retentionRedactedAt || !['open', 'appealed'].includes(moderationCaseState(lockedCase).status)) {
+        throw new HttpError(409, 'MODERATION_CASE_NOT_ACTIONABLE', 'Only open or appealed cases may transition in the moderation queue')
+      }
       const created = await transaction.moderationQueueEvent.create({
         data: { id: `queue-event-${randomUUID()}`, caseId, action: payload.action, assigneeId: payload.action === 'assign' ? payload.assigneeId : null, priority: payload.priority ?? null, dueAt, reasonCode: payload.reasonCode, actorId: actor.id },
         include: { assignee: { include: userInclude } },
@@ -68,8 +77,9 @@ export const createPrismaSafetyOperationsRepository = (client, { moderationCases
   return {
     createRule: async (payload, actor) => {
       const created = await client.$transaction(async (transaction) => {
+        await lock(transaction, `safety-rule-key:${payload.ruleKey}`)
         const latest = await transaction.safetyRuleVersion.findFirst({ where: { ruleKey: payload.ruleKey }, orderBy: { version: 'desc' }, select: { version: true } })
-        const created = await transaction.safetyRuleVersion.create({ data: { id: `safety-rule-${randomUUID()}`, ...payload, version: (latest?.version ?? 0) + 1, createdById: actor.id }, include: ruleInclude })
+        const created = await transaction.safetyRuleVersion.create({ data: { id: `safety-rule-${randomUUID()}`, ...payload, version: (latest?.version ?? 0) + 1, createdById: actor.id, createdBySubjectRef: dataRightsSafeSubjectRef(actor.id) }, include: ruleInclude })
         await audit(actor, 'trust.rule.version_created', 'safety_rule', created.id, { ruleKey: created.ruleKey, version: created.version, configHash: created.configHash }, transaction)
         return created
       }, { isolationLevel: 'Serializable' })
@@ -78,8 +88,12 @@ export const createPrismaSafetyOperationsRepository = (client, { moderationCases
     listRules: async () => (await client.safetyRuleVersion.findMany({ include: ruleInclude, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] })).map(serializeSafetyRule),
     transitionRule: async (id, payload, actor) => {
       const result = await client.$transaction(async (transaction) => {
+        const reference = await transaction.safetyRuleVersion.findUnique({ where: { id }, select: { ruleKey: true } })
+        if (!reference) return null
+        await lock(transaction, `safety-rule-key:${reference.ruleKey}`)
         const selected = await transaction.safetyRuleVersion.findUnique({ where: { id }, include: ruleInclude })
         if (!selected) return null
+        if (selected.retentionRedactedAt) throw new HttpError(409, 'SAFETY_RULE_RETENTION_REDACTED', 'Retention-redacted safety rules are permanently retired')
         const current = safetyRuleState(selected)
         assertSafetyRuleTransition(current.state, payload.toState)
         const now = new Date()
@@ -87,11 +101,11 @@ export const createPrismaSafetyOperationsRepository = (client, { moderationCases
         if (payload.toState === 'active') {
           const siblings = await transaction.safetyRuleVersion.findMany({ where: { ruleKey: selected.ruleKey, id: { not: selected.id } }, include: { transitions: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] } } })
           for (const sibling of siblings) {
-            if (safetyRuleState(sibling).state === 'active') await transaction.safetyRuleTransition.create({ data: { id: `rule-transition-${randomUUID()}`, ruleVersionId: sibling.id, fromState: 'active', toState: 'retired', rolloutPercent: 0, reasonCode: 'superseded_by_version', actorId: actor.id, createdAt: now } })
+            if (safetyRuleState(sibling).state === 'active') await transaction.safetyRuleTransition.create({ data: { id: `rule-transition-${randomUUID()}`, ruleVersionId: sibling.id, fromState: 'active', toState: 'retired', rolloutPercent: 0, reasonCode: 'superseded_by_version', actorId: actor.id, actorSubjectRef: dataRightsSafeSubjectRef(actor.id), createdAt: now } })
             if (sibling.version > selected.version && ['active', 'retired'].includes(safetyRuleState(sibling).state)) rollback = true
           }
         }
-        await transaction.safetyRuleTransition.create({ data: { id: `rule-transition-${randomUUID()}`, ruleVersionId: selected.id, fromState: current.state, toState: payload.toState, rolloutPercent: payload.rolloutPercent, reasonCode: payload.reasonCode, actorId: actor.id, createdAt: now } })
+        await transaction.safetyRuleTransition.create({ data: { id: `rule-transition-${randomUUID()}`, ruleVersionId: selected.id, fromState: current.state, toState: payload.toState, rolloutPercent: payload.rolloutPercent, reasonCode: payload.reasonCode, actorId: actor.id, actorSubjectRef: dataRightsSafeSubjectRef(actor.id), createdAt: now } })
         const updated = await transaction.safetyRuleVersion.findUnique({ where: { id }, include: ruleInclude })
         await audit(actor, rollback ? 'trust.rule.rolled_back' : 'trust.rule.transitioned', 'safety_rule', id, { ruleKey: updated.ruleKey, version: updated.version, fromState: current.state, toState: payload.toState, rolloutPercent: payload.rolloutPercent, reasonCode: payload.reasonCode }, transaction)
         return { updated, current, rollback }
@@ -153,10 +167,11 @@ export const createPrismaSafetyOperationsRepository = (client, { moderationCases
     },
     executeBulk: async (payload, actor) => {
       const requestHash = moderationBulkRequestHash(payload)
-      const replay = await client.moderationBulkOperation.findUnique({ where: { idempotencyKey: payload.idempotencyKey } })
-      if (replay) {
-        if (replay.requestHash !== requestHash) throw new HttpError(409, 'IDEMPOTENCY_CONFLICT', 'Idempotency key already identifies another moderation bulk operation')
-        return { ...replay.result, replayed: true }
+      const idempotencyHash = moderationBulkIdempotencyHash(payload.idempotencyKey)
+      const existingReplay = await client.moderationBulkOperation.findUnique({ where: { idempotencyHash } })
+      if (existingReplay) {
+        if (existingReplay.requestHash !== requestHash) throw new HttpError(409, 'IDEMPOTENCY_CONFLICT', 'Idempotency key already identifies another moderation bulk operation')
+        return { ...existingReplay.result, replayed: true }
       }
       const targetHash = moderationBulkTargetHash(payload)
       if (payload.targetHash !== targetHash) throw new HttpError(409, 'BULK_TARGET_CHANGED', 'Moderation bulk target hash does not match')
@@ -171,30 +186,46 @@ export const createPrismaSafetyOperationsRepository = (client, { moderationCases
         if (!['moderator', 'admin'].includes(assignee.role)) throw new HttpError(409, 'MODERATION_ASSIGNEE_INELIGIBLE', 'Moderation assignee must be a moderator or admin')
       }
       const rowById = new Map(rows.map((item) => [item.case.id, item]))
-      const succeeded = [...eligibleIds]
-      const skipped = payload.targetIds.filter((id) => !existing.has(id)).map((id) => ({ id, reason: 'not_found' }))
-      const result = { action: payload.action, targetHash, succeeded, succeededCount: succeeded.length, skipped, skippedCount: skipped.length, replayed: false }
+      const initiallySkipped = payload.targetIds.filter((id) => !existing.has(id)).map((id) => ({ id, reason: 'not_found' }))
       try {
-        await client.$transaction(async (transaction) => {
-          for (const id of eligibleIds) {
+        const outcome = await client.$transaction(async (transaction) => {
+          await lock(transaction, `moderation-bulk-idempotency:${idempotencyHash}`)
+          const replay = await transaction.moderationBulkOperation.findUnique({ where: { idempotencyHash } })
+          if (replay) {
+            if (replay.requestHash !== requestHash) throw new HttpError(409, 'IDEMPOTENCY_CONFLICT', 'Idempotency key already identifies another moderation bulk operation')
+            return { ...replay.result, replayed: true }
+          }
+          for (const id of [...eligibleIds].sort()) await lock(transaction, `moderation-case:${id}`)
+          const lockedCases = eligibleIds.length ? await transaction.moderationCase.findMany({
+            where: { id: { in: eligibleIds } },
+            select: { id: true, retentionRedactedAt: true, decisions: { select: { stage: true, createdAt: true } }, appeals: { select: { id: true } } },
+          }) : []
+          const actionableIds = new Set(lockedCases
+            .filter((item) => !item.retentionRedactedAt && ['open', 'appealed'].includes(moderationCaseState(item).status))
+            .map((item) => item.id))
+          const succeeded = eligibleIds.filter((id) => actionableIds.has(id))
+          const skipped = [...initiallySkipped, ...eligibleIds.filter((id) => !actionableIds.has(id)).map((id) => ({ id, reason: 'state_changed' }))]
+          const result = { action: payload.action, targetHash, succeeded, succeededCount: succeeded.length, skipped, skippedCount: skipped.length, replayed: false }
+          for (const id of succeeded) {
             const current = rowById.get(id).queue
             const nextPriority = payload.priority ?? current.priority
             const dueAt = payload.action === 'set_priority' ? dueAtForPriority(nextPriority) : new Date(current.dueAt)
             const event = await transaction.moderationQueueEvent.create({ data: { id: `queue-event-${randomUUID()}`, caseId: id, action: payload.action, assigneeId: payload.action === 'assign' ? payload.assigneeId : null, priority: payload.action === 'set_priority' ? payload.priority : null, dueAt, reasonCode: payload.reasonCode, actorId: actor.id } })
             await audit(actor, 'trust.queue.transitioned', 'moderation_case', id, { action: event.action, priority: event.priority, assigneeId: event.assigneeId, reasonCode: event.reasonCode, dueAt: event.dueAt.toISOString(), bulkTargetHash: targetHash }, transaction)
           }
-          await transaction.moderationBulkOperation.create({ data: { id: `moderation-bulk-${randomUUID()}`, idempotencyKey: payload.idempotencyKey, requestHash, targetHash, action: payload.action, targetCount: payload.targetIds.length, result, resultSchemaVersion: 1, actorId: actor.id } })
+          await transaction.moderationBulkOperation.create({ data: { id: `moderation-bulk-${randomUUID()}`, idempotencyKey: payload.idempotencyKey, idempotencyHash, requestHash, targetHash, action: payload.action, targetCount: payload.targetIds.length, result, resultSchemaVersion: 1, actorId: actor.id, actorSubjectRef: dataRightsSafeSubjectRef(actor.id) } })
           await audit(actor, 'trust.queue.bulk_executed', 'moderation_bulk_operation', payload.idempotencyKey, { action: payload.action, targetHash, succeededCount: succeeded.length, skippedCount: skipped.length, reasonCode: payload.reasonCode }, transaction)
+          return result
         }, { isolationLevel: 'Serializable' })
+        return outcome
       } catch (error) {
-        const raced = error?.code === 'P2002' ? await client.moderationBulkOperation.findUnique({ where: { idempotencyKey: payload.idempotencyKey } }) : null
+        const raced = error?.code === 'P2002' ? await client.moderationBulkOperation.findUnique({ where: { idempotencyHash } }) : null
         if (raced) {
           if (raced.requestHash !== requestHash) throw new HttpError(409, 'IDEMPOTENCY_CONFLICT', 'Idempotency key already identifies another moderation bulk operation')
           return { ...raced.result, replayed: true }
         }
         throw error
       }
-      return result
     },
     metrics: async () => {
       const rows = await queueRows({})

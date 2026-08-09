@@ -43,5 +43,7 @@ Defaults remain fail-closed:
 - `AUDIT_RETENTION_MIN_RETAINED=1000`
 - `AUDIT_RETENTION_LEGAL_HOLD=true`
 - `AUDIT_RETENTION_PRUNE_ENABLED=false`
+- `AUDIT_RETENTION_WORKER_ENABLED=false`
+- `AUDIT_RETENTION_WORKER_INTERVAL_SECONDS=3600`
 
-Production execution additionally requires durable non-mock archive storage. Ordinary application code cannot update or delete audit facts, archive manifests, or retention dispositions.
+Production execution additionally requires durable non-mock archive storage. Automated execution fails configuration unless pruning is enabled, legal hold is disabled, and `STORAGE_DRIVER=s3`; each run uses a cross-instance Worker lease and retries failed archive or snapshot-drift attempts without deleting first. Successful runs append `system.audit.retention_executed` evidence. Ordinary application code cannot update or delete audit facts, archive manifests, or retention dispositions.

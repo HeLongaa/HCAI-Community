@@ -1,26 +1,28 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   ArrowLeft,
+  Asterisk,
   Bell,
   BriefcaseBusiness,
   Boxes,
+  CheckCheck,
+  ChevronDown,
   CircleHelp,
   FileText,
+  House,
   Languages,
   KeyRound,
-  LayoutDashboard,
   ListFilter,
   LogIn,
   LogOut,
   Menu,
   MessageCircle,
   Moon,
+  RefreshCw,
   Search,
   Settings2,
   ShieldCheck,
-  Sparkles,
-  Star,
   Sun,
   Tags,
   UserRound,
@@ -40,11 +42,8 @@ import type {
   ShellNavigationViewModel,
   ThemeViewModel,
 } from './viewModels'
-import { themeModes } from '../../domain/theme'
-import { isZhCopy, localizeText, roleTier, textFor } from '../../domain/utils'
-import { showLocalTestAccounts } from '../../services/runtimeConfig'
+import { isZhCopy, roleTier, textFor } from '../../domain/utils'
 import { DynamicIsland, LoginModal, PolicyConsentModal, SearchPanel, SecurityModal } from '../overlays'
-import { CompassIcon } from '../prototype/PrototypeComponents'
 import { NotificationList } from '../ui/NotificationList'
 import { NotificationPreferences } from '../ui/NotificationPreferences'
 import { ToastViewport } from '../ui/ToastViewport'
@@ -52,7 +51,7 @@ import { ToastViewport } from '../ui/ToastViewport'
 type NavItem = {
   key: Page
   label: string
-  icon: LucideIcon | typeof CompassIcon
+  icon: LucideIcon
 }
 
 type AppShellProps = {
@@ -84,7 +83,7 @@ export function AppShell({
   const { themeMode, setThemeMode } = theme
   const { sidebarCollapsed, setSidebarCollapsed, searchOpen, setSearchOpen, loginOpen, setLoginOpen } = chrome
   const { activeTrack, playing, setPlaying, playTrack } = player
-  const { toasts, pushToast, simulateAction, dismissToast } = feedback
+  const { toasts, simulateAction, dismissToast } = feedback
   const {
     items: notificationItems,
     loading: notificationsLoading,
@@ -99,27 +98,60 @@ export function AppShell({
   const [securityOpen, setSecurityOpen] = useState(false)
   const [notificationOpen, setNotificationOpen] = useState(false)
   const [notificationPreferencesOpen, setNotificationPreferencesOpen] = useState(false)
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const accountMenuRef = useRef<HTMLDivElement>(null)
+  const accountMenuTriggerRef = useRef<HTMLButtonElement>(null)
+  const mobileMenuTriggerRef = useRef<HTMLButtonElement>(null)
+  const searchTriggerRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!accountMenuOpen) return
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!accountMenuRef.current?.contains(event.target as Node)) setAccountMenuOpen(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setAccountMenuOpen(false)
+        window.requestAnimationFrame(() => accountMenuTriggerRef.current?.focus())
+      }
+    }
+    document.addEventListener('pointerdown', closeOnOutsidePointer)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [accountMenuOpen])
+
+  useEffect(() => {
+    if (!mobileSidebarOpen) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setMobileSidebarOpen(false)
+      window.requestAnimationFrame(() => mobileMenuTriggerRef.current?.focus())
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [mobileSidebarOpen])
   const isSignedIn = accountReady && accountSource !== 'fallback'
   const consentGateExempt = page === 'terms' || page === 'privacy' || page === 'aup' || page === 'disclosures' || page === 'support'
   const showDynamicIsland = Boolean(activeTrack.audioUrl) && !consentGateExempt && page !== 'api' && page !== 'admin'
   const currentTier = roleTier(userRole)
-  const currentTierMark = currentTier.charAt(0)
-  const accountSourceLabel = !accountReady
-    ? textFor(t, 'Checking API', '正在检查 API')
-    : accountSource === 'api'
-      ? textFor(t, 'API session', 'API 会话')
-      : accountSource === 'stored'
-        ? textFor(t, 'Stored session', '本地会话')
-        : textFor(t, 'Account unavailable', '账号不可用')
-  const navItems: NavItem[] = [
-    { key: 'home', label: t.home, icon: LayoutDashboard },
+  const primaryNavItems: NavItem[] = [
+    { key: 'home', label: t.home, icon: House },
     { key: 'tasks', label: t.tasks, icon: BriefcaseBusiness },
     { key: 'community', label: t.community, icon: MessageCircle },
     { key: 'inspiration', label: t.inspiration, icon: Tags },
-    { key: 'explore', label: t.explore, icon: CompassIcon },
+  ]
+  const creationNavItems: NavItem[] = [
     { key: 'playground', label: t.playground ?? t.create, icon: WandSparkles },
     { key: 'generations', label: textFor(t, 'Generations', '生成任务'), icon: ListFilter },
     { key: 'assets', label: textFor(t, 'Assets', '资产库'), icon: Boxes },
+  ]
+  const systemNavItems: NavItem[] = [
     { key: 'api', label: textFor(t, 'API access', 'API 访问'), icon: KeyRound },
     ...(hasPermission('admin:access') ? [{ key: 'admin' as Page, label: t.admin, icon: UsersRound }] : []),
   ]
@@ -165,50 +197,70 @@ export function AppShell({
   }
   const closeMobileSidebar = () => {
     if (window.matchMedia('(max-width: 820px)').matches) {
-      setSidebarCollapsed(false)
+      setMobileSidebarOpen(false)
     }
+  }
+  const toggleNavigation = () => {
+    if (window.matchMedia('(max-width: 820px)').matches) {
+      setMobileSidebarOpen((open) => !open)
+      return
+    }
+    setMobileSidebarOpen(false)
+    setSidebarCollapsed(!sidebarCollapsed)
+  }
+  const closeSearch = () => {
+    setSearchOpen(false)
+    window.requestAnimationFrame(() => searchTriggerRef.current?.focus())
   }
   const formatNotificationTime = (value: string) => {
     const date = new Date(value)
     return Number.isNaN(date.getTime()) ? value : date.toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US')
   }
+  const renderNavGroup = (label: string, items: NavItem[], group: 'discover' | 'create' | 'system') => (
+    <div className={`sidebar-nav-group sidebar-nav-${group}`} key={label}>
+      <span className="sidebar-nav-label">{label}</span>
+      {items.map((item) => {
+        const Icon = item.icon
+        return (
+          <button
+            className={`${page === item.key ? 'nav-item active' : 'nav-item'}${item.key === 'playground' ? ' nav-item-create' : ''}`}
+            data-testid={`nav-${item.key}`}
+            key={item.key}
+            type="button"
+            onClick={() => {
+              navigatePrimary(item.key)
+              closeMobileSidebar()
+            }}
+          >
+            <Icon size={17} />
+            <span>{item.label}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
 
   return (
     <div className={`${sidebarCollapsed ? 'app-shell sidebar-collapsed' : 'app-shell'} page-${page}`} data-theme={themeMode}>
-      <aside className={sidebarCollapsed ? 'sidebar mobile-expanded collapsed' : 'sidebar'}>
+      <aside id="primary-sidebar" className={`${sidebarCollapsed ? 'sidebar collapsed' : 'sidebar'}${mobileSidebarOpen ? ' mobile-expanded' : ''}`}>
         <button className="brand" type="button" onClick={() => { navigatePrimary('home'); closeMobileSidebar() }}>
           <span className="brand-mark">
-            <Sparkles size={22} />
+            <Asterisk size={18} />
           </span>
           <span>{t.brand}</span>
         </button>
 
-        <button className="search-trigger" data-testid="discovery-search-trigger" type="button" onClick={() => setSearchOpen(true)} aria-label={t.search}>
-          <Search size={18} />
+        <button ref={searchTriggerRef} className="search-trigger" data-testid="discovery-search-trigger" type="button" onClick={() => setSearchOpen(true)} aria-label={t.search}>
+          <Search size={16} />
           <span>{t.search}</span>
           <kbd>Ctrl K</kbd>
         </button>
 
         <div className="sidebar-scroll">
           <nav className="nav-list" aria-label="Primary navigation">
-            {navItems.map((item) => {
-              const Icon = item.icon
-              return (
-                <button
-                  className={page === item.key ? 'nav-item active' : 'nav-item'}
-                  data-testid={`nav-${item.key}`}
-                  key={item.key}
-                  type="button"
-                  onClick={() => {
-                    navigatePrimary(item.key)
-                    closeMobileSidebar()
-                  }}
-                >
-                  <Icon size={18} />
-                  <span>{item.label}</span>
-                </button>
-              )
-            })}
+            {renderNavGroup(textFor(t, 'Discover', '发现'), primaryNavItems, 'discover')}
+            {renderNavGroup(textFor(t, 'Create', '创作'), creationNavItems, 'create')}
+            {renderNavGroup(textFor(t, 'System', '系统'), systemNavItems, 'system')}
           </nav>
         </div>
 
@@ -224,84 +276,36 @@ export function AppShell({
                 setLoginOpen(true)
               }}
             >
-              <UserRound size={17} />
-              <span className="sidebar-profile-copy">
-                <span className="sidebar-profile-name">{accountName}</span>
-                <small>{currentPoints}</small>
-                <small className={`sidebar-data-source ${accountReady ? accountSource : 'loading'}`}>{accountSourceLabel}</small>
-              </span>
-              {isSignedIn && (
-                <span className="sidebar-tier-badge" title={currentTier} aria-label={`${currentTier} tier`}>
-                  <Star size={12} />
-                  <span>{currentTierMark}</span>
+              <span className="sidebar-account-avatar">{accountName.trim().charAt(0).toUpperCase() || 'U'}</span>
+                <span className="sidebar-profile-copy">
+                  <span className="sidebar-profile-name">{accountName}</span>
+                  <small>{currentTier} · {currentPoints}</small>
                 </span>
-              )}
             </button>
           </div>
-
-          <div className="theme-picker" aria-label={textFor(t, 'Theme style', '主题风格')}>
-            <span className="theme-picker-label">
-              {themeMode === 'black' ? <Moon size={16} /> : <Sun size={16} />}
-              <span>{textFor(t, 'Theme style', '主题风格')}</span>
-            </span>
-            <div className="theme-options">
-              {themeModes.map((item) => {
-                const Icon = item.key === 'black' ? Moon : Sun
-                return (
-                  <button
-                    aria-pressed={themeMode === item.key}
-                    className={themeMode === item.key ? 'theme-option active' : 'theme-option'}
-                    key={item.key}
-                    onClick={() => setThemeMode(item.key)}
-                    type="button"
-                  >
-                    <Icon size={14} />
-                    <span>{localizeText(item.label, t)}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
           <nav className="sidebar-legal-links" aria-label={textFor(t, 'Policy and support', '政策与支持')}>
-            <button aria-label={textFor(t, 'Policies', '政策')} data-testid="policy-center-link" type="button" onClick={() => { navigatePrimary('terms'); closeMobileSidebar() }}>
+            <button data-testid="policy-center-link" type="button" onClick={() => { navigatePrimary('terms'); closeMobileSidebar() }}>
               <FileText size={15} />
               <span>{textFor(t, 'Policies', '政策')}</span>
             </button>
-            <button aria-label={t.privacy} data-testid="privacy-center-link" type="button" onClick={() => { navigatePrimary('privacy'); closeMobileSidebar() }}>
+            <button data-testid="privacy-center-link" type="button" onClick={() => { navigatePrimary('privacy'); closeMobileSidebar() }}>
               <ShieldCheck size={15} />
               <span>{t.privacy}</span>
             </button>
-            <button aria-label={textFor(t, 'Support', '支持')} data-testid="support-center-link" type="button" onClick={() => { navigatePrimary('support'); closeMobileSidebar() }}>
+            <button data-testid="support-center-link" type="button" onClick={() => { navigatePrimary('support'); closeMobileSidebar() }}>
               <CircleHelp size={15} />
               <span>{textFor(t, 'Support', '支持')}</span>
             </button>
           </nav>
-
-          <button
-            className="ghost-button security-session-button"
-            data-testid="security-open-button"
-            type="button"
-            onClick={() => setSecurityOpen(true)}
-          >
-            <ShieldCheck size={17} />
-            {textFor(t, 'Security', '安全')}
-          </button>
-
-          {showLocalTestAccounts && !hasPermission('admin:access') && (
+          {isSignedIn && (
             <button
-              className="ghost-button"
-              data-testid="admin-demo-button"
+              className="ghost-button security-session-button"
+              data-testid="security-open-button"
               type="button"
-              onClick={() => {
-                void account.loginAs('opsplus').then(() => {
-                  navigatePrimary('admin')
-                  simulateAction(isZhCopy(t) ? '已切换为本地测试管理员账号' : 'Switched to local admin test account')
-                })
-              }}
+              onClick={() => setSecurityOpen(true)}
             >
-              <UsersRound size={17} />
-              {textFor(t, 'Test admin', '测试管理员')}
+              <ShieldCheck size={17} />
+              {textFor(t, 'Security', '安全')}
             </button>
           )}
         </div>
@@ -310,26 +314,21 @@ export function AppShell({
       <main className="main">
         <header className="topbar">
           <button
+            ref={mobileMenuTriggerRef}
             className="icon-button mobile-menu"
             type="button"
-            onClick={() => {
-              const nextOpen = !sidebarCollapsed
-              setSidebarCollapsed(nextOpen)
-              const mobileMenu = window.matchMedia('(max-width: 820px)').matches
-              pushToast(
-                locale === 'zh'
-                  ? mobileMenu
-                    ? nextOpen ? '已打开导航菜单' : '已关闭导航菜单'
-                    : nextOpen ? '已收起侧边栏' : '已展开侧边栏'
-                  : mobileMenu
-                    ? nextOpen ? 'Navigation menu opened' : 'Navigation menu closed'
-                    : nextOpen ? 'Sidebar collapsed' : 'Sidebar expanded',
-              )
-            }}
+            onClick={toggleNavigation}
             aria-label={textFor(t, 'Toggle navigation', '切换导航')}
+            aria-controls="primary-sidebar"
+            aria-expanded={mobileSidebarOpen}
           >
             <Menu size={20} />
           </button>
+          <div className="topbar-context">
+            <span>{pageLabels[parentPage ?? page]}</span>
+            {parentPage && <small>{pageLabels[page]}</small>}
+          </div>
+          <div className="topbar-actions">
           <div className="notification-center">
             <button
               className={notificationTriggerClass}
@@ -338,19 +337,23 @@ export function AppShell({
                 setNotificationOpen((open) => !open)
                 if (!notificationOpen) void refreshNotifications()
               }}
+              aria-label={notificationStatusLabel}
               aria-expanded={notificationOpen}
             >
               <span className="notification-bell">
                 <Bell size={17} />
                 {unreadNotificationCount > 0 && <span>{unreadNotificationCount}</span>}
               </span>
-              <span>{notificationStatusLabel}</span>
+              {(notificationsLoading || unreadNotificationCount > 0) && <span>{notificationStatusLabel}</span>}
             </button>
             {notificationOpen && (
               <div className="notification-popover">
                 <div className="notification-popover-header">
-                  <strong>{textFor(t, 'Notifications', '通知')}</strong>
-                  <div className="button-row compact-buttons">
+                  <div className="notification-popover-heading">
+                    <strong>{textFor(t, 'Notifications', '通知')}</strong>
+                    <span>{textFor(t, `${unreadNotificationCount} unread`, `${unreadNotificationCount} 条未读`)}</span>
+                  </div>
+                  <div className="notification-popover-actions">
                     <button
                       className="icon-button"
                       type="button"
@@ -360,11 +363,24 @@ export function AppShell({
                     >
                       <Settings2 size={16} />
                     </button>
-                    <button className="ghost-button small" type="button" onClick={() => void refreshNotifications()}>
-                      {textFor(t, 'Refresh', '刷新')}
+                    <button
+                      className="icon-button"
+                      type="button"
+                      title={textFor(t, 'Refresh notifications', '刷新通知')}
+                      aria-label={textFor(t, 'Refresh notifications', '刷新通知')}
+                      onClick={() => void refreshNotifications()}
+                    >
+                      <RefreshCw size={16} />
                     </button>
-                    <button className="ghost-button small" type="button" onClick={() => void markAllRead()} disabled={unreadNotificationCount === 0}>
-                      {textFor(t, 'Read all', '全部已读')}
+                    <button
+                      className="icon-button"
+                      type="button"
+                      title={textFor(t, 'Mark all as read', '全部标为已读')}
+                      aria-label={textFor(t, 'Mark all as read', '全部标为已读')}
+                      onClick={() => void markAllRead()}
+                      disabled={unreadNotificationCount === 0}
+                    >
+                      <CheckCheck size={16} />
                     </button>
                   </div>
                 </div>
@@ -396,41 +412,48 @@ export function AppShell({
                   onOpen={(notification) => {
                     openResource(notification)
                     setNotificationOpen(false)
-                    simulateAction(
-                      locale === 'zh'
-                        ? `已打开提醒关联资源：${notification.title}`
-                        : `Opened reminder resource: ${notification.title}`,
-                    )
                   }}
                 />
                 </>}
               </div>
             )}
           </div>
-          <div className="topbar-actions">
-            <button className="language" type="button" onClick={switchLocale}>
-              <Languages size={16} />
-              {locale === 'en' ? '中文' : 'English'}
-            </button>
             {isSignedIn ? (
               <>
-                <button className="ghost-button" type="button" onClick={() => openProfile(accountProfile)}>
-                  <UserRound size={17} />
-                  {accountName}
-                </button>
-                <button
-                  className="ghost-button"
-                  type="button"
-                  onClick={() => {
-                    void account.logout().then(() => {
-                      navigatePrimary('home')
-                      simulateAction(isZhCopy(t) ? '已退出登录' : 'Signed out')
-                    })
-                  }}
-                >
-                  <LogOut size={17} />
-                  {textFor(t, 'Logout', '退出')}
-                </button>
+                <div className="account-menu-wrap" ref={accountMenuRef}>
+                  <button ref={accountMenuTriggerRef} className="topbar-account" type="button" onClick={() => setAccountMenuOpen((open) => !open)} aria-label={textFor(t, `Open account menu for ${accountName}`, `打开 ${accountName} 的账号菜单`)} aria-expanded={accountMenuOpen}>
+                    <span>{accountName.trim().charAt(0).toUpperCase() || 'U'}</span>
+                    <b>{accountName}</b>
+                    <ChevronDown size={14} />
+                  </button>
+                  {accountMenuOpen && (
+                    <div className="account-menu">
+                      <div className="account-menu-summary">
+                        <strong>{accountName}</strong>
+                        <span>{currentTier} · {currentPoints}</span>
+                      </div>
+                      <button type="button" onClick={() => { setAccountMenuOpen(false); openProfile(accountProfile) }}><UserRound size={16} />{t.profile}</button>
+                      <button type="button" data-testid="security-open-button" onClick={() => { setAccountMenuOpen(false); setSecurityOpen(true) }}><ShieldCheck size={16} />{textFor(t, 'Security', '安全')}</button>
+                      <button type="button" onClick={() => { setAccountMenuOpen(false); switchLocale() }}><Languages size={16} />{locale === 'en' ? '中文' : 'English'}</button>
+                      <button type="button" onClick={() => { setAccountMenuOpen(false); setThemeMode(themeMode === 'black' ? 'white' : 'black') }}>
+                        {themeMode === 'black' ? <Sun size={16} /> : <Moon size={16} />}
+                        {themeMode === 'black' ? textFor(t, 'Light theme', '浅色主题') : textFor(t, 'Dark theme', '深色主题')}
+                      </button>
+                      <button type="button" onClick={() => { setAccountMenuOpen(false); navigatePrimary('support') }}><CircleHelp size={16} />{textFor(t, 'Help and support', '帮助与支持')}</button>
+                      <div className="account-menu-links">
+                        <button data-testid="policy-center-link" type="button" onClick={() => { setAccountMenuOpen(false); navigatePrimary('terms') }}>{textFor(t, 'Policies', '政策')}</button>
+                        <button data-testid="privacy-center-link" type="button" onClick={() => { setAccountMenuOpen(false); navigatePrimary('privacy') }}>{t.privacy}</button>
+                      </div>
+                      <button className="account-menu-logout" type="button" onClick={() => {
+                        setAccountMenuOpen(false)
+                        void account.logout().then(() => {
+                          navigatePrimary('home')
+                          simulateAction(isZhCopy(t) ? '已退出登录' : 'Signed out')
+                        })
+                      }}><LogOut size={16} />{textFor(t, 'Logout', '退出')}</button>
+                    </div>
+                  )}
+                </div>
               </>
             ) : (
               <button className="ghost-button" type="button" onClick={() => setLoginOpen(true)}>
@@ -438,15 +461,11 @@ export function AppShell({
                 {t.login}
               </button>
             )}
-            <button aria-label={t.getStarted} className="primary-button" type="button" onClick={() => navigatePrimary('inspiration')}>
-              <Sparkles size={17} />
-              <span>{t.getStarted}</span>
-            </button>
           </div>
         </header>
 
         <div className={page === 'tasks' ? 'page task-page' : 'page'}>
-          {parentPage && (
+          {parentPage && page !== 'community' && (
             <nav className="parent-nav" aria-label={textFor(t, 'Page parent navigation', '页面上级导航')}>
               <button
                 className="ghost-button parent-back-button"
@@ -466,11 +485,10 @@ export function AppShell({
       {searchOpen && (
         <SearchPanel
           t={t}
-          close={() => setSearchOpen(false)}
+          close={closeSearch}
           playTrack={playTrack}
           setPage={navigateToPage}
           openProfile={openProfile}
-          simulateAction={simulateAction}
         />
       )}
       {loginOpen && (
@@ -482,6 +500,8 @@ export function AppShell({
           loginWithPassword={account.loginWithPassword}
           loginWithOAuthProvider={account.loginWithOAuthProvider}
           registerWithEmail={account.registerWithEmail}
+          verifyEmail={account.verifyEmail}
+          resetPassword={account.resetPassword}
           setPage={navigateToPage}
         />
       )}
@@ -512,7 +532,6 @@ export function AppShell({
           playTrack={playTrack}
           playing={playing}
           setPlaying={setPlaying}
-          simulateAction={simulateAction}
         />
       )}
       <ToastViewport toasts={toasts} dismiss={dismissToast} />

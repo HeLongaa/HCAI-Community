@@ -1,13 +1,28 @@
+import { isDeepStrictEqual } from 'node:util'
 import { randomUUID } from 'node:crypto'
 import { domainEventDto } from './domainEvents.js'
 
 const includePublication = { publication: true }
 const nowPlus = (seconds) => new Date(Date.now() + Math.max(1, Number(seconds ?? 60)) * 1000)
 
+const sameIdempotentEvent = (stored, candidate) =>
+  stored.eventType === candidate.eventType &&
+  stored.eventVersion === candidate.eventVersion &&
+  stored.aggregateType === candidate.aggregateType &&
+  stored.aggregateId === candidate.aggregateId &&
+  (stored.ownerId ?? null) === (candidate.ownerId ?? null) &&
+  stored.correlationId === candidate.correlationId &&
+  (stored.causationId ?? null) === (candidate.causationId ?? null) &&
+  stored.payloadSchemaVersion === candidate.payloadSchemaVersion &&
+  isDeepStrictEqual(stored.payload, candidate.payload)
+
 const sequenceId = (event) => `sequence:${event.aggregateType}:${event.aggregateId}`
 export const enqueueDomainEvent = async (db, event) => {
   const current = await db.domainEventOutbox.findUnique({ where: { idempotencyKey: event.idempotencyKey }, include: includePublication })
-  if (current) return current
+  if (current) {
+    if (!sameIdempotentEvent(current, event)) throw new Error('DOMAIN_EVENT_IDEMPOTENCY_CONFLICT')
+    return current
+  }
   await db.domainEventAggregateSequence.createMany({
     data: [{ id: sequenceId(event), aggregateType: event.aggregateType, aggregateId: event.aggregateId, currentSequence: 0 }],
     skipDuplicates: true,

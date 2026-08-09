@@ -14,6 +14,7 @@ export const rateLimitConfig = (source = process.env) => ({
   authMax: positiveInteger(source.RATE_LIMIT_AUTH_MAX, 120),
   uploadMax: positiveInteger(source.RATE_LIMIT_UPLOAD_MAX, 120),
   adminMutationMax: positiveInteger(source.RATE_LIMIT_ADMIN_MUTATION_MAX, 180),
+  clientTelemetryMax: positiveInteger(source.RATE_LIMIT_CLIENT_TELEMETRY_MAX, 120),
   store: String(source.RATE_LIMIT_STORE ?? 'memory').trim().toLowerCase(),
   storeFailureMode: String(source.RATE_LIMIT_REDIS_FAILURE_MODE ?? source.RATE_LIMIT_STORE_FAILURE_MODE ?? 'fail_closed').trim().toLowerCase(),
 })
@@ -21,6 +22,9 @@ export const rateLimitConfig = (source = process.env) => ({
 export const createMemoryRateLimitStore = () => {
   const windows = new Map()
   return {
+    async healthCheck() {
+      return true
+    },
     increment({ key, windowMs, now = Date.now() }) {
       const current = windows.get(key)
       const windowStart = current && current.resetAt > now ? current.resetAt - windowMs : now
@@ -178,6 +182,11 @@ export const createRedisRateLimitStore = ({
   const commandClient = client ?? createRedisCommandClient({ url, timeoutMs })
   const keyPrefix = String(prefix || 'newchat:rate-limit').replace(/:+$/, '')
   return {
+    async healthCheck() {
+      const result = await commandClient.sendCommand(['PING'])
+      if (result !== 'PONG') throw new Error('Redis rate-limit store readiness check failed')
+      return true
+    },
     async increment({ key, windowMs, now = Date.now() }) {
       const redisKey = `${keyPrefix}:${key}`
       const result = await commandClient.sendCommand(['EVAL', redisIncrementScript, '1', redisKey, String(windowMs)])
@@ -221,11 +230,22 @@ const requestBucket = (request) => {
   const method = String(request.method ?? '').toUpperCase()
   const pathname = requestPathname(request)
 
-  if (method === 'POST' && ['/api/auth/login', '/api/auth/register', '/api/auth/refresh'].includes(pathname)) {
+  if (method === 'POST' && [
+    '/api/auth/login',
+    '/api/auth/register',
+    '/api/auth/refresh',
+    '/api/auth/email/verification/resend',
+    '/api/auth/email/verify',
+    '/api/auth/password-reset/request',
+    '/api/auth/password-reset/confirm',
+  ].includes(pathname)) {
     return { id: 'auth', maxKey: 'authMax', label: 'authentication' }
   }
   if (method === 'POST' && pathname === '/api/media/uploads') {
     return { id: 'upload', maxKey: 'uploadMax', label: 'media upload' }
+  }
+  if (method === 'POST' && pathname === '/api/observability/client-errors') {
+    return { id: 'client_telemetry', maxKey: 'clientTelemetryMax', label: 'client telemetry' }
   }
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && pathname.startsWith('/api/admin')) {
     return { id: 'admin_mutation', maxKey: 'adminMutationMax', label: 'admin mutation' }

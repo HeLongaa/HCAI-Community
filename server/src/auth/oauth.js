@@ -1,4 +1,6 @@
 import { createHash, createHmac, createPublicKey, createSign, createVerify, randomBytes, timingSafeEqual } from 'node:crypto'
+import { getTrustedOrigins } from '../common/http/origin.js'
+import { isProductionEnvironment } from '../common/runtimeEnvironment.js'
 import { getAccessTokenKeyRing } from './sessionTokens.js'
 
 const oauthStateTtlMs = 10 * 60 * 1000
@@ -63,25 +65,62 @@ const decodeJson = (value) => JSON.parse(Buffer.from(value, 'base64url').toStrin
 
 const sign = (payload, secret) => createHmac('sha256', secret).update(payload).digest('base64url')
 
+const loopbackHosts = new Set(['localhost', '127.0.0.1', '::1'])
+
+const configuredOAuthOrigin = (key, source = process.env) => {
+  const value = String(source[key] ?? '').trim()
+  if (!value) return null
+  try {
+    const parsed = new URL(value)
+    const localDevelopment = !isProductionEnvironment(source) && parsed.protocol === 'http:' && loopbackHosts.has(parsed.hostname)
+    if (
+      (parsed.protocol !== 'https:' && !localDevelopment) ||
+      parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash
+    ) {
+      return null
+    }
+    return parsed.origin
+  } catch {
+    return null
+  }
+}
+
+export const getOAuthCallbackOrigin = (source = process.env) => configuredOAuthOrigin('OAUTH_CALLBACK_ORIGIN', source)
+
+export const getOAuthBrowserReturnOrigin = (source = process.env) => configuredOAuthOrigin('OAUTH_BROWSER_RETURN_ORIGIN', source)
+
+export const buildOAuthBrowserReturnUrl = (redirectTo, source = process.env) => {
+  const origin = getOAuthBrowserReturnOrigin(source)
+  if (!origin) return null
+  const redirect = new URL(normalizeOAuthRedirect(redirectTo), 'https://oauth.local')
+  const route = `${redirect.pathname.replace(/^\/+/, '')}${redirect.search}`
+  const target = new URL(`${origin}/`)
+  if (route) target.hash = route
+  return target.toString()
+}
+
 const oauthProviderTimeoutMs = (source = process.env) => {
   const parsed = Number.parseInt(source.OAUTH_PROVIDER_TIMEOUT_MS ?? '', 10)
   return Number.isInteger(parsed) && parsed >= 1_000 && parsed <= 15_000 ? parsed : defaultProviderTimeoutMs
 }
 
 const isOAuthDevModeEnabled = (source = process.env) => (
-  source.NODE_ENV !== 'production' && String(source.OAUTH_DEV_MODE ?? 'enabled').trim().toLowerCase() !== 'disabled'
+  !isProductionEnvironment(source) && String(source.OAUTH_DEV_MODE ?? 'enabled').trim().toLowerCase() !== 'disabled'
 )
 
 const hasValidRedirectUri = (provider, value, source = process.env) => {
   try {
     const redirect = new URL(String(value ?? ''))
-    const localDevelopment = source.NODE_ENV !== 'production' && ['localhost', '127.0.0.1', '::1'].includes(redirect.hostname)
+    const productionEnvironment = isProductionEnvironment(source)
+    const localDevelopment = !productionEnvironment && loopbackHosts.has(redirect.hostname)
+    const callbackOrigin = getOAuthCallbackOrigin(source)
     return (redirect.protocol === 'https:' || (localDevelopment && redirect.protocol === 'http:'))
       && redirect.username === ''
       && redirect.password === ''
       && redirect.search === ''
       && redirect.hash === ''
       && redirect.pathname === `/api/auth/oauth/${provider}/callback`
+      && (!productionEnvironment || (callbackOrigin !== null && redirect.origin === callbackOrigin))
   } catch {
     return false
   }
@@ -289,22 +328,30 @@ export const resolveOAuthProviderSecret = (provider, reference, source = process
 export const getOAuthProviderMetadata = (provider, source = process.env, configuration = null) => {
   const normalizedProvider = normalizeOAuthProvider(provider)
   const prefix = `OAUTH_${normalizedProvider.toUpperCase()}`
-  const clientId = configuration?.clientId ?? source[`${prefix}_CLIENT_ID`] ?? null
-  const redirectUri = configuration?.redirectUri ?? source[`${prefix}_REDIRECT_URI`] ?? null
+  const normalizedValue = (value) => String(value ?? '').trim() || null
+  const clientId = normalizedValue(configuration?.clientId ?? source[`${prefix}_CLIENT_ID`])
+  const redirectUri = normalizedValue(configuration?.redirectUri ?? source[`${prefix}_REDIRECT_URI`])
+  const teamId = normalizedValue(source[`${prefix}_TEAM_ID`])
+  const keyId = normalizedValue(source[`${prefix}_KEY_ID`])
   const configuredScopes = Array.isArray(configuration?.scopes) && configuration.scopes.length > 0
     ? configuration.scopes.join(' ')
     : null
   const providerSecret = resolveOAuthProviderSecret(normalizedProvider, configuration?.clientSecretRef ?? null, source)
+  const productionEnvironment = isProductionEnvironment(source)
+  const browserReturnOrigin = getOAuthBrowserReturnOrigin(source)
+  const browserReturnReady = !productionEnvironment || (
+    browserReturnOrigin !== null && getTrustedOrigins(source).includes(browserReturnOrigin)
+  )
   const credentialsPresent = normalizedProvider === 'apple'
     ? Boolean(
         clientId &&
-        source[`${prefix}_TEAM_ID`] &&
-        source[`${prefix}_KEY_ID`] &&
+        teamId &&
+        keyId &&
         providerSecret &&
         redirectUri,
       )
     : Boolean(clientId && providerSecret && redirectUri)
-  const configured = credentialsPresent && hasValidRedirectUri(normalizedProvider, redirectUri, source)
+  const configured = credentialsPresent && hasValidRedirectUri(normalizedProvider, redirectUri, source) && browserReturnReady
   const mode = configured ? 'external' : isOAuthDevModeEnabled(source) ? 'dev' : 'unavailable'
   return {
     provider: normalizedProvider,
@@ -313,12 +360,14 @@ export const getOAuthProviderMetadata = (provider, source = process.env, configu
     mode,
     clientId,
     clientSecret: normalizedProvider === 'apple' ? null : providerSecret,
-    teamId: source[`${prefix}_TEAM_ID`] ?? null,
-    keyId: source[`${prefix}_KEY_ID`] ?? null,
+    teamId,
+    keyId,
     privateKey: normalizedProvider === 'apple' ? providerSecret : null,
     redirectUri,
     secretRef: configuration?.clientSecretRef ?? null,
     configurationSource: configuration?.clientId ? 'admin' : 'environment',
+    callbackOrigin: getOAuthCallbackOrigin(source),
+    browserReturnOrigin,
     ...providerConfigs[normalizedProvider],
     ...(configuredScopes ? { scope: configuredScopes } : {}),
   }
@@ -334,6 +383,7 @@ export const listOAuthProviderMetadata = (source = process.env, controlByProvide
     mode: metadata.mode,
     authorizationUrl: metadata.mode === 'unavailable' ? null : metadata.authorizationUrl,
     callbackUrl: metadata.mode === 'unavailable' ? null : metadata.redirectUri,
+    browserReturnOrigin: metadata.mode === 'unavailable' ? null : metadata.browserReturnOrigin,
     callbackMethod: metadata.provider === 'apple' ? 'POST' : 'GET',
     scopes: metadata.scope.split(' '),
   }
@@ -342,7 +392,7 @@ export const listOAuthProviderMetadata = (source = process.env, controlByProvide
 export const getOAuthAuthorizationUrl = ({ provider, state, origin, source = process.env, configuration = null }) => {
   const metadata = getOAuthProviderMetadata(provider, source, configuration)
   const statePayload = verifyOAuthState(state)
-  if (metadata.mode === 'unavailable' || !providerConfigs[metadata.provider]) {
+  if (metadata.mode === 'unavailable' || !providerConfigs[metadata.provider] || !statePayload || statePayload.provider !== metadata.provider) {
     return { mode: 'unavailable', authorizationUrl: null }
   }
   if (metadata.mode === 'dev') {
@@ -615,7 +665,12 @@ const mapAppleProfile = (claims, metadata, statePayload, userPayload = null) => 
 export const exchangeOAuthCodeForProfile = async (provider, code, options = {}) => {
   const normalizedProvider = normalizeOAuthProvider(provider)
   const metadata = getOAuthProviderMetadata(normalizedProvider, options.source ?? process.env, options.configuration ?? null)
-  if (metadata.mode === 'unavailable' || !providerConfigs[normalizedProvider]) {
+  if (
+    metadata.mode === 'unavailable' ||
+    !providerConfigs[normalizedProvider] ||
+    !options.statePayload ||
+    options.statePayload.provider !== normalizedProvider
+  ) {
     return null
   }
   if (metadata.mode === 'dev') {

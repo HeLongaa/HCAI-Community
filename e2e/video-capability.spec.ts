@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import type { ApiUserCreativeGeneration } from '../src/services/contracts'
+import type { ApiCreativeProviderCatalog, ApiUserCreativeGeneration } from '../src/services/contracts'
 import { signInPage } from './helpers'
 
 const actionsFor = (status: string, outputReady = false): ApiUserCreativeGeneration['actions'] => ({
@@ -45,6 +45,19 @@ const videoGeneration = ({
 
 test('Video Studio uses capability parameters and labels disabled Provider shells', async ({ page, request }) => {
   await signInPage(page, request, 'promptlin')
+  let generationAttempts = 0
+  await page.route('**/api/creative/generations', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue()
+      return
+    }
+    generationAttempts += 1
+    if (generationAttempts === 1) {
+      await route.fulfill({ status: 503, json: { error: { code: 'PROVIDER_UNAVAILABLE', message: 'Video generation is temporarily unavailable.' } } })
+      return
+    }
+    await route.continue()
+  })
   await page.goto('/')
   await page.getByRole('button', { name: 'AI Workspace' }).click()
   await page.getByRole('button', { name: 'Video', exact: true }).click()
@@ -57,15 +70,30 @@ test('Video Studio uses capability parameters and labels disabled Provider shell
   await expect(page.getByRole('tab', { name: 'Image to Video' })).toBeEnabled()
   await expect(page.getByRole('tab', { name: 'Music Video' })).toBeEnabled()
 
+  await page.getByRole('tab', { name: 'Image to Video' }).click()
+  await page.locator('.video-upload-button input[type="file"]').setInputFiles({ name: 'video-reference.png', mimeType: 'image/png', buffer: Buffer.from('video studio reference') })
+  await expect(page.locator('.generation-operation-feedback')).toContainText('Asset uploaded.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
+  await page.getByRole('tab', { name: 'Text to Video' }).click()
+
   await page.getByLabel(/rights and consent required/).check()
+  const generateButton = page.getByRole('button', { name: 'Generate video' })
+  await generateButton.click()
+  await expect(page.locator('.video-inline-error')).toContainText('The video service is temporarily unavailable.')
+  await expect(page.getByLabel('Video prompt')).toHaveValue(/quiet train/)
+  await expect(page.getByLabel(/rights and consent required/)).toBeChecked()
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
+
   const generationResponse = page.waitForResponse((response) =>
     response.url().endsWith('/api/creative/generations') && response.request().method() === 'POST',
   )
-  const generateButton = page.getByRole('button', { name: 'Generate video' })
   await generateButton.focus()
   await page.keyboard.press('Enter')
   const response = await generationResponse
   expect(response.ok()).toBeTruthy()
+  expect(generationAttempts).toBe(2)
+  await expect(page.locator('.generation-operation-feedback')).toContainText('Video job created.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
   expect(response.request().postDataJSON()).toMatchObject({
     workspace: 'video',
     mode: 'text_to_video',
@@ -78,18 +106,79 @@ test('Video Studio uses capability parameters and labels disabled Provider shell
       outputFormat: 'mp4',
     },
   })
-  await expect(page.locator('.video-history-row').filter({ hasText: 'quiet train' }).first()).toContainText('Completed')
+  await expect(page.locator('.video-history-row').filter({ hasText: 'quiet train' }).first()).toContainText('Processing output')
+  await expect(page.getByRole('status', { name: 'Video generation status' })).toContainText('Processing output')
   await page.getByRole('button', { name: 'Private preview' }).click()
   await expect(page.getByText(/Mock results contain a governed placeholder artifact/)).toBeVisible()
 
-  await page.getByLabel('Video runtime').selectOption('google-veo-3-1-fast')
-  await expect(page.getByText('Fixture only', { exact: true })).toBeVisible()
+  await page.getByLabel('Video runtime').selectOption('hcai-router-seedance-2-fast')
+  await expect(page.getByText('Capability validated; runtime configuration is not ready.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Generate video' })).toBeDisabled()
   await expect(page.getByRole('tab', { name: 'Music Video' })).toBeDisabled()
 
   await page.getByLabel('Video runtime').selectOption('runway-gen-4-5')
   await expect(page.getByText('Unavailable', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Generate video' })).toBeDisabled()
+})
+
+test('Video Studio submits the capability-selected value after switching to a constrained model', async ({ page, request }) => {
+  await signInPage(page, request, 'promptlin')
+  await page.route('**/api/creative/providers', async (route) => {
+    const response = await route.fetch()
+    const payload = await response.json() as { data: ApiCreativeProviderCatalog }
+    const minimax = payload.data.providers.find((provider) => provider.id === 'hcai-router-minimax-hailuo-2-3')
+    if (!minimax) throw new Error('MiniMax fixture Provider is missing')
+    minimax.enabled = true
+    minimax.configured = true
+    minimax.fixtureInjectable = false
+    minimax.safeMetadata.fixtureAdapterOnly = false
+    const capability = minimax.capabilities.find((candidate) => candidate.workspace === 'video')
+    if (!capability) throw new Error('MiniMax video capability is missing')
+    capability.availability = {
+      ...capability.availability,
+      capabilityAvailable: true,
+      runtimeAvailableWhenConfigured: true,
+      productionAvailable: false,
+    }
+    await route.fulfill({ response, json: payload })
+  })
+
+  let submitted: Record<string, unknown> | null = null
+  await page.route('**/api/creative/generations', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue()
+      return
+    }
+    submitted = route.request().postDataJSON()
+    await route.fulfill({
+      status: 201,
+      json: {
+        data: {
+          id: 'minimax-constrained-video',
+          workspace: 'video',
+          mode: 'text_to_video',
+          status: 'queued',
+          provider: { id: 'hcai-router-minimax-hailuo-2-3', mode: 'router_minimax_video', label: 'HCAI Router MiniMax Hailuo 2.3' },
+          outputs: [],
+          usage: { estimatedCredits: 8, metered: true },
+        },
+      },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'AI Workspace' }).click()
+  await page.getByRole('button', { name: 'Video', exact: true }).click()
+  await page.getByLabel('Video runtime').selectOption('hcai-router-minimax-hailuo-2-3')
+  const duration = page.locator('.video-parameter-grid select').nth(1)
+  await expect(duration).toHaveValue('6')
+  await page.getByLabel(/rights and consent required/).check()
+  await page.getByRole('button', { name: 'Generate video' }).click()
+
+  expect(submitted).toMatchObject({
+    providerId: 'hcai-router-minimax-hailuo-2-3',
+    parameters: { aspectRatio: '16:9', durationSeconds: 6, outputFormat: 'mp4' },
+  })
 })
 
 test('Video Studio preserves input roles and handles lifecycle, private preview, and mobile layout', async ({ page, request }) => {
@@ -196,16 +285,30 @@ test('Video Studio preserves input roles and handles lifecycle, private preview,
   await page.getByRole('button', { name: 'AI Workspace' }).click()
   await page.getByRole('button', { name: 'Video', exact: true }).click()
   await expect(page.getByText('Running', { exact: true }).first()).toBeVisible()
+  await expect(page.getByTestId('video-lifecycle').getByText('Generate', { exact: true }).locator('..')).toHaveClass(/current/)
+  await expect(page.getByTestId('video-lifecycle')).toContainText(/usually 1-3 minutes/)
   await page.getByRole('button', { name: 'Cancel', exact: true }).click()
   await expect(page.getByText('Cancelled', { exact: true }).first()).toBeVisible()
+  await expect(page.locator('.generation-operation-feedback')).toContainText('Video job cancelled.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
   await expect(page.getByText(/Exact retry is unavailable after refresh/)).toBeVisible()
+  await expect(page.getByTestId('video-lifecycle').getByText('Generate', { exact: true }).locator('..')).toHaveClass(/error/)
+  await page.getByRole('button', { name: 'Use safe preview' }).click()
+  await expect(page.getByLabel('Video prompt')).toHaveValue('Running city video')
+  await expect(page.getByLabel(/rights and consent required/)).not.toBeChecked()
 
   await page.locator('.video-history-row').filter({ hasText: 'Completed private video' }).click()
+  await expect(page.getByRole('status', { name: 'Video generation status' })).toContainText('Completed')
+  await expect(page.getByTestId('video-lifecycle').getByText('Ready', { exact: true }).locator('..')).toHaveClass(/complete/)
+  await expect(page.getByTestId('video-lifecycle')).toContainText('Processing complete')
   await page.getByRole('button', { name: 'Private preview' }).click()
   await expect(page.getByTestId('private-video-preview')).toBeVisible()
   await expect(page.getByTestId('private-video-preview')).toHaveAttribute('src', /^data:video\/mp4/)
   await expect(page.getByTestId('private-video-preview')).toHaveAccessibleName('Private video preview')
   await expect(page.getByRole('button', { name: 'Download output' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Download output' }).click()
+  await expect(page.locator('.generation-operation-feedback')).toContainText('Download started: private-video.mp4')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
 
   await page.getByRole('tab', { name: 'Music Video' }).click()
   await page.getByLabel('Reference image (optional)').selectOption('image-clean')
@@ -215,6 +318,8 @@ test('Video Studio preserves input roles and handles lifecycle, private preview,
   await expect(page.getByRole('button', { name: 'Generate video' })).toBeEnabled()
   const creation = page.waitForRequest((candidate) => candidate.url().endsWith('/api/creative/generations') && candidate.method() === 'POST')
   await page.getByRole('button', { name: 'Generate video' }).click()
+  await expect(page.locator('.generation-operation-feedback')).toContainText('Video job created.')
+  await expect(page.getByTestId('app-toast')).toHaveCount(0)
   const requestBody = (await creation).postDataJSON()
   expect(requestBody).toMatchObject({
     workspace: 'video',

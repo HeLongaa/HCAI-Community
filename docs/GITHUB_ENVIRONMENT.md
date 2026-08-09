@@ -8,21 +8,72 @@ For the deployment sequence, process topology, staging rehearsal, and rollback b
 
 ## RELEASE-01 Isolated Rehearsal
 
-The `infrastructure-rehearsal` workflow job uses a protected GitHub Environment and dedicated resources only. Configure:
+The `infrastructure-rehearsal` workflow job uses a protected GitHub Environment and a forced-command SSH adapter. Database, Redis, and object-storage credentials remain on the target host and are never injected into GitHub Actions. Configure:
 
 | Kind | Name | Requirement |
 | --- | --- | --- |
-| Variable | `RELEASE_REHEARSAL_CONFIRMATION` | Exact value `release-01-isolated-rehearsal` |
-| Secret | `RELEASE_REHEARSAL_DATABASE_URL` | Dedicated PostgreSQL source database whose name contains `rehearsal` |
-| Secret | `RELEASE_REHEARSAL_RESTORE_DATABASE_URL` | Different dedicated PostgreSQL restore database whose name contains `rehearsal` |
-| Secret | `RELEASE_REHEARSAL_REDIS_URL` | Dedicated Redis-compatible endpoint or database |
-| Variable | `RELEASE_REHEARSAL_REDIS_RECOVERY_COMMAND_JSON` | JSON argv using an allowlisted executable; target arguments must contain `rehearsal` and credentials must come from the environment |
-| Variable | `RELEASE_REHEARSAL_PRIMARY_BUCKET` | Dedicated S3 bucket whose name contains `rehearsal` |
-| Variable | `RELEASE_REHEARSAL_BACKUP_BUCKET` | Different dedicated S3 bucket whose name contains `rehearsal` |
+| Secret | `RELEASE_REHEARSAL_CONFIRMATION` | Exact value `release-01-isolated-rehearsal` |
+| Secret | `RELEASE_REHEARSAL_SSH_HOST` | Fixed staging SSH host |
+| Secret | `RELEASE_REHEARSAL_SSH_PORT` | Fixed SSH port, normally `22` |
+| Secret | `RELEASE_REHEARSAL_SSH_USER` | Dedicated forced-command staging user |
+| Secret | `RELEASE_REHEARSAL_SSH_INFRASTRUCTURE_COMMAND` | Exact remote path `/opt/newchat-staging/bin/rehearse-infrastructure` |
+| Secret | `RELEASE_REHEARSAL_SSH_PRIVATE_KEY` | Staging-only private key with no production access |
+| Secret | `RELEASE_REHEARSAL_SSH_KNOWN_HOSTS` | Pinned host-key line for the exact host and port |
+
+The host stores the direct target inputs in `/opt/newchat-staging/secrets/release-infrastructure.env` with mode `0640`. Its source and restore database names, Redis recovery target, and two S3 bucket names must contain `rehearsal`. The remote runner checks out the exact `${{ github.sha }}` in a dedicated directory, rejects dirty or mismatched source, binds preflight and execution to that SHA, and returns only receipt-verified JSON evidence.
 
 The job reuses the S3 endpoint, region, and credential secrets below. Require an environment reviewer before execution.
 Do not configure live application database names, production Redis keys, or a production media prefix. See
 `docs/RELEASE_INFRASTRUCTURE_REHEARSAL.md` for exact isolation and evidence rules.
+
+## RELEASE-02 Application Rehearsal
+
+The `application-rehearsal` job is restricted to a protected staging or rehearsal host. Configure:
+
+| Kind | Name | Requirement |
+| --- | --- | --- |
+| Secret | `RELEASE_APPLICATION_REHEARSAL_CONFIRMATION` | Exact value `release-02-staging-rehearsal` |
+| Secret | `RELEASE_REHEARSAL_TARGET_ORIGIN` | HTTPS API origin whose host contains `staging` or `rehearsal` |
+| Secret | `RELEASE_CANDIDATE_ARTIFACT_SHA256` | Immutable candidate artifact SHA-256 |
+| Secret | `RELEASE_PREVIOUS_ARTIFACT_SHA256` | Different immutable previous artifact SHA-256 |
+| Secret | `RELEASE_REHEARSAL_DEPLOY_COMMAND_JSON` | JSON argv for the allowlisted candidate deployment adapter |
+| Secret | `RELEASE_REHEARSAL_ROLLBACK_COMMAND_JSON` | JSON argv for the allowlisted previous-artifact restore adapter |
+| Secret | `RELEASE_REHEARSAL_SSH_HOST` | Fixed staging SSH host used by the repository deployment adapter |
+| Secret | `RELEASE_REHEARSAL_SSH_PORT` | Fixed SSH port, normally `22` |
+| Secret | `RELEASE_REHEARSAL_SSH_USER` | Dedicated staging deployment user |
+| Secret | `RELEASE_REHEARSAL_SSH_DEPLOY_COMMAND` | Absolute allowlisted remote command, for example `/opt/newchat-staging/bin/deploy-release` |
+| Secret | `RELEASE_REHEARSAL_SSH_PRIVATE_KEY` | Dedicated staging-only SSH private key with no production access |
+| Secret | `RELEASE_REHEARSAL_SSH_KNOWN_HOSTS` | Pinned SSH host-key line for the exact staging host and port |
+
+The first ten values are not credentials. They are stored as Environment Secrets because GitHub limits each Environment
+to 100 variables and this staging environment uses that full quota for runtime configuration. This keeps release inputs
+inside the protected Environment instead of weakening the boundary with repository-level variables.
+
+Deployment credentials stay in protected Secrets consumed by the selected CLI; never place them in either command
+array. Both commands receive the target artifact digest through `RELEASE_TARGET_ARTIFACT_SHA256` and must deploy the API
+with matching `RELEASE_ARTIFACT_SHA256`. Require an environment reviewer and use a non-production traffic target. See
+`docs/RELEASE_APPLICATION_REHEARSAL.md`.
+
+The repository SSH adapter uses
+`RELEASE_REHEARSAL_DEPLOY_COMMAND_JSON=["node","scripts/deploy-release-application-over-ssh.mjs"]` for both candidate
+and rollback. It writes the key and pinned host file to a mode-0600 temporary directory, accepts only the two SHA-256
+values already bound by RELEASE-02, invokes only the fixed remote deployment path, and removes the temporary directory
+before returning. The remote path must independently reject any artifact without a prebuilt, content-addressed
+manifest.
+
+Install the public key on the staging host with OpenSSH `restrict` and a forced command pointing to
+`infra/staging/ssh-dispatch.sh`. The dispatcher rejects interactive sessions, forwarding, extra arguments, shell
+operators, and any value other than one lowercase 64-character artifact digest.
+For a host-local candidate, run `infra/staging/build-release.sh` through the privileged host build path before using that
+key. For a Container Supply Chain candidate, install and run `infra/staging/import-supply-chain-release.sh` through the
+privileged path with the downloaded manifest, its independently verified SHA-256, and exact source commit. The importer
+accepts only the four immutable project GHCR references, pulls `linux/arm64`, and writes a compatible allowlisted
+artifact after architecture and RepoDigest verification. GHCR login must be temporary; run `docker logout ghcr.io`
+immediately after import and verify that the host Docker configuration retains no GHCR credential.
+
+The host-local builder provisions the deployment lock as `root:newchat-deploy` with mode `0660`; do not grant the
+deployment user general write access to `/opt/newchat-staging` as a substitute. Keep the previous allowlisted artifact
+and its local images available until candidate smoke, rollback, rollback smoke, and final candidate restoration finish.
 
 ## Required Secrets
 
@@ -83,6 +134,21 @@ Production/browser auth:
 | `AUTH_COOKIE_DOMAIN` | Optional | `.example.com` |
 | `AUTH_TRUSTED_ORIGINS` | Yes | `https://app.example.com,https://admin.example.com` |
 | `CORS_ALLOWED_ORIGINS` | Alternative | Used when `AUTH_TRUSTED_ORIGINS` is omitted |
+| `OAUTH_CALLBACK_ORIGIN` | External OAuth | `https://api.example.com`; every Provider redirect must use this exact origin |
+| `OAUTH_BROWSER_RETURN_ORIGIN` | External OAuth | `https://app.example.com`; must also appear in `AUTH_TRUSTED_ORIGINS` |
+
+Production release evidence verification:
+
+| Name | Required | Value |
+| --- | --- | --- |
+| `PRODUCTION_RELEASE_PLATFORM_PUBLIC_KEY` | Production deploy apply | Platform Ed25519 SPKI PEM public key |
+| `PRODUCTION_RELEASE_SECURITY_PUBLIC_KEY` | Production deploy apply | Security Ed25519 SPKI PEM public key |
+| `PRODUCTION_RELEASE_LEGAL_PUBLIC_KEY` | Production deploy apply | Legal Ed25519 SPKI PEM public key |
+| `PRODUCTION_RELEASE_PROVIDER_GOVERNANCE_PUBLIC_KEY` | Production deploy apply | Provider Governance Ed25519 SPKI PEM public key |
+| `PRODUCTION_RELEASE_SUPPLY_CHAIN_PUBLIC_KEY` | Production deploy apply | Supply Chain Ed25519 SPKI PEM public key |
+| `PRODUCTION_RELEASE_OPERATIONS_PUBLIC_KEY` | Production deploy apply | Operations Ed25519 SPKI PEM public key |
+
+These are public verification keys and may be GitHub Environment variables. Every value must represent a different Ed25519 key pair. Keep all six private keys outside GitHub Actions and outside the application runtime; role owners use them only in their controlled signing environment. See `docs/PRODUCTION_RELEASE_EVIDENCE_AND_GO_NO_GO.md`.
 
 Object storage:
 
@@ -102,10 +168,15 @@ Media scanner:
 
 | Name | Required | Example |
 | --- | --- | --- |
-| `MEDIA_SCAN_PROVIDER` | Yes | `webhook` |
-| `MEDIA_SCAN_REQUEST_ADAPTER` | Yes | `generic-webhook` or `clamav-http` |
-| `MEDIA_SCAN_REQUEST_URL` | Yes for managed smoke | `https://scanner.example.com/jobs` |
-| `MEDIA_SCAN_CALLBACK_BASE_URL` | Yes | `https://api.example.com` |
+| `MEDIA_SCAN_PROVIDER` | Yes | `webhook`; use `manual` only for strict quarantine without automated release |
+| `MEDIA_SCAN_REQUEST_ADAPTER` | Webhook mode | `generic-webhook` or `clamav-http` |
+| `MEDIA_SCAN_REQUEST_URL` | Webhook mode | `https://scanner.example.com/jobs` |
+| `MEDIA_SCAN_CALLBACK_BASE_URL` | Webhook mode | `https://api.example.com` |
+
+`manual` is not a successful scanner result. It keeps uploaded and generated bytes quarantined until an authorized review
+records a clean result. It is suitable for a blocked or limited staging environment, not for claiming that media delivery
+is production-ready. Upstream Provider restrictions require a separate per-output assurance contract before they can
+release generated assets; do not represent them by `mock` mode.
 
 OAuth provider variables. Configure at least one provider:
 
@@ -116,8 +187,10 @@ OAuth provider variables. Configure at least one provider:
 | Discord | `OAUTH_DISCORD_CLIENT_ID`, `OAUTH_DISCORD_REDIRECT_URI` |
 | Apple | `OAUTH_APPLE_CLIENT_ID`, `OAUTH_APPLE_TEAM_ID`, `OAUTH_APPLE_KEY_ID`, `OAUTH_APPLE_REDIRECT_URI` |
 
-Every redirect URI must use HTTPS and exactly end at `/api/auth/oauth/{provider}/callback`. Production never falls back
-to a dev callback when a provider is missing or invalid. Set `OAUTH_DEV_MODE=disabled` as defense in depth and optionally
+Every redirect URI must use HTTPS, use the exact `OAUTH_CALLBACK_ORIGIN`, and end at
+`/api/auth/oauth/{provider}/callback`. `OAUTH_BROWSER_RETURN_ORIGIN` is the frontend origin that receives users after the
+API callback sets the refresh and CSRF cookies; it must be listed in `AUTH_TRUSTED_ORIGINS`. Production never falls back
+to a dev callback when a provider or either origin is missing or invalid. Set `OAUTH_DEV_MODE=disabled` as defense in depth and optionally
 set `OAUTH_PROVIDER_TIMEOUT_MS` between `1000` and `15000` (default `8000`). Register the same exact URI in the Provider
 console before enabling the Provider in Admin. Admin stores an allowlisted environment SecretRef and never receives the deployment secret itself.
 
@@ -160,7 +233,7 @@ Production environments must not set `CREATIVE_STAGING_PROVIDER_PREFLIGHT_ENABLE
 
 ## Alert Channel Configuration
 
-The managed smoke requires at least one media alert channel and one security alert channel.
+The managed smoke requires at least one media alert channel in webhook scanner mode and one security alert channel in every mode.
 
 Media alert channel variables/secrets:
 
@@ -177,6 +250,22 @@ Security alert channel variables/secrets:
 | Webhook | `SECURITY_ALERT_WEBHOOK_URL` | `SECURITY_ALERT_WEBHOOK_SECRET` optional/recommended |
 | Slack | none | `SECURITY_ALERT_SLACK_WEBHOOK_URL` |
 | Email webhook | `SECURITY_ALERT_EMAIL_WEBHOOK_URL`, `SECURITY_ALERT_EMAIL_TO`, `SECURITY_ALERT_EMAIL_FROM` optional | `SECURITY_ALERT_EMAIL_WEBHOOK_SECRET` optional/recommended |
+
+Direct Security Alert Webhook, Slack, and email fanout are best-effort secondary channels. The release smoke recognizes
+security alert delivery only when the durable notification email path is enabled with
+`NOTIFICATION_EMAIL_DELIVERY_ENABLED=true`, a real `NOTIFICATION_EMAIL_WEBHOOK_URL`, an HMAC secret of at least 32
+characters, a valid `NOTIFICATION_EMAIL_FROM`, `NOTIFICATION_EMAIL_REQUIRE_PROVIDER_RECEIPT=true`, and
+`NOTIFICATION_DELIVERY_WORKER_ENABLED=true`. The relay must return `x-message-id` or `x-request-id` for every accepted
+message. Security alerts already create recipient-scoped notifications for
+`admin:audit:read` users, so this path provides leases, bounded retry, dead-letter state, and operator recovery.
+
+Email account verification and password recovery use the same durable mail worker but a separate AES-256-GCM keyring.
+Set `AUTH_EMAIL_VERIFICATION_REQUIRED=true` and/or `AUTH_PASSWORD_RESET_ENABLED=true`, then configure the exact frontend
+origin in `AUTH_EMAIL_ACTION_ORIGIN`. Store `AUTH_EMAIL_ACTION_ENCRYPTION_KEY` as a secret and set
+`AUTH_EMAIL_ACTION_ENCRYPTION_ACTIVE_KEY_ID`; for rotation, mount every still-needed key as
+`AUTH_EMAIL_ACTION_ENCRYPTION_KEYS=keyId:base64Key,...`. Raw action tokens are never persisted in notifications, audit
+records, or the action table. Enabling either feature fails startup unless notification email delivery and its worker are
+also enabled.
 
 Creative provider budget alert variables/secrets:
 

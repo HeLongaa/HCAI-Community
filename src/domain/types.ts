@@ -40,6 +40,8 @@ export type Permission =
   | 'admin:community:read'
   | 'admin:community:manage'
   | 'admin:community:export'
+  | 'admin:inspiration:read'
+  | 'admin:inspiration:manage'
   | 'admin:task-rules:read'
   | 'admin:task-rules:manage'
   | 'admin:task-rules:publish'
@@ -209,6 +211,12 @@ export type Task = {
   terminalReasonCode?: string | null
 }
 
+export type TaskProposalDraft = {
+  approach: string
+  deliverables: string
+  estimate: string
+}
+
 export type Post = {
   id: string | number
   title: string
@@ -260,6 +268,49 @@ export type InspirationItem = {
   source: string
   saves: string
   text: string
+  summary?: string
+  problem?: string
+  audience?: string
+  contentType?: string
+  category?: { id: string; slug: string; nameEn: string; nameZh: string } | null
+  domains?: string[]
+  difficulty?: string
+  toolModels?: string[]
+  sourceKind?: 'official' | 'user_submission'
+  sourceAttribution?: string | null
+  license?: string | null
+  status?: 'draft' | 'pending_review' | 'changes_requested' | 'published' | 'rejected' | 'archived'
+  content?: Record<string, unknown>
+  featured?: boolean
+  supportsTaskDraft?: boolean
+  version?: number
+  reviewNote?: string | null
+  favoriteCount?: number
+  usageCount?: number
+  favorited?: boolean
+  favoritedAt?: string
+  author?: { id: string; handle: string | null; displayName: string } | null
+  publishedAt?: string | null
+  createdAt?: string
+  updatedAt?: string
+  revisions?: Array<{
+    id: string
+    version: number
+    status: 'draft' | 'pending_review' | 'changes_requested' | 'published' | 'rejected' | 'archived'
+    reviewNote: string | null
+    reviewedAt: string | null
+    createdAt: string
+    snapshot?: Record<string, unknown>
+  }>
+  pendingRevision?: {
+    id: string
+    version: number
+    status: 'draft' | 'pending_review' | 'changes_requested' | 'published' | 'rejected' | 'archived'
+    reviewNote: string | null
+    reviewedAt: string | null
+    createdAt: string
+    snapshot?: Record<string, unknown>
+  } | null
 }
 
 export type LedgerEntry = [string, string, string, string]

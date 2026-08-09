@@ -1,0 +1,8 @@
+{
+	admin off
+}
+
+staging.157.151.204.187.nip.io {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8080
+}
