@@ -32,5 +32,6 @@
   "resourceBoundServices": ["gateway", "frontend", "api", "worker", "migration", "postgres", "redis", "minio", "minio-init"],
   "onlyPublishedService": "gateway",
   "internalNetwork": "backend",
+  "providerEgressNetwork": "provider-egress",
   "shutdownTimeoutSeconds": 30
 }

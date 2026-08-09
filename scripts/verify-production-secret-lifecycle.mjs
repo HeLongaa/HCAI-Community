@@ -51,7 +51,11 @@ if (compose) {
   add('Lifecycle services publish no host ports', (agent.ports ?? []).length === 0 && (gateway.ports ?? []).length === 0, 'internal-only')
   add('Vault Agent has only Secret Manager egress', networkNames(agent).length === 1 && networkNames(agent)[0] === 'secret-manager-egress', networkNames(agent).join(', '))
   add('Lifecycle gateway bridges only backend and Secret Manager egress', networkNames(gateway).sort().join(',') === ['backend', 'secret-manager-egress'].sort().join(','), networkNames(gateway).join(', '))
-  add('Application Worker remains isolated on backend', networkNames(worker).length === 1 && networkNames(worker)[0] === 'backend', networkNames(worker).join(', '))
+  add(
+    'Application Worker keeps backend and dedicated Provider egress only',
+    networkNames(worker).sort().join(',') === ['backend', 'provider-egress'].sort().join(','),
+    networkNames(worker).join(', '),
+  )
   add('Vault Agent credential sink is RAM-backed', compose.volumes?.['vault-agent-token']?.driver_opts?.type === 'tmpfs' && String(compose.volumes?.['vault-agent-token']?.driver_opts?.o ?? '').includes('mode=0770'), JSON.stringify(compose.volumes?.['vault-agent-token']))
   add('Vault Agent mounts workload identity but no application bearer', agentTargets.includes('/run/vault-workload') && agentTargets.includes(contract.tokenSink.replace('/token', '')) && !agentTargets.includes('/run/secret-lifecycle-client'), agentTargets.join(', '))
   add('Gateway receives the Agent sink but not workload identity', gatewayTargets.includes(contract.tokenSink.replace('/token', '')) && !gatewayTargets.includes('/run/vault-workload'), gatewayTargets.join(', '))

@@ -126,6 +126,7 @@ services:
         condition: service_healthy
     networks:
       - backend
+      - provider-egress
 
   migration:
     <<: *application-security
@@ -241,6 +242,7 @@ networks:
   edge: {}
   backend:
     internal: true
+  provider-egress: {}
 
 volumes:
   postgres-data: {}
