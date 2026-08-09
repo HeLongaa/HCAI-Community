@@ -157,6 +157,35 @@ test('asset library filters, inspects lineage, archives, and prepares cross-stud
 
 })
 
+test('asset detail exposes a playable video preview with a concise filename', async ({ page, request }) => {
+  await signInPage(page, request, 'promptlin')
+  const video = asset({
+    id: 'asset-library-video',
+    fileName: 'video-gen_c512cd5e5c654ebe8c5f487f0c38abf4-out_minimax_video_c807a0c7314334c4.mp4',
+    contentType: 'video/mp4',
+    mediaType: 'video',
+    sourceGeneration: { id: 'generation-video', workspace: 'video', mode: 'text_to_video', status: 'completed', createdAt: '2026-07-13T10:00:00.000Z' },
+    relations: [],
+  })
+  const videoBody = Buffer.from('AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAMtbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAAHgAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAld0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAAHgAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAABAAAAAQAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAB4AAAAAAABAAAAAAHPbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAAAyAAAABgBVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABem1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAATpzdGJsAAAAtnN0c2QAAAAAAAAAAQAAAKZhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAABAAEABIAAAASAAAAAAAAAABFUxhdmM2Mi4yOC4xMDIgbGlieDI2NAAAAAAAAAAAAAAAGP//AAAALGF2Y0MBQsAK/+EAFWdCwAraewEQAAADABAAAAMDIPEiagEABGjOD8gAAAAQcGFzcAAAAAEAAAABAAAAFGJ0cnQAAAAAAACklQAAAAAAAAAYc3R0cwAAAAAAAAABAAAAAwAAAgAAAAAUc3RzcwAAAAAAAAABAAAAAQAAABxzdHNjAAAAAAAAAAEAAAABAAAAAwAAAAEAAAAgc3RzegAAAAAAAAAAAAAAAwAAAmYAAAAJAAAACQAAABRzdGNvAAAAAAAAAAEAAANdAAAAYnVkdGEAAABabWV0YQAAAAAAAAAhaGRscgAAAAAAAAAAbWRpcmFwcGwAAAAAAAAAAAAAAAAtaWxzdAAAACWpdG9vAAAAHWRhdGEAAAABAAAAAExhdmY2Mi4xMi4xMDIAAAAIZnJlZQAAAoBtZGF0AAACVAYF//9Q3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE2NSByMzIyMiBiMzU2MDVhIC0gSC4yNjQvTVBFRy00IEFWQyBjb2RlYyAtIENvcHlsZWZ0IDIwMDMtMjAyNSAtIGh0dHA6Ly93d3cudmlkZW9sYW4ub3JnL3gyNjQuaHRtbCAtIG9wdGlvbnM6IGNhYmFjPTAgcmVmPTEgZGVibG9jaz0wOjA6MCBhbmFseXNlPTA6MCBtZT1kaWEgc3VibWU9MCBwc3k9MSBwc3lfcmQ9MS4wMDowLjAwIG1peGVkX3JlZj0wIG1lX3JhbmdlPTE2IGNocm9tYV9tZT0xIHRyZWxsaXM9MCA4eDhkY3Q9MCBjcW09MCBkZWFkem9uZT0yMSwxMSBmYXN0X3Bza2lwPTEgY2hyb21hX3FwX29mZnNldD0wIHRocmVhZHM9MSBsb29rYWhlYWRfdGhyZWFkcz0xIHNsaWNlZF90aHJlYWRzPTAgbnI9MCBkZWNpbWF0ZT0xIGludGVybGFjZWQ9MCBibHVyYXlfY29tcGF0PTAgY29uc3RyYWluZWRfaW50cmE9MCBiZnJhbWVzPTAgd2VpZ2h0cD0wIGtleWludD0yNTAga2V5aW50X21pbj0yNSBzY2VuZWN1dD0wIGludHJhX3JlZnJlc2g9MCByYz1jcmYgbWJ0cmVlPTAgY3JmPTIzLjAgcWNvbXA9MC42MCBxcG1pbj0wIHFwbWF4PTY5IHFwc3RlcD00IGlwX3JhdGlvPTEuNDAgYXE9MACAAAAACmWIhDomKAAJAuAAAAAFQZogJpQAAAAFQZpAKpQ=', 'base64')
+  await page.route('**/api/media/assets?*', async (route) => route.fulfill({ json: { data: [video], meta: { pagination: { limit: 24, nextCursor: null } } } }))
+  await page.route('**/api/media/assets/asset-library-video/download', async (route) => route.fulfill({ json: { data: { asset: video, download: { provider: 'private-cdn', method: 'GET', url: 'https://media.example.test/video.mp4', headers: {}, expiresAt: '2026-07-13T10:10:00.000Z' } } } }))
+  await page.route('https://media.example.test/video.mp4', async (route) => route.fulfill({ contentType: 'video/mp4', body: videoBody }))
+
+  await page.goto('/')
+  await page.getByTestId('nav-assets').click()
+  await page.getByRole('button', { name: /video-gen_c512cd5e5c654ebe8c5f487f0c38abf4/ }).click()
+  const preview = page.getByLabel('Asset video preview')
+  await expect(preview).toBeVisible()
+  await expect(preview).toHaveAttribute('controls', '')
+  await expect(preview).toHaveAttribute('preload', 'metadata')
+  await expect(preview).toHaveJSProperty('muted', false)
+  const fileName = page.getByRole('heading', { level: 2 })
+  await expect(fileName).toHaveAttribute('title', video.fileName)
+  await expect.poll(async () => fileName.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(45)
+  await expect.poll(async () => preview.evaluate((element) => (element as HTMLVideoElement).duration)).toBeGreaterThan(0)
+})
+
 test('asset library prepares a fixture upload and exposes its pending governance state', async ({ page, request }) => {
   await signInPage(page, request, 'promptlin')
   const fileBody = Buffer.from('fixture upload')

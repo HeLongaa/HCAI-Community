@@ -3138,7 +3138,7 @@
 .app-shell.page-assets .asset-detail-preview > span {
   position: absolute;
   left: 12px;
-  bottom: 10px;
+  top: 10px;
   font-size: 10px;
   font-weight: 650;
 }
@@ -3156,14 +3156,16 @@
 }
 
 .app-shell.page-assets .asset-detail-title h2 {
-  display: block;
+  display: -webkit-box;
   margin: 5px 0 8px;
-  overflow: visible;
+  overflow: hidden;
   color: var(--text);
   font-size: 17px;
   font-weight: 580;
   line-height: 1.3;
   overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .app-shell.page-assets .asset-detail-state {
