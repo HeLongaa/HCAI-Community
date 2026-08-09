@@ -22,6 +22,7 @@ import { isZhCopy, textFor } from '../../domain/utils'
 import type { VideoGenerationWorkflow } from '../../hooks/useVideoGenerationWorkflow'
 import type { MusicGenerationWorkflow } from '../../hooks/useMusicGenerationWorkflow'
 import type { GenerationOperationFeedback } from '../../hooks/generationOperationFeedback'
+import type { ChatRuntimeReadinessState } from '../../hooks/useChatRuntimeReadiness'
 import type { ApiCreativeCapability, ApiCreativeGeneration, ApiCreativeProviderCatalog, ApiMediaAsset, ApiUserCreativeGeneration } from '../../services/contracts'
 import { ChatPage } from './ChatPage'
 import { MusicStudioPage } from './MusicStudioPage'
@@ -75,6 +76,7 @@ export function PlaygroundPage({
   musicWorkflow,
   videoWorkflow,
   signedIn,
+  chatRuntimeReadiness,
   tasks,
   libraryItems,
   openModerationAppeal,
@@ -108,6 +110,7 @@ export function PlaygroundPage({
   musicWorkflow: MusicGenerationWorkflow
   videoWorkflow: VideoGenerationWorkflow
   signedIn: boolean
+  chatRuntimeReadiness: ChatRuntimeReadinessState
   tasks: Task[]
   libraryItems: InspirationItem[]
   openModerationAppeal: (moderationDecisionId: string) => void
@@ -156,8 +159,10 @@ export function PlaygroundPage({
   const workspaceProvider = workspace === 'image'
     ? imageProvider
     : workspace === 'chat' ? null : selectOperationalCreativeProvider(imageProviderCatalog, workspace)
+  const chatRuntimeAvailable = chatRuntimeReadiness.status === 'ready' &&
+    chatRuntimeReadiness.data?.availability !== 'unavailable'
   const workspaceProviderAvailable = workspace === 'chat'
-    ? signedIn
+    ? chatRuntimeAvailable
     : Boolean(
         workspaceProvider && isOperationalCreativeProvider(workspaceProvider, workspace),
       )
@@ -165,7 +170,15 @@ export function PlaygroundPage({
     workspaceProvider && isMockCreativeProvider(workspaceProvider),
   )
   const runtimeTone = workspace === 'chat'
-    ? (signedIn ? 'available' : 'unavailable')
+    ? !signedIn
+      ? 'unavailable'
+      : chatRuntimeReadiness.status === 'loading'
+        ? 'loading'
+        : chatRuntimeReadiness.status === 'error'
+          ? 'error'
+          : chatRuntimeReadiness.data?.availability === 'demo'
+            ? 'demo'
+            : chatRuntimeAvailable ? 'available' : 'unavailable'
     : imageProviderCatalogState === 'loading'
       ? 'loading'
       : imageProviderCatalogState === 'error'
@@ -181,11 +194,11 @@ export function PlaygroundPage({
         ? textFor(t, 'READY', '可用')
         : runtimeTone === 'demo'
           ? textFor(t, 'DEMO RUNTIME', '演示运行')
-        : workspace === 'chat'
+        : workspace === 'chat' && !signedIn
           ? textFor(t, 'SIGN IN', '请登录')
           : textFor(t, 'NOT READY', '未就绪')
   const runtimeName = workspace === 'chat'
-    ? textFor(t, 'Personal session', '个人会话')
+    ? chatRuntimeReadiness.data?.runtime?.label ?? textFor(t, 'No runtime selected', '未选择运行来源')
     : workspaceProvider?.label ?? textFor(t, 'No runtime selected', '未选择运行来源')
 
   return (
@@ -299,6 +312,7 @@ export function PlaygroundPage({
           setPage={setPage}
           openWorkspace={setWorkspace}
           signedIn={signedIn}
+          runtimeReadiness={chatRuntimeReadiness}
           requireAuth={requireAuth}
           tasks={tasks}
           libraryItems={libraryItems}

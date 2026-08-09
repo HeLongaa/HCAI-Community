@@ -181,6 +181,30 @@ test('Chat UI creates, streams, recovers, grounds, and deletes a conversation', 
   expect(nativeDialogs).toEqual([])
 })
 
+test('Chat UI fails closed when no approved runtime is available', async ({ page, request }) => {
+  await signInPage(page, request, 'opsplus')
+  await page.route('**/api/chat/runtime', async (route) => {
+    await route.fulfill({
+      json: {
+        data: {
+          availability: 'unavailable',
+          reasonCode: 'chat_provider_disabled',
+          checkedAt: '2026-08-09T01:00:00.000Z',
+          runtime: null,
+        },
+      },
+    })
+  })
+
+  await openChatWorkspace(page)
+  await expect(page.locator('.workspace-runtime')).toContainText('NOT READY')
+  await expect(page.getByText('Chat is unavailable', { exact: true })).toBeVisible()
+  await expect(page.getByText('No approved Chat model is currently available.', { exact: true })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Chat message' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled()
+  await expect(page.getByTestId('creative-cost-chat')).toHaveCount(0)
+})
+
 test('Chat UI stops an active stream and opens a prefilled safety appeal', async ({ page, request }) => {
   await signInPage(page, request, 'legalpixel')
   await openChatWorkspace(page)

@@ -10,6 +10,7 @@ import {
 } from '../../contracts/requestParsers.js'
 import { createChatService } from '../../chat/chatService.js'
 import { createChatRuntime } from '../../chat/chatRuntime.js'
+import { readChatRuntimeReadiness } from '../../chat/chatRuntimeReadiness.js'
 import { requireChatMessageCodec } from '../../chat/messageCrypto.js'
 import { createProviderControlPlane } from '../../creative/providerControlPlane.js'
 import { resolveModelRuntimeDeployment } from '../../modelControl/modelRuntimeResolver.js'
@@ -38,6 +39,19 @@ export const registerChatRoutes = (router, options = {}) => {
     coordinator: options.coordinator,
     source,
     now: options.now,
+  })
+
+  router.add('GET', '/api/chat/runtime', async (_request, response, context) => {
+    const actor = requireUser(context)
+    const now = typeof options.now === 'function' ? options.now() : options.now ?? new Date()
+    ok(response, await readChatRuntimeReadiness({
+      repositories: routeRepositories,
+      source,
+      runtime,
+      actor,
+      now,
+      readinessResolver: options.runtimeReadinessResolver,
+    }))
   })
 
   router.add('POST', '/api/chat/conversations', async (request, response, context) => {

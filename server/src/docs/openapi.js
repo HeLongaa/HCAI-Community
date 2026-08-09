@@ -2096,6 +2096,16 @@ export const openApiDocument = {
         },
       },
     },
+    '/chat/runtime': {
+      get: {
+        summary: 'Read the current user-safe Chat runtime availability',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Secret-free Chat runtime availability, display identity, and stable reason code' },
+          '401': { description: 'Authentication required' },
+        },
+      },
+    },
     '/chat/conversations': {
       get: {
         summary: 'List owner-scoped Chat conversations',

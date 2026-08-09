@@ -1589,6 +1589,16 @@ export type ChatMode = 'assistant' | 'prompt_assist' | 'storyboard'
 export type ChatTurnStatus = 'queued' | 'streaming' | 'completed' | 'stopped' | 'interrupted' | 'failed' | 'blocked'
 export type ChatMessageStatus = 'complete' | 'streaming' | 'stopped' | 'interrupted' | 'failed' | 'blocked'
 export type ChatProductContextReference = { type: 'task' | 'library_item'; id: string }
+export type ApiChatRuntimeReadiness = {
+  availability: 'available' | 'unavailable' | 'demo'
+  reasonCode: 'mock_runtime' | 'chat_provider_disabled' | 'no_approved_runtime' | 'runtime_status_unavailable' | null
+  checkedAt: string
+  runtime: {
+    id: string
+    label: string
+    kind: 'provider' | 'demo'
+  } | null
+}
 export type ChatSafetyEvidence = {
   safetyId: string
   policyVersion: string

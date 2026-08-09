@@ -139,8 +139,8 @@ const evaluateRuntimeCandidate = async ({ target, policy, context, repositories,
   return { allowed: true, reasonCode: null, ...validation, secretRef, credential, operationalSnapshot }
 }
 
-export const resolveModelRuntimeReadiness = async ({ repositories, modality = 'chat', operation = 'generate', environment = 'production', region = null, role = 'member', baseSource = process.env, now = new Date() }) => {
-  const context = { modality, operation, environment, region, subjectKey: 'admin-readiness', role }
+export const resolveModelRuntimeReadiness = async ({ repositories, modality = 'chat', operation = 'generate', environment = 'production', region = null, subjectKey = 'admin-readiness', role = 'member', baseSource = process.env, now = new Date() }) => {
+  const context = { modality, operation, environment, region, subjectKey, role }
   const policies = region == null && repositories.modelRouting.list
     ? (await repositories.modelRouting.list({ status: 'active', modality, environment, search: null, cursor: null, sort: 'priority', order: 'asc', limit: 100 })).items.filter((policy) => policy.operation === operation)
     : await repositories.modelRouting.match(context)

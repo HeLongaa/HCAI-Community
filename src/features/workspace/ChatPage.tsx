@@ -20,6 +20,7 @@ import type { InspirationItem, Page, PlaygroundMode, Task } from '../../domain/t
 import { isZhCopy, textFor } from '../../domain/utils'
 import { isApiClientError } from '../../services/apiClient'
 import { chatService } from '../../services/chatService'
+import type { ChatRuntimeReadinessState } from '../../hooks/useChatRuntimeReadiness'
 import type {
   ApiChatConversation,
   ApiChatInputAsset,
@@ -38,6 +39,7 @@ type ChatPageProps = {
   setPage: (page: Page) => void
   openWorkspace?: (workspace: PlaygroundMode) => void
   signedIn: boolean
+  runtimeReadiness: ChatRuntimeReadinessState
   requireAuth: () => void
   tasks: Task[]
   libraryItems: InspirationItem[]
@@ -101,6 +103,7 @@ export function ChatPage({
   setPage,
   openWorkspace,
   signedIn,
+  runtimeReadiness,
   requireAuth,
   tasks,
   libraryItems,
@@ -145,6 +148,8 @@ export function ChatPage({
 
   const selectedConversation = conversations.find((item) => item.id === selectedConversationId) ?? null
   const isStreaming = requestState.status === 'streaming' || requestState.status === 'queued'
+  const runtimeReady = runtimeReadiness.status === 'ready' && runtimeReadiness.data?.availability !== 'unavailable'
+  const runtimeBlocksInteraction = signedIn && !runtimeReady
   const contextOptions = useMemo(() => [
     ...tasks.map((task) => ({
       reference: { type: 'task' as const, id: String(task.id) },
@@ -269,6 +274,7 @@ export function ChatPage({
       requireAuth()
       return null
     }
+    if (!runtimeReady) return null
     setRequestState({ status: 'idle', error: null, moderationDecisionId: null })
     try {
       const conversation = await chatService.createConversation(mode)
@@ -387,6 +393,7 @@ export function ChatPage({
       requireAuth()
       return
     }
+    if (!runtimeReady) return
     const conversation = selectedConversation ?? await createConversation()
     if (!conversation) return
     const now = new Date().toISOString()
@@ -514,7 +521,7 @@ export function ChatPage({
             <span className="eyebrow">{textFor(t, 'History', '历史')}</span>
             <h2>{textFor(t, 'Conversations', '对话')}</h2>
           </div>
-          <button className="icon-button" type="button" title={textFor(t, 'Start chat from history', '从历史启动对话')} aria-label={textFor(t, 'Start chat from history', '从历史启动对话')} onClick={() => void createConversation()}>
+          <button className="icon-button" type="button" disabled={runtimeBlocksInteraction} title={textFor(t, 'Start chat from history', '从历史启动对话')} aria-label={textFor(t, 'Start chat from history', '从历史启动对话')} onClick={() => void createConversation()}>
             <MessageSquarePlus size={18} />
           </button>
           <button className="icon-button" type="button" title={textFor(t, 'Close history', '关闭历史')} aria-label={textFor(t, 'Close history', '关闭历史')} onClick={() => setHistoryOpen(false)}>
@@ -523,7 +530,7 @@ export function ChatPage({
         </div>
         <label className="chat-mode-field">
           <span>{textFor(t, 'New conversation mode', '新对话模式')}</span>
-          <select value={mode} onChange={(event) => setMode(event.target.value as ChatMode)} disabled={isStreaming}>
+          <select value={mode} onChange={(event) => setMode(event.target.value as ChatMode)} disabled={isStreaming || runtimeBlocksInteraction}>
             {(Object.entries(modeLabels) as Array<[ChatMode, [string, string]]>).map(([value, label]) => (
               <option value={value} key={value}>{textFor(t, label[0], label[1])}</option>
             ))}
@@ -584,14 +591,20 @@ export function ChatPage({
             <h2>{selectedConversation?.title ?? t.chatTitle}</h2>
           </div>
           <div className="chat-main-actions">
-            <button type="button" title={textFor(t, 'New conversation', '新建对话')} aria-label={textFor(t, 'New conversation', '新建对话')} onClick={() => void createConversation()}>
+            <button type="button" disabled={runtimeBlocksInteraction} title={textFor(t, 'New conversation', '新建对话')} aria-label={textFor(t, 'New conversation', '新建对话')} onClick={() => void createConversation()}>
               <MessageSquarePlus size={16} />{textFor(t, 'New', '新建')}
             </button>
             <button type="button" onClick={() => setHistoryOpen((current) => !current)}><History size={16} />{textFor(t, 'History', '历史')}</button>
             <button type="button" onClick={() => setContextOpen((current) => !current)}><Paperclip size={16} />{textFor(t, 'Inputs', '输入')}</button>
             <span className={`chat-connection-status ${isStreaming ? 'streaming' : ''}`} role="status" aria-live="polite">
-              {isStreaming && <LoaderCircle className="spin" size={14} />}
-              {isStreaming ? textFor(t, 'Streaming', '生成中') : textFor(t, 'Ready', '已就绪')}
+              {(isStreaming || runtimeReadiness.status === 'loading') && <LoaderCircle className="spin" size={14} />}
+              {isStreaming
+                ? textFor(t, 'Streaming', '生成中')
+                : runtimeReadiness.status === 'loading'
+                  ? textFor(t, 'Checking', '检查中')
+                  : runtimeReady
+                    ? textFor(t, 'Ready', '已就绪')
+                    : textFor(t, 'Unavailable', '不可用')}
             </span>
           </div>
         </header>
@@ -605,7 +618,7 @@ export function ChatPage({
               <p>{textFor(t, 'Refine a prompt, plan a task, or draft a storyboard. Add project inputs when context matters.', '可以优化提示词、规划任务或起草分镜；需要时再加入项目素材和上下文。')}</p>
               <div className="chat-starter-list">
                 {promptStarters.map(([title, text]) => (
-                  <button type="button" key={title} onClick={() => setDraft(text)}>
+                  <button type="button" disabled={runtimeBlocksInteraction} key={title} onClick={() => setDraft(text)}>
                     <strong>{title}</strong><span>{text}</span>
                   </button>
                 ))}
@@ -631,6 +644,22 @@ export function ChatPage({
           ))}
           <div aria-hidden="true" ref={latestMessageRef} />
         </div>
+
+        {runtimeBlocksInteraction && (
+          <div className="chat-request-notice failed chat-runtime-notice" role="status">
+            <AlertTriangle size={18} />
+            <div>
+              <strong>{runtimeReadiness.status === 'loading'
+                ? textFor(t, 'Checking Chat runtime', '正在检查对话运行来源')
+                : textFor(t, 'Chat is unavailable', '对话暂不可用')}</strong>
+              <span>{runtimeReadiness.status === 'loading'
+                ? textFor(t, 'Verifying the current model route.', '正在验证当前模型路由。')
+                : runtimeReadiness.status === 'error'
+                  ? textFor(t, 'Runtime status could not be verified. Try again later.', '无法确认运行来源状态，请稍后重试。')
+                  : textFor(t, 'No approved Chat model is currently available.', '当前没有可用且已批准的对话模型。')}</span>
+            </div>
+          </div>
+        )}
 
         {(requestState.error || requestState.status === 'blocked' || requestState.status === 'interrupted') && (
           <div className={`chat-request-notice ${requestState.status}`} role="alert">
@@ -687,9 +716,9 @@ export function ChatPage({
             }}
             placeholder={textFor(t, 'Ask for a prompt, script, brief, or revision...', '输入提示词、脚本、任务需求或修改意见...')}
             rows={2}
-            disabled={isStreaming}
+            disabled={isStreaming || runtimeBlocksInteraction}
           />
-          <CreativeCostPreview t={t} workspace="chat" mode={mode} />
+          {runtimeReady && <CreativeCostPreview t={t} workspace="chat" mode={mode} />}
           <div className="chat-composer-footer">
             <span id="chat-composer-count">{draft.length}/4000</span>
             {isStreaming ? (
@@ -698,7 +727,7 @@ export function ChatPage({
                 {textFor(t, 'Stop', '停止')}
               </button>
             ) : (
-              <button className="primary-button" type="button" disabled={!draft.trim()} onClick={() => void sendMessage()}>
+              <button className="primary-button" type="button" disabled={!draft.trim() || runtimeBlocksInteraction} onClick={() => void sendMessage()}>
                 <Send size={17} />
                 {textFor(t, 'Send', '发送')}
               </button>

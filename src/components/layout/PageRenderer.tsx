@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
+import { useChatRuntimeReadiness } from '../../hooks/useChatRuntimeReadiness'
 import type {
   BillingViewModel,
   AdminPageViewModel,
@@ -106,6 +107,11 @@ export function PageRenderer({
     playgroundWorkspace,
     setPlaygroundWorkspace,
   } = workspace
+  const chatRuntimeReadiness = useChatRuntimeReadiness(
+    account.accountHandle && (page === 'chat' || (page === 'playground' && playgroundWorkspace === 'chat'))
+      ? account.accountHandle
+      : null,
+  )
   const { playTrack } = player
   const { requireAuth, simulateAction } = feedback
   const {
@@ -205,6 +211,7 @@ export function PageRenderer({
           musicWorkflow={musicWorkflow}
           videoWorkflow={videoWorkflow}
           signedIn={Boolean(account.accountHandle)}
+          chatRuntimeReadiness={chatRuntimeReadiness}
           tasks={taskList}
           libraryItems={libraryItems}
           openModerationAppeal={openModerationAppeal}
@@ -235,6 +242,7 @@ export function PageRenderer({
           t={t}
           setPage={navigateToPage}
           signedIn={Boolean(account.accountHandle)}
+          runtimeReadiness={chatRuntimeReadiness}
           requireAuth={requireAuth}
           tasks={taskList}
           libraryItems={libraryItems}
